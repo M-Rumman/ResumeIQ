@@ -1,0 +1,30 @@
+//---------------------------------------------------------------------------
+
+#ifndef MainMenuH
+#define MainMenuH
+//---------------------------------------------------------------------------
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+//---------------------------------------------------------------------------
+class TMainMenuForm : public TForm
+{
+__published:	// IDE-managed Components
+	TButton *btnRegister;
+	//TButton *btnLogin;
+	//TButton *btnBrowse;
+	TButton *btnExit;
+	TLabel *lblTitle;
+	void __fastcall btnRegisterClick(TObject *Sender);
+	//void __fastcall btnLoginClick(TObject *Sender);
+	//void __fastcall btnBrowseClick(TObject *Sender);
+	void __fastcall btnExitClick(TObject *Sender);
+private:	// User declarations
+public:		// User declarations
+	__fastcall TMainMenuForm(TComponent* Owner);
+};
+//---------------------------------------------------------------------------
+extern PACKAGE TMainMenuForm *MainMenuForm;
+//---------------------------------------------------------------------------
+#endif

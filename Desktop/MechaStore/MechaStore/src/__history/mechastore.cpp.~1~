@@ -1,0 +1,38 @@
+#include <vcl.h>
+#pragma hdrstop
+#include <tchar.h>
+
+#include "MainMenu.h"
+#include "../Backend/PortalManager.h"
+
+PortalManager store;  // global store accessible to all GUI forms
+
+USEFORM("GUI/MainMenu.cpp", MainMenu);
+
+int WINAPI _tWinMain(HINSTANCE, HINSTANCE, LPTSTR, int)
+{
+    try
+    {
+        Application->Initialize();
+        Application->MainFormOnTaskBar = true;
+
+        // Load backend data BEFORE showing GUI
+        store.loadUsers();
+        store.loadComponents();
+        store.loadOrders();
+
+        Application->CreateForm(__classid(TMainMenu), &MainMenu);
+        Application->Run();
+
+        // Save on exit
+        store.saveUsers();
+        store.saveComponents();
+        store.saveOrders();
+    }
+    catch(...)
+    {
+    }
+
+    return 0;
+}
+

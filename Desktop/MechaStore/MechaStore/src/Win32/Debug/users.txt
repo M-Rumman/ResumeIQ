@@ -1,0 +1,12 @@
+1|admin|admin123|03000000000|1
+2|Rumman|482059|03485356026|0
+3|Tashifa|tashifa|03295119331|0
+4|ayesha |asdf|334|0
+5|Maham|3214|03445853104|0
+6|Ayesha Zaib|asdf|03335947087|0
+7|Ayesha Zaib|asdf|03335947087|0
+8|Furqan|48205|03095284263|0
+9|ayesha|asdf|03345432321|0
+10|Taj|Muhammad|03335767896|0
+11|Ayesha Zaib|OOPS teacher|03335947087|0
+12|Ayesha Zaib|OOPS|03335947087|0

@@ -1,0 +1,27 @@
+//---------------------------------------------------------------------------
+
+#ifndef UserRegisterH
+#define UserRegisterH
+//---------------------------------------------------------------------------
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+//---------------------------------------------------------------------------
+class TUserRegistrationForm : public TForm
+{
+__published:
+	TEdit *Username;
+	TEdit *password;
+	TEdit *Whatsapp;
+	TButton *Register;
+
+    void __fastcall btnRegisterClick(TObject *Sender);
+	void __fastcall WhatsappChange(TObject *Sender);
+public:
+	__fastcall TUserRegistrationForm(TComponent* Owner);
+};
+//---------------------------------------------------------------------------
+extern PACKAGE TUserRegistrationForm *UserRegistrationForm;
+//---------------------------------------------------------------------------
+#endif

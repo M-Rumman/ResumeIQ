@@ -1,0 +1,57 @@
+object MainMenuForm: TMainMenuForm
+  Left = 0
+  Top = 0
+  Caption = 'MainMenuForm'
+  ClientHeight = 441
+  ClientWidth = 624
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  TextHeight = 15
+  object lblTitle: TLabel
+    Left = 258
+    Top = 80
+    Width = 103
+    Height = 20
+    Caption = 'Components Portal'
+  end
+  object Button1: TButton
+    Left = 240
+    Top = 128
+    Width = 137
+    Height = 41
+    Caption = 'Register'
+    TabOrder = 0
+    OnClick = Button1Click
+  end
+  object Button2: TButton
+    Left = 240
+    Top = 175
+    Width = 137
+    Height = 41
+    Caption = 'Login'
+    TabOrder = 1
+    OnClick = Button2Click
+  end
+  object Button3: TButton
+    Left = 240
+    Top = 222
+    Width = 137
+    Height = 42
+    Caption = 'Browse Components'
+    TabOrder = 2
+    OnClick = Button3Click
+  end
+  object Button4: TButton
+    Left = 240
+    Top = 270
+    Width = 137
+    Height = 43
+    Caption = 'Exit'
+    TabOrder = 3
+    OnClick = Button4Click
+  end
+end

@@ -1,0 +1,47 @@
+//---------------------------------------------------------------------------
+
+#include <vcl.h>
+#pragma hdrstop
+
+#include "MainMenu.h"
+#include "backend.h"
+#include "RegisterForm.h"
+#include "LoginForm.h"
+#include "BrowseForm.h"
+
+//---------------------------------------------------------------------------
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+TMainMenuForm *MainMenuForm;
+//---------------------------------------------------------------------------
+__fastcall TMainMenuForm::TMainMenuForm(TComponent* Owner)
+	: TForm(Owner)
+{
+}
+//---------------------------------------------------------------------------
+void __fastcall TMainMenuForm::Button1Click(TObject *Sender)
+{
+	TRegisterForm *form = new TRegisterForm(this);
+    form->ShowModal();
+    delete form;
+}
+//---------------------------------------------------------------------------
+void __fastcall TMainMenuForm::Button2Click(TObject *Sender)
+{
+    TLoginForm *form = new TLoginForm(this);
+    form->ShowModal();
+    delete form;
+}
+//---------------------------------------------------------------------------
+void __fastcall TMainMenuForm::Button3Click(TObject *Sender)
+{
+	TBrowseForm *form = new TBrowseForm(this);
+    form->ShowModal();
+    delete form;
+}
+//---------------------------------------------------------------------------
+void __fastcall TMainMenuForm::Button4Click(TObject *Sender)
+{
+	Close();
+}
+//---------------------------------------------------------------------------

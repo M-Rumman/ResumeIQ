@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>2025/11/23 13:45:24.000.575,=C:\Users\imfur\Documents\Embarcadero\Studio\Projects\File1.cpp</Transaction>
+    <Transaction>2025/11/23 13:45:24.000.291,=C:\Users\imfur\Documents\Embarcadero\Studio\Projects\Project1PCH1.h</Transaction>
+    <Transaction>2025/11/23 13:47:39.000.111,C:\Users\imfur\Documents\Embarcadero\Studio\Projects\File1.cpp=C:\Users\imfur\Documents\Embarcadero\Studio\Projects\main.cpp</Transaction>
+    <Transaction>2025/11/23 13:47:59.000.182,C:\Users\imfur\Documents\Embarcadero\Studio\Projects\main.cpp=C:\MechaStore\src\main.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:26.000.992,=C:\MechaStore\src\models\Component.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:26.000.768,=C:\MechaStore\src\models\admin.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:26.000.832,=C:\MechaStore\src\models\admin.h</Transaction>
+    <Transaction>2025/11/23 14:27:26.000.865,=C:\MechaStore\src\models\Cart.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:26.000.960,=C:\MechaStore\src\models\CartItem.h</Transaction>
+    <Transaction>2025/11/23 14:27:26.000.928,=C:\MechaStore\src\models\CartItem.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:26.000.896,=C:\MechaStore\src\models\Cart.h</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.040,=C:\MechaStore\src\models\Component.h</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.376,=C:\MechaStore\src\models\User.h</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.071,=C:\MechaStore\src\models\customer.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.201,=C:\MechaStore\src\models\OrderItem.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.310,=C:\MechaStore\src\models\PortalManager.h</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.352,=C:\MechaStore\src\models\User.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.103,=C:\MechaStore\src\models\Customer.h</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.241,=C:\MechaStore\src\models\OrderItem.h</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.177,=C:\MechaStore\src\models\Order.h</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.139,=C:\MechaStore\src\models\Order.cpp</Transaction>
+    <Transaction>2025/11/23 14:27:27.000.272,=C:\MechaStore\src\models\PortalManager.cpp</Transaction>
+    <Transaction>2025/11/23 14:28:00.000.193,C:\Users\imfur\Documents\Embarcadero\Studio\Projects\Project1.cbproj=C:\MechaStore\src\Project1.cbproj</Transaction>
+    <Transaction>2025/11/23 14:28:00.000.193,C:\Users\imfur\Documents\Embarcadero\Studio\Projects\Project1PCH1.h=C:\MechaStore\src\Project1PCH1.h</Transaction>
+  </Transactions>
+</BorlandProject>

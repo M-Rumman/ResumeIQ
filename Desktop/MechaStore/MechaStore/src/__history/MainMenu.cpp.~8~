@@ -1,0 +1,45 @@
+#include <vcl.h>
+#pragma hdrstop
+
+#include "UserRegister.h"
+#include "MainMenu.h"
+//#include "LoginForm.h"
+//#include "BrowseComponentsForm.h"
+
+#include "PortalManager.h"
+extern PortalManager store;
+
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+
+TMainMenuForm *MainMenuForm;
+
+__fastcall TMainMenuForm::TMainMenuForm(TComponent* Owner)
+    : TForm(Owner)
+{
+}
+
+void __fastcall TMainMenuForm::btnRegisterClick(TObject *Sender)
+{
+    RegisterForm->ShowModal();
+}
+
+void __fastcall TMainMenuForm::btnLoginClick(TObject *Sender)
+{
+    LoginForm->ShowModal();
+}
+
+void __fastcall TMainMenuForm::btnBrowseClick(TObject *Sender)
+{
+    BrowseComponentsForm->ShowModal();
+}
+
+void __fastcall TMainMenuForm::btnExitClick(TObject *Sender)
+{
+    Close();
+}
+void __fastcall TMainMenuForm::btnRegisterClick(TObject *Sender)
+{
+    Uni1->ShowModal();
+}
+

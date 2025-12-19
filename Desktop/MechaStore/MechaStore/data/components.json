@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1,
+    "name": "Button",
+    "desc": "Basic clickable button component",
+    "price": 5.0,
+    "stock": 10,
+    "seller": {
+      "name": "Ali",
+      "whatsapp": "+923001234567"
+    }
+  },
+  {
+    "id": 2,
+    "name": "Card",
+    "desc": "Information card UI component",
+    "price": 10.0,
+    "stock": 5,
+    "seller": {
+      "name": "Sara",
+      "whatsapp": "+923001112233"
+    }
+  },
+  {
+    "id": 3,
+    "name": "Slider",
+    "desc": "Interactive slider component",
+    "price": 7.5,
+    "stock": 8,
+    "seller": {
+      "name": "Ahmed",
+      "whatsapp": "+923004556677"
+    }
+  }
+]

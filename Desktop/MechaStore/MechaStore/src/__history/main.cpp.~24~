@@ -1,0 +1,114 @@
+﻿// main.cpp
+#include <iostream>
+#include <string>
+#include <vector>
+#include <memory>
+#include "PortalManager.h"
+#include "Customer.h"
+#include "Admin.h"
+#include "Component.h"
+#include "Order.h"
+#include "OrderItem.h"
+#include "Cart.h"
+
+using namespace std;
+
+PortalManager store; // global portal manager
+
+// ---------------------- ADMIN SEED ----------------------
+void seedAdminIfNone() {
+    bool adminExists = false;
+    for (auto u : store.getUsers()) {
+        if (u->getisAdmin()) {
+            adminExists = true;
+            break;
+        }
+    }
+
+    if (!adminExists) {
+        cout << "First user to register is going to become the admin...\n";
+        User *admin = new Admin(1, "admin", "admin123", "0300-000000");
+        store.registerUser(admin);
+        store.saveUsers();
+    }
+}
+
+// ---------------------- MENUS ----------------------
+void showMainMenu() {
+    cout << "\n===== Components Portal =====\n";
+    cout << "1. Register\n";
+    cout << "2. Login\n";
+    cout << "3. Browse components\n";
+    cout << "4. Exit\n";
+    cout << "Select an option: ";
+}
+
+void showCustomerMenu() {
+    cout << "\n--- Customer Menu ---\n";
+    cout << "1. Browse components\n";
+    cout << "2. Add component to portal\n";
+    cout << "3. Add component to cart\n";
+    cout << "4. View cart\n";
+    cout << "5. Checkout\n";
+    cout << "6. Logout\n";
+    cout << "Select an option: ";
+}
+
+void showAdminMenu() {
+    cout << "\n--- Admin Menu ---\n";
+    cout << "1. View components\n";
+    cout << "2. Add component\n";
+    cout << "3. Update component\n";
+    cout << "4. Delete component\n";
+    cout << "5. View orders\n";
+    cout << "6. Logout\n";
+    cout << "Select an option: ";
+}
+
+// ---------------------- COMPONENTS ----------------------
+void browseComponents() {
+    const vector<Component> &components = store.getComponents();
+    cout << "\nAvailable Components:\n";
+
+    if (components.empty()) {
+        cout << "No components available.\n";
+        return;
+    }
+
+    for (const auto &c : components) {
+        cout << "ID: " << c.getId()
+             << " | " << c.getName()
+             << " | $" << c.getPrice()
+             << " | Stock: " << c.getQuantity()
+             << " | Seller: " << c.getSellerName()
+             << "\n " << c.getDescription() << "\n";
+    }
+}
+
+void addComponentByUser(User* u) {
+    if (!u) return;
+
+    string idS, name, desc, qtyS, priceS, sellerPhone;
+
+    cout << "ID: ";
+    getline(cin, idS);
+    cout << "Name: ";
+    getline(cin, name);
+    cout << "Description: ";
+    getline(cin, desc);
+    cout << "Quantity: ";
+    getline(cin, qtyS);
+    cout << "Price: ";
+    getline(cin, priceS);
+    cout << "Your Whatsapp/Phone: ";
+    getline(cin, sellerPhone);
+
+    try {
+        int id = stoi(idS);
+        int qty = stoi(qtyS);
+        double price = stod(priceS);
+
+        Component c(id, name, desc, qty, price, u->getUserName(), sellerPhone);
+        store.getComponents().push_back(c);
+        store.saveComponents();
+
