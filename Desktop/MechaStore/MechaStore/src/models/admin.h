@@ -12,16 +12,16 @@ public:
     Admin();
     Admin(int id, const string &username, const string &password, const string &whatsapp_no);
 
-    // Admin operations
-    void addComponent(vector<Component> &components, const Component &c);
-    void updateComponent(Component &c, const string &name, double price, int quantity);
-    void deleteComponent(vector<Component> &components, int componentId);
-    void viewOrders(const vector<Order> &orders) const;
+	// Admin operations
+	void addComponent(vector<Component> &components, const Component &c);
+	void updateComponent(Component &c, const string &name, double price, int quantity);
+	void deleteComponent(vector<Component> &components, int componentId);
+	void viewOrders(const vector<Order> &orders) const;
 
-    // Sorting example
+	//
     void sortComponentsByPrice(vector<Component> &components);
 
-    virtual ~Admin() {}  // <--- virtual destructor (good practice)
+	virtual ~Admin() {}  // <--- virtual destructor
 };
 
 #endif

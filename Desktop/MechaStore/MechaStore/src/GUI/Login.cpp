@@ -3,6 +3,7 @@
 
 #include "Login.h"
 #include "CustomerDashboard.h"
+#include "AdminDashboard.h"
 #include "../models/PortalManager.h"
 
 extern PortalManager store;
@@ -23,20 +24,30 @@ void __fastcall TLoginForm::btnLoginClick(TObject *Sender)
     std::string p = AnsiString(edtPass->Text).c_str();
 
     User* user = store->login(u, p);
-    if (user)
+    if (!user)
     {
-        TUserDashboard *dash =
-            new TUserDashboard(Application, user);
+        ShowMessage("Invalid credentials");
+        return;
+    }
 
-        dash->OnClose = dash->dashboardClose;
-        dash->Show();
-        Hide();
+    Hide();
+
+    if (user->getisAdmin())
+    {
+		TAdminDashboardForm *adminDash =
+            new TAdminDashboardForm(Application);
+        adminDash->Show();
     }
     else
     {
-        ShowMessage("Invalid credentials");
+        TUserDashboard *userDash =
+            new TUserDashboard(Application, user);
+
+        userDash->OnClose = userDash->dashboardClose;
+        userDash->Show();
     }
 }
+
 
 void __fastcall TLoginForm::loginFormClose(TObject *Sender, TCloseAction &Action)
 {

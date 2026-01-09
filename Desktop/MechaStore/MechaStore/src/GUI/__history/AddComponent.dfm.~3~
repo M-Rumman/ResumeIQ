@@ -1,0 +1,114 @@
+object AddComponentPortal: TAddComponentPortal
+  Left = 0
+  Top = 0
+  Caption = 'AddComponentPortal'
+  ClientHeight = 726
+  ClientWidth = 1106
+  Color = clCream
+  DragMode = dmAutomatic
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clDarkblue
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  TextHeight = 15
+  object edtDesc: TEdit
+    Left = 440
+    Top = 240
+    Width = 199
+    Height = 23
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkred
+    Font.Height = -12
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 0
+    Text = 'edtDesc'
+  end
+  object edtPrice: TEdit
+    Left = 440
+    Top = 288
+    Width = 199
+    Height = 23
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkred
+    Font.Height = -12
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 1
+    Text = 'edtPrice'
+  end
+  object edtQty: TEdit
+    Left = 440
+    Top = 336
+    Width = 199
+    Height = 23
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkred
+    Font.Height = -12
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 2
+    Text = 'edtQty'
+  end
+  object edtSeller: TEdit
+    Left = 440
+    Top = 384
+    Width = 199
+    Height = 23
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkred
+    Font.Height = -12
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 3
+    Text = 'edtSeller'
+  end
+  object edtPhone: TEdit
+    Left = 440
+    Top = 432
+    Width = 199
+    Height = 23
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkred
+    Font.Height = -12
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 4
+    Text = 'edtPhone'
+  end
+  object btnAdd: TButton
+    Left = 502
+    Top = 488
+    Width = 75
+    Height = 25
+    Caption = 'Add'
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkred
+    Font.Height = -12
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 5
+    OnClick = btnAddClick
+  end
+  object edtName: TEdit
+    Left = 440
+    Top = 200
+    Width = 199
+    Height = 23
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkred
+    Font.Height = -12
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    TabOrder = 6
+    Text = 'edtName'
+  end
+end

@@ -1,0 +1,43 @@
+object ViewUsers: TViewUsers
+  Left = 0
+  Top = 0
+  Caption = 'ViewUsers'
+  ClientHeight = 724
+  ClientWidth = 1104
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  WindowState = wsMaximized
+  TextHeight = 15
+  object Users: TMemo
+    Left = 384
+    Top = 32
+    Width = 665
+    Height = 489
+    Lines.Strings = (
+      'Users')
+    ScrollBars = ssBoth
+    TabOrder = 0
+  end
+  object CloseButton: TButton
+    Left = 688
+    Top = 536
+    Width = 75
+    Height = 25
+    Caption = 'CloseButton'
+    TabOrder = 1
+    OnClick = CloseButtonClick
+  end
+  object Refresh: TButton
+    Left = 688
+    Top = 576
+    Width = 75
+    Height = 25
+    Caption = 'Refresh'
+    TabOrder = 2
+    OnClick = RefreshClick
+  end
+end

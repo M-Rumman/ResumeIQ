@@ -1,0 +1,40 @@
+object UpdateComponentAdmin: TUpdateComponentAdmin
+  Left = 0
+  Top = 0
+  Caption = 'UpdateComponentAdmin'
+  ClientHeight = 553
+  ClientWidth = 1100
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  WindowState = wsMaximized
+  TextHeight = 15
+  object ID: TEdit
+    Left = 504
+    Top = 176
+    Width = 121
+    Height = 23
+    TabOrder = 0
+    Text = 'ID'
+  end
+  object NewPrice: TEdit
+    Left = 504
+    Top = 232
+    Width = 121
+    Height = 23
+    TabOrder = 1
+    Text = 'NewPrice'
+  end
+  object Update: TButton
+    Left = 520
+    Top = 320
+    Width = 75
+    Height = 25
+    Caption = 'Update'
+    TabOrder = 2
+    OnClick = UpdateClick
+  end
+end

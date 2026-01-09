@@ -1,0 +1,56 @@
+#include <vcl.h>
+#pragma hdrstop
+
+#include "AdminDashboard.h"
+#include "BrowseComp.h"
+#include "AddComponentAdminForm.h"
+#include "UpdateComponentAdminForm.h"
+#include "DeleteComponentAdminForm.h"
+#include "ViewUsersAdminForm.h"
+#include "ViewOrdersAdminForm.h"
+
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+
+TAdminDashboardForm *AdminDashboardForm;
+
+__fastcall TAdminDashboardForm::TAdminDashboardForm(TComponent* Owner)
+	: TForm(Owner) {}
+
+void __fastcall TAdminDashboardForm::BrowseClick(TObject *Sender)
+{
+    BrowseComponents->Show();
+}
+
+void __fastcall TAdminDashboardForm::AddComponentClick(TObject *Sender)
+{
+	AddComponentAdmin->Show();
+}
+
+void __fastcall TAdminDashboardForm::UpdateComponentClick(TObject *Sender)
+{
+    UpdateComponent->Show();
+}
+
+void __fastcall TAdminDashboardForm::DeleteComponentClick(TObject *Sender)
+{
+    DeleteComponent->Show();
+}
+
+void __fastcall TAdminDashboardForm::UsersClick(TObject *Sender)
+{
+	Users->Show();
+}
+
+void __fastcall TAdminDashboardForm::OrdersClick(TObject *Sender)
+{
+	Orders->Show();
+}
+
+
+void __fastcall TAdminDashboardForm::ExitClick(TObject *Sender)
+{
+	Close();
+}
+//---------------------------------------------------------------------------
+

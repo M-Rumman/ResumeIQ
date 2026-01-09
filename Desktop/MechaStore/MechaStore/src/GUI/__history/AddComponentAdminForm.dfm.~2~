@@ -1,0 +1,89 @@
+object AddComponentAdmin: TAddComponentAdmin
+  Left = 0
+  Top = 0
+  Caption = 'AddComponentAdmin'
+  ClientHeight = 727
+  ClientWidth = 1108
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  OnCreate = FormCreate
+  TextHeight = 15
+  object Name_Here: TLabel
+    Left = 514
+    Top = 200
+    Width = 101
+    Height = 28
+    Caption = 'Name_Here'
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkseagreen
+    Font.Height = -20
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+  end
+  object Price_Here: TLabel
+    Left = 514
+    Top = 271
+    Width = 91
+    Height = 28
+    Caption = 'Price_Here'
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkseagreen
+    Font.Height = -20
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+  end
+  object Quantity_Here: TLabel
+    Left = 514
+    Top = 341
+    Width = 125
+    Height = 28
+    Caption = 'Quantity_Here'
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkseagreen
+    Font.Height = -20
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+  end
+  object Name: TEdit
+    Left = 512
+    Top = 240
+    Width = 217
+    Height = 25
+    TabOrder = 0
+    Text = 'Name'
+    OnChange = NameChange
+  end
+  object Price: TEdit
+    Left = 514
+    Top = 312
+    Width = 215
+    Height = 23
+    ImeName = 'United Kingdom'
+    TabOrder = 1
+    Text = 'Price'
+  end
+  object Quantity: TEdit
+    Left = 514
+    Top = 384
+    Width = 215
+    Height = 23
+    TabOrder = 2
+    Text = 'Quantity'
+  end
+  object Save: TButton
+    Left = 584
+    Top = 440
+    Width = 75
+    Height = 25
+    Caption = 'Save'
+    TabOrder = 3
+    OnClick = SaveClick
+  end
+end

@@ -1,0 +1,41 @@
+object UpdateComponent: TUpdateComponent
+  Left = 0
+  Top = 0
+  Caption = 'UpdateComponent'
+  ClientHeight = 726
+  ClientWidth = 1107
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  TextHeight = 15
+  object Update: TButton
+    Left = 592
+    Top = 368
+    Width = 75
+    Height = 25
+    Caption = 'Update'
+    TabOrder = 0
+    OnClick = UpdateClick
+  end
+  object ID: TEdit
+    Left = 536
+    Top = 240
+    Width = 185
+    Height = 23
+    TabOrder = 1
+    Text = 'ID'
+    OnChange = IDChange
+  end
+  object NewPrice: TEdit
+    Left = 536
+    Top = 304
+    Width = 185
+    Height = 23
+    TabOrder = 2
+    Text = 'NewPrice'
+    OnChange = NewPriceChange
+  end
+end

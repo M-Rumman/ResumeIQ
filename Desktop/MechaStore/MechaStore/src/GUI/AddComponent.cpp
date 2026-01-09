@@ -46,39 +46,13 @@ void __fastcall TAddComponentPortal::btnAddClick(TObject *Sender)
 	Close();
 }
 
-void __fastcall TAddComponentPortal::edtDescChange(TObject *Sender)
-{
 
-}
-//---------------------------------------------------------------------------
 
-void __fastcall TAddComponentPortal::edtPriceChange(TObject *Sender)
-{
 
-}
-//---------------------------------------------------------------------------
 
-void __fastcall TAddComponentPortal::edtQtyChange(TObject *Sender)
-{
 
-}
-//---------------------------------------------------------------------------
 
-void __fastcall TAddComponentPortal::edtSellerChange(TObject *Sender)
-{
 
-}
-//---------------------------------------------------------------------------
 
-void __fastcall TAddComponentPortal::edtPhoneChange(TObject *Sender)
-{
 
-}
-//---------------------------------------------------------------------------
-
-void __fastcall TAddComponentPortal::edtNameChange(TObject *Sender)
-{
-
-}
-//---------------------------------------------------------------------------
 

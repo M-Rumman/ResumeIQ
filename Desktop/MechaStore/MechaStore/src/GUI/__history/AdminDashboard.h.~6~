@@ -1,0 +1,32 @@
+#ifndef AdminDashboardH
+#define AdminDashboardH
+
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+
+class TAdminDashboardForm : public TForm
+{
+__published:
+	TButton *Browse;
+	TButton *Users;
+	TButton *Orders;
+
+	void __fastcall BrowseClick(TObject *Sender);
+	void __fastcall AddComponentClick(TObject *Sender);
+	void __fastcall UpdateComponentClick(TObject *Sender);
+	void __fastcall DeleteComponentClick(TObject *Sender);
+	void __fastcall UsersClick(TObject *Sender);
+	void __fastcall OrdersClick(TObject *Sender);
+	void __fastcall LogoutClick(TObject *Sender);
+	void __fastcall ExitClick(TObject *Sender);
+
+public:
+	__fastcall TAdminDashboardForm(TComponent* Owner);
+};
+
+extern PACKAGE TAdminDashboardForm *AdminDashboardForm;
+
+#endif
+

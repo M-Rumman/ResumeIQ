@@ -1,0 +1,32 @@
+object ViewUsers: TViewUsers
+  Left = 0
+  Top = 0
+  Caption = 'ViewUsers'
+  ClientHeight = 724
+  ClientWidth = 1104
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  TextHeight = 15
+  object Users: TMemo
+    Left = 376
+    Top = 80
+    Width = 665
+    Height = 489
+    Lines.Strings = (
+      'Users')
+    TabOrder = 0
+  end
+  object CloseButton: TButton
+    Left = 688
+    Top = 600
+    Width = 75
+    Height = 25
+    Caption = 'CloseButton'
+    TabOrder = 1
+    OnClick = CloseButtonClick
+  end
+end

@@ -6,6 +6,7 @@
 #include <Vcl.StdCtrls.hpp>
 #include <Vcl.Forms.hpp>
 #include "../models/PortalManager.h"
+#include <Vcl.ExtCtrls.hpp>
 
 class TMainForm : public TForm
 {
@@ -14,6 +15,8 @@ __published:
 	TButton *btnLogin;
 	TButton *btnBrowse;
 	TButton *btnExit;
+	TPanel *Panel1;
+	TLabel *MechaStore;
 
 	void __fastcall btnRegisterClick(TObject *Sender);
 	void __fastcall btnLoginClick(TObject *Sender);

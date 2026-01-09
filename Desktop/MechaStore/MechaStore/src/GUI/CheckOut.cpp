@@ -51,7 +51,7 @@ void __fastcall TCheckOutForm::ConfirmClick(TObject *Sender)
     Confirm->Enabled = false;
 
     Summary->Lines->Add("");
-    Summary->Lines->Add("? Order Placed Successfully");
+    Summary->Lines->Add("Order Placed Successfully");
     Summary->Lines->Add("");
     Summary->Lines->Add("Seller Details:");
     Summary->Lines->Add("------------------------");

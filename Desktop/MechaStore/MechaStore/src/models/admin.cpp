@@ -11,7 +11,7 @@ Admin::Admin(int id, const string &username, const string &password, const strin
 
 void Admin::addComponent(vector<Component> &components, const Component &c) {
 components.push_back(c);
-cout << "Component added (logic only)." << endl;
+cout << "Component added." << endl;
 }
 
 
@@ -19,7 +19,7 @@ void Admin::updateComponent(Component &c, const string &name, double price, int 
 c.setName(name);
 c.setPrice(price);
 c.setQuantity(quantity);
-cout << "Component updated (logic only)." << endl;
+cout << "Component updated." << endl;
 }
 
 
@@ -27,7 +27,7 @@ void Admin::deleteComponent(vector<Component> &components, int componentId) {
 for(auto it = components.begin(); it != components.end(); ++it){
 if(it->getId() == componentId){
 components.erase(it);
-cout << "Component deleted (logic only)." << endl;
+cout << "Component deleted." << endl;
 return;
 }
 }
@@ -35,7 +35,7 @@ return;
 
 
 void Admin::viewOrders(const vector<Order> &orders) const {
-cout << "Viewing orders (logic only)." << endl;
+cout << "Viewing orders." << endl;
 for(const auto &o : orders){
 cout << "Order ID: " << o.getId() << ", User ID: " << o.getUserId() << endl;
 }

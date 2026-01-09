@@ -17,9 +17,8 @@ __published:
 
 private:
 
-    void ShowComponents();   // helper
-
 public:
+    void ShowComponents();   // helper
 	//PortalManager *store;//OR this
     __fastcall TBrowseComponents(TComponent* Owner);
 };

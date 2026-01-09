@@ -1,0 +1,60 @@
+#include <vcl.h>
+#pragma hdrstop
+
+#include "ViewOrders.h"
+#include "../models/PortalManager.h"
+#include "../models/Order.h"
+
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+
+extern PortalManager store;
+TViewOrders *ViewOrders;
+
+__fastcall TViewOrders::TViewOrders(TComponent* Owner)
+    : TForm(Owner)
+{
+}
+
+void __fastcall TViewOrders::FormShow(TObject *Sender)
+{
+    Orders->Clear();
+    store.loadOrders();
+
+    Orders->Lines->Add("==================================================");
+
+    for (auto &o : store.getOrders())
+    {
+        AnsiString header;
+        header.printf("Order ID: %d | User ID: %d | Total: %.2f",
+            o.getId(),
+            o.getUserId(),
+            o.getTotal()
+        );
+
+        Orders->Lines->Add(header);
+        Orders->Lines->Add("Items:");
+
+        for (auto &item : o.getItems())
+        {
+            AnsiString itemLine;
+            itemLine.printf("  - %s x %d (%.2f)",
+                item.getComponentName().c_str(),
+                item.getQuantity(),
+                item.getPrice()
+            );
+            Orders->Lines->Add(itemLine);
+        }
+
+        Orders->Lines->Add("==================================================");
+    }
+
+    if (store.getOrders().empty())
+        Orders->Lines->Add("No orders found.");
+}
+
+void __fastcall TViewOrders::CloseClick(TObject *Sender)
+{
+    Close();
+}
+

@@ -1,0 +1,44 @@
+#include <vcl.h>
+#pragma hdrstop
+
+#include "UpdateComponentAdminForm.h"
+#include "../models/PortalManager.h"
+
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+
+extern PortalManager store;
+TUpdateComponentAdmin *UpdateComponentAdmin;
+
+__fastcall TUpdateComponentAdmin::TUpdateComponentAdmin(TComponent* Owner)
+    : TForm(Owner)
+{
+}
+
+void __fastcall TUpdateComponentAdmin::UpdateClick(TObject *Sender)
+{
+    if (ID->Text.IsEmpty() || NewPrice->Text.IsEmpty())
+    {
+        ShowMessage("Enter ID and new price");
+        return;
+    }
+
+    int id = ID->Text.ToInt();
+    double price = NewPrice->Text.ToDouble();
+
+    Component *c = store.findComponentById(id);
+    if (!c)
+    {
+        ShowMessage("Component not found");
+        return;
+    }
+
+    c->setPrice(price);
+    store.saveComponents();
+
+    ShowMessage("Component updated. Carts will reflect changes.");
+    Close();
+}
+
+
+

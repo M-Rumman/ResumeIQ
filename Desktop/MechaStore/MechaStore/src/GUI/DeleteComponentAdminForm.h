@@ -1,0 +1,24 @@
+#ifndef DeleteComponentH
+#define DeleteComponentH
+
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+
+class TDeleteComponent : public TForm
+{
+__published:
+	TButton *Delete;
+	TEdit *ID;
+
+	void __fastcall DeleteClick(TObject *Sender);
+
+public:
+    __fastcall TDeleteComponent(TComponent* Owner);
+};
+
+extern PACKAGE TDeleteComponent *DeleteComponent;
+
+#endif
+

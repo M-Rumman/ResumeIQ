@@ -1,0 +1,17 @@
+#include <vcl.h>
+#pragma hdrstop
+
+#include "AddComponentAdminForm.h"
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+
+TAddComponentAdmin *AddComponentAdmin;
+
+__fastcall TAddComponentAdmin::TAddComponentAdmin(TComponent* Owner)
+    : TForm(Owner) {}
+
+void __fastcall TAddComponentAdmin::SaveClick(TObject *Sender)
+{
+	ShowMessage("Component Added Successfully!");
+}
+

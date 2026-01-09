@@ -58,9 +58,9 @@ void TAddToCartForm::refreshPreview()
 
     for (auto &item : userCart)
     {
-        AnsiString line;
-        line.printf("%s x %d = %.2f",
-            item.getComponentName().c_str(),
+		AnsiString line;
+		line.printf("%s x %d = %.2f",
+			item.getComponentName().c_str(),
             item.getQuantity(),
             item.getPrice() * item.getQuantity()
         );

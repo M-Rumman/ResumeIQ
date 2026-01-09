@@ -1,0 +1,27 @@
+#ifndef UpdateComponentH
+#define UpdateComponentH
+
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+
+class TUpdateComponent : public TForm
+{
+__published:
+	TButton *Update;
+	TEdit *ID;
+	TEdit *NewPrice;
+
+	void __fastcall UpdateClick(TObject *Sender);
+	void __fastcall NewPriceChange(TObject *Sender);
+	void __fastcall IDChange(TObject *Sender);
+
+public:
+    __fastcall TUpdateComponent(TComponent* Owner);
+};
+
+extern PACKAGE TUpdateComponent *UpdateComponent;
+
+#endif
+

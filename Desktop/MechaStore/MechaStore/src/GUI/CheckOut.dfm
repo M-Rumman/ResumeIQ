@@ -4,15 +4,16 @@ object CheckOutForm: TCheckOutForm
   Caption = 'CheckOutForm'
   ClientHeight = 723
   ClientWidth = 1106
-  Color = clBtnFace
+  Color = clCream
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -12
   Font.Name = 'Segoe UI'
   Font.Style = []
+  WindowState = wsMaximized
   TextHeight = 15
   object Total: TLabel
-    Left = 502
+    Left = 454
     Top = 120
     Width = 57
     Height = 37

@@ -1,0 +1,29 @@
+#ifndef ViewUsersH
+#define ViewUsersH
+
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+
+class TViewUsers : public TForm
+{
+__published:
+    TMemo *Users;
+	TButton *CloseButton;
+	TButton *Refresh;
+
+    void __fastcall FormShow(TObject *Sender);
+    void __fastcall CloseButtonClick(TObject *Sender);
+	void __fastcall RefreshClick(TObject *Sender);
+
+private:
+    void __fastcall refreshUsers();
+public:
+    __fastcall TViewUsers(TComponent* Owner);
+};
+
+extern PACKAGE TViewUsers *ViewUsers;
+
+#endif
+

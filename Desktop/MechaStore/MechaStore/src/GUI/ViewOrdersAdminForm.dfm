@@ -1,0 +1,43 @@
+object ViewOrders: TViewOrders
+  Left = 0
+  Top = 0
+  Caption = 'ViewOrders'
+  ClientHeight = 730
+  ClientWidth = 1108
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  WindowState = wsMaximized
+  TextHeight = 15
+  object Orders: TMemo
+    Left = 432
+    Top = 48
+    Width = 641
+    Height = 393
+    Lines.Strings = (
+      'Orders')
+    ScrollBars = ssBoth
+    TabOrder = 0
+  end
+  object CloseButton: TButton
+    Left = 734
+    Top = 480
+    Width = 75
+    Height = 25
+    Caption = 'CloseButton'
+    TabOrder = 1
+    OnClick = CloseButtonClick
+  end
+  object Refresh: TButton
+    Left = 734
+    Top = 528
+    Width = 75
+    Height = 25
+    Caption = 'Refresh'
+    TabOrder = 2
+    OnClick = RefreshClick
+  end
+end

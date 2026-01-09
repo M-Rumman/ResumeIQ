@@ -2,31 +2,32 @@ object Register: TRegister
   Left = 0
   Top = 0
   Caption = 'Register'
-  ClientHeight = 709
-  ClientWidth = 1152
-  Color = clBtnFace
+  ClientHeight = 721
+  ClientWidth = 1099
+  Color = clCream
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -12
   Font.Name = 'Segoe UI'
   Font.Style = []
+  WindowState = wsMaximized
   TextHeight = 15
   object Label1: TLabel
-    Left = 448
-    Top = 104
-    Width = 213
-    Height = 37
+    Left = 424
+    Top = 184
+    Width = 262
+    Height = 45
     Caption = 'Be a Member First'
     Font.Charset = DEFAULT_CHARSET
-    Font.Color = clWindowText
-    Font.Height = -27
+    Font.Color = clDarkseagreen
+    Font.Height = -33
     Font.Name = 'Segoe UI'
     Font.Style = []
     ParentFont = False
   end
   object btnRegister: TButton
-    Left = 520
-    Top = 360
+    Left = 512
+    Top = 448
     Width = 75
     Height = 25
     Caption = 'Register'
@@ -34,24 +35,24 @@ object Register: TRegister
     OnClick = btnRegisterClick
   end
   object edtUsername: TEdit
-    Left = 448
-    Top = 176
+    Left = 440
+    Top = 264
     Width = 213
     Height = 23
     TabOrder = 1
     Text = 'Username'
   end
   object edtPassword: TEdit
-    Left = 448
-    Top = 232
+    Left = 440
+    Top = 320
     Width = 213
     Height = 23
     TabOrder = 2
     Text = 'Password'
   end
   object edtWhatsapp: TEdit
-    Left = 448
-    Top = 288
+    Left = 440
+    Top = 376
     Width = 213
     Height = 23
     TabOrder = 3

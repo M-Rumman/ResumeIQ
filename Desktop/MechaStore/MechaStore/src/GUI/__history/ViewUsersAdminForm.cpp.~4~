@@ -1,0 +1,50 @@
+#include <vcl.h>
+#pragma hdrstop
+
+#include "ViewUsersAdminForm.h"
+#include "../models/PortalManager.h"
+#include "../models/User.h"
+
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+
+extern PortalManager store;
+TViewUsers *ViewUsers;
+
+__fastcall TViewUsers::TViewUsers(TComponent* Owner)
+    : TForm(Owner)
+{
+}
+
+void __fastcall TViewUsers::FormShow(TObject *Sender)
+{
+    Users->Clear();
+
+    store.loadUsers(); // refresh from file
+
+    Users->Lines->Add("--------------------------------------------------");
+    Users->Lines->Add(" ID | Username        | Role");
+    Users->Lines->Add("--------------------------------------------------");
+
+    for (auto u : store.getUsers())
+    {
+        AnsiString role = u->getisAdmin() ? "Admin" : "Customer";
+
+        AnsiString line;
+        line.printf("%3d | %-15s | %s",
+            u->getId(),
+            u->getUserName().c_str(),
+            role.c_str()
+        );
+
+        Users->Lines->Add(line);
+    }
+
+    Users->Lines->Add("--------------------------------------------------");
+}
+
+void __fastcall TViewUsers::CloseButtonClick(TObject *Sender)
+{
+    Close();
+}
+

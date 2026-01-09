@@ -42,7 +42,7 @@ std::vector<Order>& PortalManager::getOrders() {
 }
 
 // ------------------------------
-// ID GENERATION (C++17 style)
+// ID GENERATION
 // ------------------------------
 int PortalManager::generateUserId() {
     if (users.empty()) return 1;
@@ -113,23 +113,23 @@ void PortalManager::saveComponents() {
 }
 
 void PortalManager::loadComponents() {
-    std::ifstream in("components.txt");
-    if (!in) return;
-    components.clear();
-    std::string line;
-    while (getline(in, line)) {
-        std::stringstream ss(line);
+	std::ifstream in("components.txt");
+	if (!in) return;
+	components.clear();
+	std::string line;
+	while (getline(in, line)) {
+		std::stringstream ss(line);
         std::string id, name, desc, qty, price, seller, phone;
-        getline(ss, id, '|'); getline(ss, name, '|'); getline(ss, desc, '|');
-        getline(ss, qty, '|'); getline(ss, price, '|'); getline(ss, seller, '|'); getline(ss, phone, '|');
-        components.push_back(Component(std::stoi(id), name, desc, std::stoi(qty), std::stod(price), seller, phone));
+		getline(ss, id, '|'); getline(ss, name, '|'); getline(ss, desc, '|');
+		getline(ss, qty, '|'); getline(ss, price, '|'); getline(ss, seller, '|'); getline(ss, phone, '|');
+		components.push_back(Component(std::stoi(id), name, desc, std::stoi(qty), std::stod(price), seller, phone));
     }
 }
 
 // ORDERS
 void PortalManager::saveOrders() {
-    std::ofstream out("orders.txt");
-    if (!out) return;
+	std::ofstream out("orders.txt");
+	if (!out) return;
     for (auto &o : orders) {
         out << o.getId() << "|" << o.getUserId() << "|" << o.getCustomerWhatsapp() << "|" << o.getTotal() << "\n";
         for (auto &item : o.getItems()) {

@@ -1,0 +1,89 @@
+object MainForm: TMainForm
+  Left = 0
+  Top = 0
+  Caption = 'MainForm'
+  ClientHeight = 728
+  ClientWidth = 1106
+  Color = clCream
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  WindowState = wsMaximized
+  TextHeight = 15
+  object MechaStore: TLabel
+    Left = 0
+    Top = 0
+    Width = 1106
+    Height = 728
+    Align = alClient
+    Caption = 'MechaStore'
+    Font.Charset = DEFAULT_CHARSET
+    Font.Color = clDarkseagreen
+    Font.Height = -40
+    Font.Name = 'Segoe UI'
+    Font.Style = []
+    ParentFont = False
+    ExplicitLeft = 456
+    ExplicitTop = 160
+    ExplicitWidth = 210
+    ExplicitHeight = 54
+  end
+  object btnRegister: TButton
+    Left = 0
+    Top = 0
+    Width = 1106
+    Height = 728
+    Align = alClient
+    Caption = 'Register'
+    TabOrder = 0
+    OnClick = btnRegisterClick
+    ExplicitLeft = 504
+    ExplicitTop = 264
+    ExplicitWidth = 107
+    ExplicitHeight = 41
+  end
+  object btnLogin: TButton
+    Left = 0
+    Top = 0
+    Width = 1106
+    Height = 728
+    Align = alClient
+    Caption = 'Login'
+    TabOrder = 1
+    OnClick = btnLoginClick
+    ExplicitLeft = 504
+    ExplicitTop = 327
+    ExplicitWidth = 107
+    ExplicitHeight = 42
+  end
+  object btnBrowse: TButton
+    Left = 0
+    Top = 0
+    Width = 1106
+    Height = 728
+    Align = alClient
+    Caption = 'Browse Components'
+    TabOrder = 2
+    OnClick = btnBrowseClick
+    ExplicitLeft = 488
+    ExplicitTop = 391
+    ExplicitWidth = 139
+    ExplicitHeight = 42
+  end
+  object btnExit: TButton
+    Left = 0
+    Top = 0
+    Width = 1106
+    Height = 728
+    Align = alClient
+    Caption = 'Exit'
+    TabOrder = 3
+    OnClick = btnExitClick
+    ExplicitLeft = 504
+    ExplicitTop = 456
+    ExplicitWidth = 107
+    ExplicitHeight = 41
+  end
+end

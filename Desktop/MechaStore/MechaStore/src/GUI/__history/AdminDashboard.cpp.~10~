@@ -1,0 +1,61 @@
+#include <vcl.h>
+#pragma hdrstop
+
+#include "AdminDashboard.h"
+#include "BrowseComp.h"
+#include "AddComponentAdminForm.h"
+#include "UpdateComponentAdminForm.h"
+#include "DeleteComponentAdminForm.h"
+#include "ViewUsersAdminForm.h"
+#include "ViewOrdersAdminForm.h"
+
+#pragma package(smart_init)
+#pragma resource "*.dfm"
+
+TAdminDashboardForm *AdminDashboardForm;
+
+__fastcall TAdminDashboardForm::TAdminDashboardForm(TComponent* Owner)
+	: TForm(Owner) {}
+
+void __fastcall TAdminDashboardForm::BrowseClick(TObject *Sender)
+{
+    TBrowseComponents *b = new TBrowseComponents(Application);
+    b->ShowModal();
+    delete b;
+}
+
+void __fastcall TAdminDashboardForm::AddComponentClick(TObject *Sender)
+{
+    TAddComponentAdmin *f = new TAddComponentAdmin(Application);
+    f->ShowModal();
+    delete f;
+}
+
+void __fastcall TAdminDashboardForm::UpdateComponentClick(TObject *Sender)
+{
+    TUpdateComponent *f = new TUpdateComponent(Application);
+    f->ShowModal();
+    delete f;
+}
+
+void __fastcall TAdminDashboardForm::DeleteComponentClick(TObject *Sender)
+{
+    TDeleteComponent *f = new TDeleteComponent(Application);
+    f->ShowModal();
+    delete f;
+}
+
+void __fastcall TAdminDashboardForm::UsersClick(TObject *Sender)
+{
+    TViewUsers *f = new TViewUsers(Application);
+    f->ShowModal();
+    delete f;
+}
+
+void __fastcall TAdminDashboardForm::OrdersClick(TObject *Sender)
+{
+    TViewOrders *f = new TViewOrders(Application);
+    f->ShowModal();
+    delete f;
+}
+

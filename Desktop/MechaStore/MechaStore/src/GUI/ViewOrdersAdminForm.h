@@ -1,0 +1,29 @@
+#ifndef ViewOrdersH
+#define ViewOrdersH
+
+#include <System.Classes.hpp>
+#include <Vcl.Controls.hpp>
+#include <Vcl.StdCtrls.hpp>
+#include <Vcl.Forms.hpp>
+
+class TViewOrders : public TForm
+{
+__published:
+    TMemo *Orders;
+	TButton *CloseButton;
+	TButton *Refresh;
+
+    void __fastcall FormShow(TObject *Sender);
+    void __fastcall CloseButtonClick(TObject *Sender);
+	void __fastcall RefreshClick(TObject *Sender);
+
+private:
+    void __fastcall refreshOrders();
+public:
+    __fastcall TViewOrders(TComponent* Owner);
+};
+
+extern PACKAGE TViewOrders *ViewOrders;
+
+#endif
+
