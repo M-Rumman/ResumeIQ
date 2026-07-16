@@ -1,0 +1,19 @@
+-- Free-trial + paywall strategy (no schema changes)
+-- ====================================================
+--
+-- Lifetime free allowance is derived at read time from existing tables:
+--   - resume_analysis: oldest 2 rows per user (ORDER BY created_at ASC)
+--   - interview_prep:  oldest 2 rows per user (ORDER BY created_at ASC)
+--
+-- No new columns (resume_analyses_used / interview_preps_used) are required.
+-- profiles.unlocked_reports continues to store per-report $2 unlocks.
+-- profiles.plan + subscription_status continue to gate Pro unlimited access.
+--
+-- Migration safety for existing users:
+--   - Users who already have saved reports keep full access on their
+--     chronologically first 2 reports of each type.
+--   - Reports beyond that limit show blur + paywall unless Pro or unlocked.
+--   - No data backfill or counter reset is needed.
+--
+-- Server abuse caps in usage_tracking (daily limits) are unchanged and
+-- independent of paywall visibility.

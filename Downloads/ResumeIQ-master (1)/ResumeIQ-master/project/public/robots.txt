@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+Disallow: /dashboard
+Disallow: /account
+Disallow: /settings
+Disallow: /api
+
+Sitemap: https://resuv.app/sitemap.xml

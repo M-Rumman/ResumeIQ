@@ -1,0 +1,13 @@
+---
+description: ResuV payment provider and beta mode conventions
+globs:
+  - project/**/*
+alwaysApply: true
+---
+
+# ResuV payments
+
+- **Current mode:** Public beta — `VITE_PAYMENTS_ENABLED` must stay `false` (or unset). All features are free; pricing UI is display-only ("Launching Soon").
+- **Do NOT use Paddle.** All Paddle code was removed. Do not re-add Paddle SDK, webhooks, or env vars.
+- **Future provider:** Lemon Squeezy (server-side webhooks + service role only). Never grant Pro/unlocks from the browser client.
+- **Billing fields** (`plan`, `subscription_status`, `unlocked_reports`) are protected by Supabase RLS + trigger; only service role / webhooks may change them.
