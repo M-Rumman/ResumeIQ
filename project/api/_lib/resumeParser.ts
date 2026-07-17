@@ -15,6 +15,7 @@ export type StructuredResume = {
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>()\[\]{}]+/gi;
+const BARE_WEB_URL_PATTERN = /\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|dev|ai|me|co|app|tech|info|edu|pk|uk)(?:\/[^\s<>()\[\]{}]*)?/gi;
 const PHONE_CANDIDATE_PATTERN = /\+?\d[\d().\s-]{5,}\d/g;
 const INTERNATIONAL_PHONE_FRAGMENT_PATTERN = /\+\d{1,3}(?:[\s.-]+\d{1,4}){1,2}(?=$|[^\d\s-])/g;
 
@@ -66,6 +67,7 @@ export function sanitizeResumeContentLine(value: string): string {
   return String(value || '')
     .replace(EMAIL_PATTERN, '')
     .replace(URL_PATTERN, '')
+    .replace(BARE_WEB_URL_PATTERN, '')
     .replace(PHONE_CANDIDATE_PATTERN, (candidate) => (
       isPhoneCandidate(candidate) ? '' : candidate
     ))
@@ -83,6 +85,101 @@ function getSection(line: string): ResumeSection | null {
     if ((aliases as readonly string[]).includes(heading)) return section as ResumeSection;
   }
   return null;
+}
+
+const EXTRACTED_LINKS_MARKER = /^extracted\s+links\s*:\s*$/i;
+const PDF_ANNOTATION_MARKER = /^(?:pdf\s+)?(?:link\s+)?annotation(?:s)?\s*:?$/i;
+const LINK_ARROW_MARKER = /^(?:â†’|Ã¢â€ â€™|->)\s*/;
+const STANDALONE_LINKEDIN_MARKER = /^linkedin(?:\s+(?:profile|url))?\s*(?:â†’|Ã¢â€ â€™|->)?\s*$/i;
+const THANK_YOU_LINE = /^thank\s+you[!.\s]*$/i;
+
+function hasContactOrLinkValue(line: string): boolean {
+  return EMAIL_PATTERN.test(line)
+    || URL_PATTERN.test(line)
+    || BARE_WEB_URL_PATTERN.test(line)
+    || PHONE_CANDIDATE_PATTERN.test(line)
+    || /\b(?:mailto:|linkedin(?:\.com)?|github(?:\.com)?|portfolio)\b/i.test(line);
+}
+
+function resetPatterns(): void {
+  EMAIL_PATTERN.lastIndex = 0;
+  URL_PATTERN.lastIndex = 0;
+  BARE_WEB_URL_PATTERN.lastIndex = 0;
+  PHONE_CANDIDATE_PATTERN.lastIndex = 0;
+}
+
+function isMetadataOnlyLine(line: string): boolean {
+  const value = line.trim();
+  if (!value) return true;
+  if (EXTRACTED_LINKS_MARKER.test(value) || PDF_ANNOTATION_MARKER.test(value)) return true;
+  if (LINK_ARROW_MARKER.test(value) || STANDALONE_LINKEDIN_MARKER.test(value)) return true;
+  if (/^mailto:/i.test(value)) return true;
+
+  resetPatterns();
+  const withoutContactValues = sanitizeResumeContentLine(value)
+    .replace(/\b(?:linkedin|github|portfolio|website|profile)\b/gi, '')
+    .replace(/(?:â†’|Ã¢â€ â€™|->|[|:])/g, '')
+    .trim();
+  resetPatterns();
+  return !withoutContactValues;
+}
+
+/**
+ * Removes PDF-extractor metadata before section classification. Link/contact
+ * discovery intentionally continues to use the original text, so this never
+ * discards a candidate's LinkedIn, portfolio, email, or phone from its
+ * dedicated fields.
+ */
+export function cleanResumeExtractionArtifacts(resumeText: string): string {
+  const sourceLines = String(resumeText || '').replace(/\r\n/g, '\n').split('\n');
+  const extractedLinksIndex = sourceLines.findIndex((line) => EXTRACTED_LINKS_MARKER.test(line.trim()));
+  // This marker is created by extractPdfText.js; its entire trailing block is
+  // annotation metadata rather than visible resume content.
+  const lines = (extractedLinksIndex >= 0 ? sourceLines.slice(0, extractedLinksIndex) : sourceLines)
+    .map((line) => line.trim());
+
+  let activeSection: ResumeSection | null = null;
+  let firstContactBlockSeen = false;
+  const cleaned: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line) continue;
+
+    const section = getSection(line);
+    if (section) {
+      activeSection = section;
+      cleaned.push(line);
+      continue;
+    }
+
+    // Annotations and URL-only rows are not resume content. A contact block in
+    // the header is retained for dedicated extraction; repeated contact blocks
+    // later in the document are footer/annotation noise.
+    const contactOrLinkLine = hasContactOrLinkValue(line);
+    resetPatterns();
+    if (isMetadataOnlyLine(line)) continue;
+    if (contactOrLinkLine) {
+      if (firstContactBlockSeen || cleaned.length > 8 || activeSection !== null) continue;
+      firstContactBlockSeen = true;
+      // Keep a name/location that shares the header row, but never pass its
+      // email, phone, or URL into structural section parsing.
+      const visibleHeaderText = sanitizeResumeContentLine(line);
+      if (visibleHeaderText) cleaned.push(visibleHeaderText);
+      continue;
+    }
+
+    // A standalone closing "Thank You!" after a normal final section is PDF
+    // footer noise. Do not remove it from a project or award, where it can be
+    // intentional resume content.
+    if (THANK_YOU_LINE.test(line) && activeSection !== 'projects' && activeSection !== 'awards') {
+      continue;
+    }
+
+    cleaned.push(line);
+  }
+
+  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function extractLinks(text: string): ResumeLink[] {
@@ -124,7 +221,8 @@ function findLocation(lines: string[]): string {
 
 /** Deterministic, safe resume structure used before the existing AI pipeline. */
 export function parseResumeText(resumeText: string): StructuredResume {
-  const lines = resumeText.replace(/\r\n/g, '\n').split('\n').map((line) => line.trim()).filter(Boolean);
+  const cleanedResumeText = cleanResumeExtractionArtifacts(resumeText);
+  const lines = cleanedResumeText.split('\n').map((line) => line.trim()).filter(Boolean);
   const sections: Record<ResumeSection, string[]> = { summary: [], experience: [], projects: [], skills: [], education: [], certifications: [], awards: [], languages: [] };
   let active: ResumeSection | null = null;
 

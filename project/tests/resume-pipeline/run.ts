@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { fixtures, capabilityExpectations } from './fixtures.js';
-import { parseResumeText } from '../../api/_lib/resumeParser.js';
+import { cleanResumeExtractionArtifacts, parseResumeText } from '../../api/_lib/resumeParser.js';
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
@@ -148,6 +148,65 @@ const tests: TestCase[] = [
     run: () => {
       assert.match(fixtures.photoResume, /Profile photo embedded/i);
       assert.equal(capabilityExpectations.photoDetection, false);
+    },
+  },
+  {
+    name: 'removes PDF extraction metadata before certifications section parsing',
+    run: () => {
+      const cleaned = cleanResumeExtractionArtifacts(fixtures.certificationArtifactPdf);
+      assert.doesNotMatch(cleaned, /Extracted Links:|mailto:|https?:\/\/|Thank You!|LinkedIn\s*(?:â†’|->)?/i);
+      const resume = parseResumeText(fixtures.certificationArtifactPdf);
+      assert.deepEqual(resume.certifications, ['P@SHA ICT Awards 2025.']);
+      assert.equal(resume.links.linkedinUrl, 'https://www.linkedin.com/in/noor-ahmed');
+      assert.equal(resume.links.portfolioUrl, 'https://portfolio.example.test');
+    },
+  },
+  {
+    name: 'keeps every unique grounded resume improvement without an arbitrary cap',
+    run: () => {
+      const improvements = [
+        'Clarify Python evidence in the summary.',
+        'Describe the React contribution in experience.',
+        'Explain TypeScript use in project details.',
+        'Name the Docker workflow outcome in experience.',
+        'Document the AWS deployment responsibility.',
+        'Add the Jest testing scope to the experience entry.',
+        'Specify the PostgreSQL work in the experience entry.',
+        'Clarify Kubernetes exposure in the project.',
+        'Describe the Git automation responsibility.',
+        'Explain the REST API contribution in the project.',
+        'Add GraphQL integration context to the project.',
+        'Document the CI pipeline responsibility.',
+      ];
+      const planned = planResumeRecommendations({ improvementSuggestions: improvements }, fixtures.recommendationCoverageResume);
+      assert.deepEqual(planned.improvementSuggestions, improvements);
+    },
+  },
+  {
+    name: 'groups grounded recommendations by critical important and optional priority',
+    run: () => {
+      const planned = planResumeRecommendations({
+        atsIssues: ['The experience section uses inconsistent dates.'],
+        missingRequiredSkills: ['STM32'],
+        weakBullets: ['Built embedded test software.'],
+        improvementSuggestions: ['Your summary does not name the embedded engineering focus.'],
+        missingKeywords: ['Firmware Development'],
+        formattingSuggestions: ['Use consistent formatting in the Experience section.'],
+        optimizationRecommendations: ['Move the skills section above education.'],
+      }, `Summary\nEmbedded engineer\nExperience\nBuilt embedded test software.\nSkills\nSTM32`);
+      assert.deepEqual(planned.recommendationPriorities.critical, [
+        'The experience section uses inconsistent dates.',
+        'Missing required job skill: STM32',
+        'Weak bullet: Built embedded test software.',
+      ]);
+      assert.deepEqual(planned.recommendationPriorities.important, [
+        'Your summary does not name the embedded engineering focus.',
+        'Firmware Development',
+      ]);
+      assert.deepEqual(planned.recommendationPriorities.optional, [
+        'Use consistent formatting in the Experience section.',
+        'Move the skills section above education.',
+      ]);
     },
   },
 ];

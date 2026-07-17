@@ -114,11 +114,21 @@ export interface AiResumeAnalysisFull {
   optimizationRecommendations: string[];
   keywordSuggestions: string[];
   atsIssues: string[];
+  recommendationPriorities: {
+    critical: string[];
+    important: string[];
+    optional: string[];
+  };
   atsScoreExplanation: {
     strengths: string[];
     missingElements: string[];
     formattingIssues: string[];
     keywordIssues: string[];
+    whatIncreasedScore: string[];
+    whatReducedScore: string[];
+    topImprovements: string[];
+    estimatedScoreImprovement: number;
+    potentialAtsScore: number;
   };
   jobMatchExplanation: {
     strongMatches: string[];
@@ -368,9 +378,13 @@ TASKS TO PERFORM:
    - Compute "atsScore" (0-100) and "matchScore" (0-100).
    - Explain the unchanged scores using the structured fields below. Do not alter either score to fit an explanation.
    - "atsScoreExplanation.strengths" must contain resume-specific positive observations; "missingElements" must contain absent resume elements; "formattingIssues" must contain concrete formatting/structure observations; and "keywordIssues" must contain missing technical requirements.
+   - ATS explanation: "whatIncreasedScore" must identify the actual matched skills, sections, or evidence that raised the CURRENT ATS score. "whatReducedScore" must identify the actual missing requirement, missing section, weak bullet, or formatting issue that reduced it. Do not use generic advice or claim a score factor that is absent from the supplied data.
    - "jobMatchExplanation.strongMatches" must contain technical skills evidenced in both the resume and job data; "partialMatches" must contain relevant but incomplete evidence; and "missingSkills" must contain absent technical job requirements.
    - Detect present and missing standard resume sections ("detectedSections", "missingSections").
    - List formatting issues ("formattingIssues"), suggestions ("formattingSuggestions"), ATS compatibility issues ("atsIssues"), improvements ("improvementSuggestions"), and optimizations ("optimizationRecommendations").
+   - Exhaustive recommendation coverage: enumerate EVERY distinct, meaningful improvement supported by the supplied resume and job data. Do not stop at 3–5 suggestions and do not apply an arbitrary target or maximum. If the resume supports 12 unique improvements, return all 12; if it supports only 4, return 4.
+   - Treat each concrete observation as one candidate improvement: summary coverage, each weak experience/project entry, missing or weak sections, formatting/ordering, job-requirement alignment, and non-duplicated technical keyword gaps. Keep each observation in its most appropriate output field and never repeat it in another field.
+   - Every recommendation must identify the actual resume content or missing job requirement that caused it. Never use generic advice such as "Improve your resume" or "Use action verbs" without naming the specific affected section, bullet, skill, project, or requirement.
    - For every suggestion/issue, you MUST assign a confidence score: "High" (directly supported by resume evidence), "Medium" (strong inference), or "Low" (general ATS best practice).
    - Resume-specific observations ONLY: Every observation must cite or clearly derive from supplied resume or job data. Do not claim a project, technology, company, certification, or metric exists unless it appears in the input.
    - When suggesting a measurable result for a bullet or recommendation, use placeholders such as "[X]%", "[X] users", or "[X] requests" unless that exact metric is in the supplied resume.
@@ -397,7 +411,9 @@ Required JSON output schema:
     "strengths": ["string"],
     "missingElements": ["string"],
     "formattingIssues": ["string"],
-    "keywordIssues": ["string"]
+    "keywordIssues": ["string"],
+    "whatIncreasedScore": ["string"],
+    "whatReducedScore": ["string"]
   },
   "jobMatchExplanation": {
     "strongMatches": ["string"],
@@ -785,6 +801,10 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
   const keywordGaps = validateAndCleanKeywords(arr(o.keywordGaps));
   const scoreExplanation = o.atsScoreExplanation || {};
   const jobMatchExplanation = o.jobMatchExplanation || {};
+  const priorityGroups = o.recommendationPriorities || {};
+  const priorityItems = (value: unknown): string[] => Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim())
+    : [];
 
   const result: AiResumeAnalysisFull = {
     parsed: {
@@ -815,11 +835,21 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
     improvementSuggestions: mapWithConfidence(o.improvementSuggestions),
     optimizationRecommendations: mapWithConfidence(o.optimizationRecommendations),
     atsIssues: mapWithConfidence(o.atsIssues),
+    recommendationPriorities: {
+      critical: priorityItems(priorityGroups.critical),
+      important: priorityItems(priorityGroups.important),
+      optional: priorityItems(priorityGroups.optional),
+    },
     atsScoreExplanation: {
       strengths: arr(scoreExplanation.strengths),
       missingElements: arr(scoreExplanation.missingElements),
       formattingIssues: arr(scoreExplanation.formattingIssues),
       keywordIssues: arr(scoreExplanation.keywordIssues),
+      whatIncreasedScore: arr(scoreExplanation.whatIncreasedScore),
+      whatReducedScore: arr(scoreExplanation.whatReducedScore),
+      topImprovements: [],
+      estimatedScoreImprovement: 0,
+      potentialAtsScore: atsScore,
     },
     jobMatchExplanation: {
       strongMatches: arr(jobMatchExplanation.strongMatches),
@@ -840,6 +870,55 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
   if (result.atsScoreExplanation.keywordIssues.length === 0) {
     result.atsScoreExplanation.keywordIssues = result.missingKeywords;
   }
+  if (result.atsScoreExplanation.whatIncreasedScore.length === 0) {
+    result.atsScoreExplanation.whatIncreasedScore = [
+      ...result.atsScoreExplanation.strengths,
+      ...result.existingSkills.map((skill) => `Matches the job requirement: ${skill}`),
+    ];
+  }
+  if (result.atsScoreExplanation.whatReducedScore.length === 0) {
+    result.atsScoreExplanation.whatReducedScore = [
+      ...result.atsScoreExplanation.missingElements,
+      ...result.atsScoreExplanation.formattingIssues,
+      ...result.atsScoreExplanation.keywordIssues,
+    ];
+  }
+
+  const uniqueExplanationItems = (values: string[]) => {
+    const seen = new Set<string>();
+    return values.filter((value) => {
+      const text = value.trim();
+      const key = text.toLowerCase();
+      if (!text || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  result.atsScoreExplanation.whatIncreasedScore = uniqueExplanationItems(result.atsScoreExplanation.whatIncreasedScore);
+  result.atsScoreExplanation.whatReducedScore = uniqueExplanationItems(result.atsScoreExplanation.whatReducedScore);
+
+  // Explanation-only projection. It never changes atsScore or its calculation;
+  // it estimates the effect of the first three validated, planned improvements.
+  const rankedImprovements = [
+    ...result.recommendationPriorities.critical.map((text) => ({ text, impact: 4 })),
+    ...result.recommendationPriorities.important.map((text) => ({ text, impact: 2 })),
+    ...result.recommendationPriorities.optional.map((text) => ({ text, impact: 1 })),
+  ];
+  const selectedImprovements: { text: string; impact: number }[] = [];
+  for (const candidate of rankedImprovements) {
+    if (selectedImprovements.some((item) => item.text.toLowerCase() === candidate.text.toLowerCase())) continue;
+    selectedImprovements.push(candidate);
+    if (selectedImprovements.length === 3) break;
+  }
+  result.atsScoreExplanation.topImprovements = selectedImprovements.map((item) => item.text);
+  result.atsScoreExplanation.estimatedScoreImprovement = Math.min(
+    15,
+    selectedImprovements.reduce((total, item) => total + item.impact, 0),
+  );
+  result.atsScoreExplanation.potentialAtsScore = Math.min(
+    100,
+    result.atsScore + result.atsScoreExplanation.estimatedScoreImprovement,
+  );
   if (result.jobMatchExplanation.strongMatches.length === 0) {
     result.jobMatchExplanation.strongMatches = result.existingSkills;
   }

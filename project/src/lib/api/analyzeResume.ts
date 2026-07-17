@@ -46,6 +46,11 @@ export interface AiResumeAnalysis {
     missingElements: string[];
     formattingIssues: string[];
     keywordIssues: string[];
+    whatIncreasedScore: string[];
+    whatReducedScore: string[];
+    topImprovements: string[];
+    estimatedScoreImprovement: number;
+    potentialAtsScore: number;
   };
   jobMatchExplanation: {
     strongMatches: string[];

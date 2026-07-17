@@ -97,6 +97,36 @@ Built a React analytics dashboard.`,
 
 Experience
 Developed Java services.`,
+
+  certificationArtifactPdf: `Noor Ahmed
+noor.ahmed@example.com | linkedin.com/in/noor-ahmed
+
+Experience
+Developed embedded control software for test rigs.
+
+Certifications
+P@SHA ICT Awards 2025.
+
+Thank You!
+
+Extracted Links:
+LinkedIn →
+mailto:noor.ahmed@example.com
+→ https://www.linkedin.com/in/noor-ahmed
+→ https://portfolio.example.test`,
+
+  recommendationCoverageResume: `Morgan Lee
+
+Summary
+Engineer with Python, React, and TypeScript experience.
+
+Experience
+Built Docker workflows and deployed services to AWS.
+Maintained PostgreSQL data stores and Jest test suites.
+
+Projects
+Created REST APIs with GraphQL integration.
+Automated CI pipelines using Git and Kubernetes.`,
 };
 
 /** Photo extraction is intentionally an expected unsupported capability today. */

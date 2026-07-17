@@ -38,6 +38,41 @@ import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 
 type AnalysisResults = ResumeDisplayResults;
 
+function AtsScoreExplanation({ explanation }: { explanation: AnalysisResults['engine']['atsScoreExplanation'] }) {
+  const hasDetails = explanation.whatIncreasedScore.length
+    || explanation.whatReducedScore.length
+    || explanation.topImprovements.length;
+  if (!hasDetails) return null;
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-100 space-y-3 text-xs">
+      {explanation.whatIncreasedScore.length > 0 && (
+        <div>
+          <p className="font-bold text-emerald-700 mb-1">What increased your score</p>
+          <p className="text-gray-700">{explanation.whatIncreasedScore.slice(0, 3).join(' · ')}</p>
+        </div>
+      )}
+      {explanation.whatReducedScore.length > 0 && (
+        <div>
+          <p className="font-bold text-amber-700 mb-1">What reduced your score</p>
+          <p className="text-gray-700">{explanation.whatReducedScore.slice(0, 3).join(' · ')}</p>
+        </div>
+      )}
+      {explanation.topImprovements.length > 0 && (
+        <div>
+          <p className="font-bold text-[#3c4a59] mb-1">Highest-impact improvements</p>
+          <ol className="space-y-1 text-gray-700 list-decimal list-inside">
+            {explanation.topImprovements.map((item) => <li key={item}>{item}</li>)}
+          </ol>
+          <p className="mt-2 font-semibold text-[#3c4a59]">
+            Potential ATS: {explanation.potentialAtsScore}% (estimated +{explanation.estimatedScoreImprovement} points)
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function analysisErrorMessage(error: unknown): string {
   if (!(error instanceof ApiRequestError)) {
     return 'Resume analysis could not be completed. Please try again in a few moments.';
@@ -452,6 +487,7 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
                   <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
                 </div>
                 <ProgressBar value={results.atsScore} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
+                <AtsScoreExplanation explanation={results.engine.atsScoreExplanation} />
                 <p className="text-xs text-gray-700 mt-2">
                   {results.atsScore >= 80 ? 'Good ATS compatibility — a few improvements needed.' : 'Needs significant optimization for ATS systems.'}
                 </p>
@@ -625,6 +661,7 @@ function ResumeResultsPreview({ results }: { results: AnalysisResults }) {
             <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
           </div>
           <ProgressBar value={results.atsScore} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
+          <AtsScoreExplanation explanation={results.engine.atsScoreExplanation} />
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
