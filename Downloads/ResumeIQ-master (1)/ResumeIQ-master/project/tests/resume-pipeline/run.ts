@@ -3,6 +3,7 @@ import { fixtures, capabilityExpectations } from './fixtures.js';
 import { parseResumeText } from '../../api/_lib/resumeParser.js';
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
+import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -53,15 +54,30 @@ const tests: TestCase[] = [
     name: 'keeps only discrete, unique keyword candidates',
     run: () => {
       const result = validateAiResumeOutput({
+        existingSkills: ['Python', 'python'],
+        missingSkills: ['Python', 'STM32'],
         missingKeywords: ['Docker', 'docker', 'C++'],
         keywordSuggestions: ['AWS', 'AWS'],
         keywordGaps: ['React'],
         missingRequiredSkills: ['React'],
       }, fixtures.keywordGapResume);
-      assert.deepEqual(result.missingKeywords, ['Docker']);
+      assert.deepEqual(result.existingSkills, ['Python']);
+      assert.deepEqual(result.missingSkills, ['STM32']);
+      assert.deepEqual(result.missingKeywords, ['Docker', 'C++']);
       assert.deepEqual(result.keywordSuggestions, ['AWS']);
       assert.deepEqual(result.keywordGaps, ['React']);
-      assert.deepEqual(result.missingRequiredSkills, ['React']);
+      assert.deepEqual(result.missingRequiredSkills, []);
+
+      const ranked = rankMissingSkills({
+        missingSkills: ['Technical Documentation', 'Circuit Validation', 'PCB Testing', 'Firmware Development', 'STM32'],
+      }, `Required: STM32, Firmware Development, and PCB Testing. STM32 experience is required. Circuit Validation is preferred. Technical Documentation is a plus.`);
+      assert.deepEqual(ranked.missingSkills, [
+        'STM32',
+        'Firmware Development',
+        'PCB Testing',
+        'Circuit Validation',
+        'Technical Documentation',
+      ]);
     },
   },
   {

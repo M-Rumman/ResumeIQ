@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const access = await verifyAiFeatureAccess(user.id, FEATURE_TYPES.INTERVIEW_PREP);
-  if (!access.allowed) {
+  if ('status' in access) {
     return respondError(res, access.status, access.message);
   }
 

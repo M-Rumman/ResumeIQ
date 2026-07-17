@@ -13,6 +13,10 @@ const GENERIC_KEYWORDS = new Set([
   'ability', 'analysis', 'communication', 'development', 'engineering', 'experience', 'leadership',
   'management', 'projects', 'skills', 'solutions', 'teamwork', 'technology', 'work',
 ]);
+const KEYWORD_FRAGMENT_PATTERNS = [
+  /^(?:currently pursuing|understanding of|responsible for|ability to|knowledge of|familiar with)\b/i,
+  /^(?:worked|working|developed|developing|implemented|implementing|managed|managing|used|using)\b/i,
+];
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -72,8 +76,9 @@ function validateKeyword(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const keyword = value.trim();
   const words = keyword.split(/\s+/).filter(Boolean);
-  if (!keyword || words.length > 3 || !/^[A-Za-z0-9 ]+$/.test(keyword)) return null;
+  if (!keyword || words.length > 3 || !/^[A-Za-z0-9+# ]+$/.test(keyword)) return null;
   if (GENERIC_KEYWORDS.has(keyword.toLowerCase())) return null;
+  if (KEYWORD_FRAGMENT_PATTERNS.some((pattern) => pattern.test(keyword))) return null;
   return keyword;
 }
 
@@ -127,10 +132,19 @@ function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
 /** Validates untrusted LLM resume-analysis output without changing its public schema. */
 export function validateAiResumeOutput(raw: Record<string, any>, resumeText: string): Record<string, any> {
   const output = { ...raw };
-  output.missingKeywords = deduplicateKeywords(output.missingKeywords);
-  output.keywordSuggestions = deduplicateKeywords(output.keywordSuggestions);
-  output.keywordGaps = deduplicateKeywords(output.keywordGaps);
-  output.missingRequiredSkills = deduplicateKeywords(output.missingRequiredSkills);
+  const seenKeywords = new Set<string>();
+  const dedupeKeywordGroup = (values: unknown) => deduplicateKeywords(values).filter((keyword) => {
+    const key = normalize(keyword);
+    if (seenKeywords.has(key)) return false;
+    seenKeywords.add(key);
+    return true;
+  });
+  output.existingSkills = dedupeKeywordGroup(output.existingSkills);
+  output.missingSkills = dedupeKeywordGroup(output.missingSkills);
+  output.missingKeywords = dedupeKeywordGroup(output.missingKeywords);
+  output.keywordSuggestions = dedupeKeywordGroup(output.keywordSuggestions);
+  output.keywordGaps = dedupeKeywordGroup(output.keywordGaps);
+  output.missingRequiredSkills = dedupeKeywordGroup(output.missingRequiredSkills);
   output.improvedBulletPoints = validateRewrites(output.improvedBulletPoints, resumeText);
   output.weakBullets = Array.isArray(output.weakBullets)
     ? output.weakBullets.filter((value: unknown) => typeof value === 'string' && normalize(resumeText).includes(normalize(value)))

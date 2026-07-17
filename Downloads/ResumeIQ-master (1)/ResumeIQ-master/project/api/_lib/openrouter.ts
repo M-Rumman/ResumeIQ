@@ -14,11 +14,12 @@ import {
   planInterviewRecommendations,
   planResumeRecommendations,
 } from './recommendationPlanner.js';
+import { rankMissingSkills } from './missingSkillRanking.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 /** Less popular free models first — avoids shared Llama 3.3 70B rate limits. */
-const DEFAULT_MODEL = 'google/gemma-4-26b-a4b-it:free';
+const DEFAULT_MODEL = 'qwen/qwen3-235b-a22b:free';
 
 const MODEL_FALLBACKS = [
   'google/gemma-4-26b-a4b-it:free',
@@ -104,6 +105,8 @@ export interface AiResumeAnalysisFull {
   parsed: ParsedResume;
   atsScore: number;
   matchScore: number;
+  existingSkills: string[];
+  missingSkills: string[];
   missingKeywords: string[];
   keywordGaps: string[];
   missingRequiredSkills: string[];
@@ -117,6 +120,17 @@ export interface AiResumeAnalysisFull {
   optimizationRecommendations: string[];
   keywordSuggestions: string[];
   atsIssues: string[];
+  atsScoreExplanation: {
+    strengths: string[];
+    missingElements: string[];
+    formattingIssues: string[];
+    keywordIssues: string[];
+  };
+  jobMatchExplanation: {
+    strongMatches: string[];
+    partialMatches: string[];
+    missingSkills: string[];
+  };
 }
 
 export interface AiInterviewQuestionFull {
@@ -296,14 +310,19 @@ You will receive JSON input containing:
 TASKS TO PERFORM:
 
 1. KEYWORD MATCHING & EXTRACTION:
-   - Identify "missingKeywords", "keywordSuggestions", and "keywordGaps".
-   - A keyword may ONLY be a Programming Language, Framework, Library, Cloud Platform, Software product, Technical Skill, Tool, or Certification.
-   - Each keyword must be 1-3 words, contain no punctuation, and be a discrete term such as "Python", "React", "Amazon Web Services", "Docker", or "Google Cloud".
-   - Never output sentence fragments, clauses, job duties, soft skills, sliding-window n-grams, or generic terms such as "experience with Python" or "automation challenges".
-   - Include a keyword only when it is directly evidenced by the job requirements and is absent or insufficiently evidenced in the structured resume. Do not invent candidate qualifications.
+   - Identify "existingSkills" and "missingSkills" first. "existingSkills" contains discrete technical skills directly evidenced in BOTH the structured resume and job requirements. "missingSkills" contains discrete technical job requirements absent from the structured resume.
+   - Set "missingKeywords" equal to "missingSkills". Use "keywordSuggestions" and "keywordGaps" only for additional, non-duplicated missing technical skills.
+   - A keyword may ONLY be a Programming Language, Framework, Library, Cloud Platform, Embedded Platform, Microcontroller, Protocol, Hardware technology, Software product, Tool, CAD Software, Simulation Software, Certification, or Technical Skill.
+   - Each keyword must be a discrete 1-3 word proper technical term. Standard technical tokens such as "C++" and "C#" are allowed; otherwise do not use punctuation.
+   - Never output sentence fragments, clauses, verbs, job duties, soft skills, or generic phrases. Reject forms such as "currently pursuing", "understanding of", "responsible for", "ability to", "knowledge of", and "familiar with".
+   - Valid examples include "Firmware Development", "PCB Testing", "Arduino", "STM32", "ESP32", "Circuit Validation", "Sensor Integration", "Embedded Programming", "C++", "Proteus", and "LTSpice".
+   - A skill already present in the structured resume MUST appear only in "existingSkills" and never in any missing-skill field. Do not invent candidate qualifications.
 
 2. ATS & FORMATTING ANALYSIS:
    - Compute "atsScore" (0-100) and "matchScore" (0-100).
+   - Explain the unchanged scores using the structured fields below. Do not alter either score to fit an explanation.
+   - "atsScoreExplanation.strengths" must contain resume-specific positive observations; "missingElements" must contain absent resume elements; "formattingIssues" must contain concrete formatting/structure observations; and "keywordIssues" must contain missing technical requirements.
+   - "jobMatchExplanation.strongMatches" must contain technical skills evidenced in both the resume and job data; "partialMatches" must contain relevant but incomplete evidence; and "missingSkills" must contain absent technical job requirements.
    - Detect present and missing standard resume sections ("detectedSections", "missingSections").
    - List formatting issues ("formattingIssues"), suggestions ("formattingSuggestions"), ATS compatibility issues ("atsIssues"), improvements ("improvementSuggestions"), and optimizations ("optimizationRecommendations").
    - For every suggestion/issue, you MUST assign a confidence score: "High" (directly supported by resume evidence), "Medium" (strong inference), or "Low" (general ATS best practice).
@@ -315,6 +334,8 @@ Required JSON output schema:
 {
   "atsScore": number,
   "matchScore": number,
+  "existingSkills": ["string"],
+  "missingSkills": ["string"],
   "missingKeywords": ["string"],
   "keywordSuggestions": ["string"],
   "keywordGaps": ["string"],
@@ -325,7 +346,18 @@ Required JSON output schema:
   "formattingSuggestions": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }],
   "improvementSuggestions": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }],
   "optimizationRecommendations": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }],
-  "atsIssues": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }]
+  "atsIssues": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }],
+  "atsScoreExplanation": {
+    "strengths": ["string"],
+    "missingElements": ["string"],
+    "formattingIssues": ["string"],
+    "keywordIssues": ["string"]
+  },
+  "jobMatchExplanation": {
+    "strongMatches": ["string"],
+    "partialMatches": ["string"],
+    "missingSkills": ["string"]
+  }
 }
 
 Respond with valid JSON only.`;
@@ -336,9 +368,13 @@ Generate "improvedBulletPoints" as before/after pairs (MINIMUM 4 pairs).
 
 Rules:
 - ONLY rewrite supplied experience or project bullets. Never add a new bullet based on information outside those arrays.
-- Strict Grounding: Do NOT invent projects, technologies, employers, companies, certifications, or metrics.
-- If a metric (number/percentage) would improve a bullet, you MUST use placeholders like [X]%, [X] users, or [X] requests. Never fabricate metrics or numbers.
-- Ensure the rewritten bullet remains strictly relevant to the original task.
+- Every "after" bullet MUST begin with a strong, specific action verb. Prefer verbs such as Developed, Integrated, Implemented, Designed, Built, Optimized, Automated, Analyzed, Delivered, or Presented when they are truthful to the original bullet.
+- Produce a materially stronger bullet, not a light paraphrase. Improve the sentence's clarity, professional tone, technical specificity, and readable action-to-contribution structure while preserving the original meaning.
+- Surface technical contribution only when the original bullet explicitly provides the relevant technologies, tools, components, methods, or domain context. Do not add technical detail that is not in the supplied bullet.
+- Strict Grounding: Do NOT invent or exaggerate projects, technologies, tools, employers, companies, certifications, scope, seniority, ownership, outcomes, or metrics.
+- If quantification would materially improve a bullet but no supported metric exists, you MAY use one clearly marked placeholder such as [X]%, [X] users, [X] components, or [X] requests. Never fabricate a number, percentage, duration, or scale.
+- Keep each rewrite to one concise resume bullet. Do not add explanations, section headings, contact information, URLs, emails, phone numbers, or LinkedIn references.
+- If a bullet cannot be safely strengthened from its supplied content, omit it instead of inventing detail.
 
 Required JSON Schema:
 {
@@ -480,40 +516,19 @@ function mergeParsedResume(modelResume: any, localResume: StructuredResume) {
 function validateAndCleanKeywords(keywords: string[]): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
-
-  const forbiddenSubstrings = [
-    'experience', 'with', 'using', 'challenges', 'foundations', 'building',
-    'developer', 'engineer', 'demonstrations', 'applications', 'projects',
-    'development', 'knowledge', 'understanding', 'principles', 'concepts',
-    'ability', 'proficiency', 'expert', 'strong', 'excellent', 'working',
-    'written', 'verbal', 'communication', 'skills', 'methods', 'practices',
-    'systems', 'solutions', 'frameworks', 'languages', 'tools', 'technologies',
-    'demonstrations', 'challenges', 'foundations', 'autonomous'
-  ];
+  const forbiddenStarts = /^(?:currently pursuing|understanding of|responsible for|ability to|knowledge of|familiar with|worked|working|developed|developing|implemented|implementing|managed|managing|used|using)\b/i;
+  const genericTerms = new Set([
+    'ability', 'communication', 'experience', 'leadership', 'management', 'projects',
+    'skills', 'teamwork', 'technology', 'work',
+  ]);
 
   for (const kw of keywords) {
     if (!kw) continue;
-    let cleaned = kw.trim();
-    // Strip trailing punctuation
-    cleaned = cleaned.replace(/[.,;:!]+$/, '');
-
-    // Max 3 words
+    const cleaned = kw.trim();
     const words = cleaned.split(/\s+/).filter(Boolean);
-    if (words.length > 3) continue;
-
-    // Reject phrase fragments
+    if (!cleaned || words.length > 3 || !/^[A-Za-z0-9+# ]+$/.test(cleaned)) continue;
     const lower = cleaned.toLowerCase();
-    const isPhrase = forbiddenSubstrings.some(forbidden => {
-      if (forbidden === 'experience' && (lower.startsWith('experience ') || lower.includes(' experience'))) return true;
-      if (forbidden === 'with' || forbidden === 'using') return true;
-      if (forbidden === 'challenges' || forbidden === 'foundations' || forbidden === 'building') return true;
-      if (lower.includes(' ' + forbidden) || lower.startsWith(forbidden + ' ')) return true;
-      return false;
-    });
-    if (isPhrase) continue;
-
-    // Reject if too short
-    if (cleaned.length < 2) continue;
+    if (cleaned.length < 2 || genericTerms.has(lower) || forbiddenStarts.test(cleaned)) continue;
 
     if (!seen.has(lower)) {
       seen.add(lower);
@@ -718,8 +733,12 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
 
   // Keyword extraction clean logic
   const missingKeywords = validateAndCleanKeywords(arr(o.missingKeywords));
+  const existingSkills = validateAndCleanKeywords(arr(o.existingSkills));
+  const missingSkills = validateAndCleanKeywords(arr(o.missingSkills));
   const keywordSuggestions = validateAndCleanKeywords(arr(o.keywordSuggestions));
   const keywordGaps = validateAndCleanKeywords(arr(o.keywordGaps));
+  const scoreExplanation = o.atsScoreExplanation || {};
+  const jobMatchExplanation = o.jobMatchExplanation || {};
 
   const result: AiResumeAnalysisFull = {
     parsed: {
@@ -735,6 +754,8 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
     },
     atsScore,
     matchScore,
+    existingSkills,
+    missingSkills,
     missingKeywords,
     keywordSuggestions,
     keywordGaps,
@@ -748,7 +769,39 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
     improvementSuggestions: mapWithConfidence(o.improvementSuggestions),
     optimizationRecommendations: mapWithConfidence(o.optimizationRecommendations),
     atsIssues: mapWithConfidence(o.atsIssues),
+    atsScoreExplanation: {
+      strengths: arr(scoreExplanation.strengths),
+      missingElements: arr(scoreExplanation.missingElements),
+      formattingIssues: arr(scoreExplanation.formattingIssues),
+      keywordIssues: arr(scoreExplanation.keywordIssues),
+    },
+    jobMatchExplanation: {
+      strongMatches: arr(jobMatchExplanation.strongMatches),
+      partialMatches: arr(jobMatchExplanation.partialMatches),
+      missingSkills: arr(jobMatchExplanation.missingSkills),
+    },
   };
+
+  if (result.atsScoreExplanation.strengths.length === 0) {
+    result.atsScoreExplanation.strengths = result.detectedSections.map((section) => `Detected ${section} section`);
+  }
+  if (result.atsScoreExplanation.missingElements.length === 0) {
+    result.atsScoreExplanation.missingElements = result.missingSections;
+  }
+  if (result.atsScoreExplanation.formattingIssues.length === 0) {
+    result.atsScoreExplanation.formattingIssues = result.formattingIssues;
+  }
+  if (result.atsScoreExplanation.keywordIssues.length === 0) {
+    result.atsScoreExplanation.keywordIssues = result.missingKeywords;
+  }
+  if (result.jobMatchExplanation.strongMatches.length === 0) {
+    result.jobMatchExplanation.strongMatches = result.existingSkills;
+  }
+  if (result.jobMatchExplanation.missingSkills.length === 0) {
+    result.jobMatchExplanation.missingSkills = result.missingSkills.length > 0
+      ? result.missingSkills
+      : result.missingKeywords;
+  }
 
   deduplicateAndPlanSuggestions(result);
 
@@ -902,7 +955,9 @@ export async function analyzeResumeWithAi(
     parsed: parsedJson.resume,
     atsScore: analysisJson.atsScore || 70,
     matchScore: analysisJson.matchScore || 50,
-    missingKeywords: analysisJson.missingKeywords || [],
+    existingSkills: analysisJson.existingSkills || [],
+    missingSkills: analysisJson.missingSkills || analysisJson.missingKeywords || [],
+    missingKeywords: analysisJson.missingSkills || analysisJson.missingKeywords || [],
     keywordSuggestions: analysisJson.keywordSuggestions || [],
     keywordGaps: analysisJson.keywordGaps || [],
     missingRequiredSkills: analysisJson.missingRequiredSkills || [],
@@ -915,10 +970,15 @@ export async function analyzeResumeWithAi(
     improvementSuggestions: analysisJson.improvementSuggestions || [],
     optimizationRecommendations: analysisJson.optimizationRecommendations || [],
     atsIssues: analysisJson.atsIssues || [],
+    atsScoreExplanation: analysisJson.atsScoreExplanation || {},
+    jobMatchExplanation: analysisJson.jobMatchExplanation || {},
   };
 
   return normalizeResumeAnalysis(
-    planResumeRecommendations(validateAiResumeOutput(combinedRaw, resumeText), resumeText),
+    planResumeRecommendations(
+      rankMissingSkills(validateAiResumeOutput(combinedRaw, resumeText), jobDescription),
+      resumeText,
+    ),
     resumeText,
   );
 }

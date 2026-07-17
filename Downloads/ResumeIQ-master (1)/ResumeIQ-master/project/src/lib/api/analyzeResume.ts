@@ -16,6 +16,8 @@ export interface AiResumeAnalysis {
   parsed: ParsedResume;
   atsScore: number;
   matchScore: number;
+  existingSkills: string[];
+  missingSkills: string[];
   missingKeywords: string[];
   keywordSuggestions: string[];
   keywordGaps: string[];
@@ -29,6 +31,17 @@ export interface AiResumeAnalysis {
   improvementSuggestions: string[];
   optimizationRecommendations: string[];
   atsIssues: string[];
+  atsScoreExplanation: {
+    strengths: string[];
+    missingElements: string[];
+    formattingIssues: string[];
+    keywordIssues: string[];
+  };
+  jobMatchExplanation: {
+    strongMatches: string[];
+    partialMatches: string[];
+    missingSkills: string[];
+  };
 }
 
 export async function fetchAiResumeAnalysis(
