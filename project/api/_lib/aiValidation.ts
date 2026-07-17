@@ -1,6 +1,11 @@
 import { containsPhoneNumber } from './resumeParser.js';
 
 type RewritePair = { before?: unknown; after?: unknown };
+export type ValidationTelemetry = {
+  acceptedRecommendations: number;
+  rejectedRecommendations: number;
+  rejectionReasons: Record<string, number>;
+};
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
 const URL_PATTERN = /(?:https?:\/\/|www\.)\S+/i;
@@ -17,6 +22,8 @@ const KEYWORD_FRAGMENT_PATTERNS = [
   /^(?:currently pursuing|understanding of|responsible for|ability to|knowledge of|familiar with)\b/i,
   /^(?:worked|working|developed|developing|implemented|implementing|managed|managing|used|using)\b/i,
 ];
+const MISSING_SKILL_ACTION_PATTERN = /\b(?:add|mention|include|highlight|emphasize|demonstrate|show|address)\b/i;
+const TECHNICAL_REQUIREMENT_SIGNAL = /\b(?:api|architecture|automation|cad|circuit|cloud|database|design|development|docker|embedded|firmware|framework|hardware|integration|kubernetes|library|microcontroller|platform|programming|protocol|security|simulation|software|testing|tool|validation)\b|\b(?:aws|azure|gcp|react|angular|vue|node|python|java|typescript|javascript|c\+\+|c#|sql|stm32|esp32|arduino|ros|ltspice|proteus)\b|[+#\d]/i;
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -43,6 +50,48 @@ function hasInventedNamedTerm(value: string, resumeText: string): boolean {
   return terms.some((term) => !COMMON_CAPITALIZED_WORDS.has(term) && !source.includes(term.toLowerCase()));
 }
 
+function normalizeForPhraseMatch(value: string): string {
+  return ` ${normalize(value).replace(/[^a-z0-9+#]+/g, ' ')} `;
+}
+
+function candidateMissingJobRequirement(
+  recommendation: string,
+  resumeText: string,
+  jobDescription: string,
+): boolean {
+  if (!jobDescription || !MISSING_SKILL_ACTION_PATTERN.test(recommendation)) return false;
+
+  const job = normalizeForPhraseMatch(jobDescription);
+  const resume = normalizeForPhraseMatch(resumeText);
+  const clauses = recommendation
+    .split(/[.!?;]|\b(?:to|for|in|on|with)\s+(?:your|the|a|an)\b/i)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+
+  for (const clause of clauses) {
+    const action = clause.match(/\b(?:add|mention|include|highlight|emphasize|demonstrate|show|address)\s+(.+)/i);
+    if (!action) continue;
+
+    const candidate = action[1]
+      .replace(/^(?:experience|skills?|knowledge|proficiency)\s+(?:with|in)\s+/i, '')
+      .replace(/\s+to\s+(?:(?:your|the)\s+)?(?:skills?|resume|experience|profile)\b.*$/i, '')
+      .replace(/\s+(?:within|under)\s+(?:your|the)\b.*$/i, '')
+      .trim();
+    const candidates = candidate.split(/\s*(?:,|\/|\band\b)\s*/i).filter(Boolean);
+    if (!candidates.length) continue;
+
+    const everyCandidateIsMissingRequirement = candidates.every((item) => {
+      const words = item.match(/[A-Za-z0-9+#]+/g) || [];
+      if (words.length === 0 || words.length > 4 || !TECHNICAL_REQUIREMENT_SIGNAL.test(item)) return false;
+      const phrase = normalizeForPhraseMatch(item);
+      return job.includes(phrase) && !resume.includes(phrase);
+    });
+    if (everyCandidateIsMissingRequirement) return true;
+  }
+
+  return false;
+}
+
 function isSemanticDuplicate(value: string, existing: string): boolean {
   const words = (text: string) => new Set(
     (text.toLowerCase().match(/[a-z0-9]+/g) || []).filter((word) => word.length > 2),
@@ -63,13 +112,25 @@ function recommendationText(value: unknown): string {
 }
 
 /** A recommendation must have meaningful lexical evidence in the submitted resume. */
-function isGroundedRecommendation(value: string, resumeText: string): boolean {
-  if (!value || hasSensitiveContent(value) || hasInventedMetric(value, resumeText) || hasInventedNamedTerm(value, resumeText)) {
+function isGroundedRecommendation(value: string, resumeText: string, jobDescription: string): boolean {
+  const missingJobRequirement = candidateMissingJobRequirement(value, resumeText, jobDescription);
+  if (!value || hasSensitiveContent(value) || hasInventedMetric(value, resumeText)) {
     return false;
   }
+  if (hasInventedNamedTerm(value, resumeText) && !missingJobRequirement) return false;
+  if (missingJobRequirement) return true;
   const source = sourceWords(resumeText);
   const terms = (value.toLowerCase().match(/[a-z0-9]+/g) || []).filter((word) => word.length >= 3);
   return terms.some((word) => source.has(word));
+}
+
+function recommendationRejectionReason(value: string, resumeText: string, jobDescription: string): string {
+  if (!value) return 'empty';
+  if (hasSensitiveContent(value)) return 'sensitive_content';
+  if (hasInventedMetric(value, resumeText)) return 'invented_metric';
+  const missingJobRequirement = candidateMissingJobRequirement(value, resumeText, jobDescription);
+  if (hasInventedNamedTerm(value, resumeText) && !missingJobRequirement) return 'unsupported_named_term';
+  return 'insufficient_resume_evidence';
 }
 
 function validateKeyword(value: unknown): string | null {
@@ -94,7 +155,12 @@ function deduplicateKeywords(values: unknown): string[] {
   }, []);
 }
 
-function validateRecommendationGroups(output: Record<string, any>, resumeText: string): void {
+function validateRecommendationGroups(
+  output: Record<string, any>,
+  resumeText: string,
+  jobDescription: string,
+  telemetry?: ValidationTelemetry,
+): void {
   const fields = ['atsIssues', 'formattingIssues', 'formattingSuggestions', 'improvementSuggestions', 'optimizationRecommendations'];
   const accepted: string[] = [];
 
@@ -102,9 +168,23 @@ function validateRecommendationGroups(output: Record<string, any>, resumeText: s
     const values = Array.isArray(output[field]) ? output[field] : [];
     output[field] = values.filter((value: unknown) => {
       const text = recommendationText(value);
-      if (!isGroundedRecommendation(text, resumeText)) return false;
-      if (accepted.some((existing) => isSemanticDuplicate(text, existing))) return false;
+      if (!isGroundedRecommendation(text, resumeText, jobDescription)) {
+        if (telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          const reason = recommendationRejectionReason(text, resumeText, jobDescription);
+          telemetry.rejectionReasons[reason] = (telemetry.rejectionReasons[reason] || 0) + 1;
+        }
+        return false;
+      }
+      if (accepted.some((existing) => isSemanticDuplicate(text, existing))) {
+        if (telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          telemetry.rejectionReasons.duplicate = (telemetry.rejectionReasons.duplicate || 0) + 1;
+        }
+        return false;
+      }
       accepted.push(text);
+      if (telemetry) telemetry.acceptedRecommendations += 1;
       return true;
     });
   }
@@ -130,7 +210,12 @@ function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
 }
 
 /** Validates untrusted LLM resume-analysis output without changing its public schema. */
-export function validateAiResumeOutput(raw: Record<string, any>, resumeText: string): Record<string, any> {
+export function validateAiResumeOutput(
+  raw: Record<string, any>,
+  resumeText: string,
+  jobDescription = '',
+  telemetry?: ValidationTelemetry,
+): Record<string, any> {
   const output = { ...raw };
   const seenKeywords = new Set<string>();
   const dedupeKeywordGroup = (values: unknown) => deduplicateKeywords(values).filter((keyword) => {
@@ -149,6 +234,6 @@ export function validateAiResumeOutput(raw: Record<string, any>, resumeText: str
   output.weakBullets = Array.isArray(output.weakBullets)
     ? output.weakBullets.filter((value: unknown) => typeof value === 'string' && normalize(resumeText).includes(normalize(value)))
     : [];
-  validateRecommendationGroups(output, resumeText);
+  validateRecommendationGroups(output, resumeText, jobDescription, telemetry);
   return output;
 }

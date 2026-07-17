@@ -1,6 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { randomUUID } from 'node:crypto';
 import { getUserFromRequest } from './_lib/auth.js';
-import { analyzeResumeWithAi } from './_lib/openrouter.js';
+import { AiPipelineError, analyzeResumeWithAi } from './_lib/openrouter.js';
+import {
+  createAiObservabilityContext,
+  logAiEvent,
+  textMetadata,
+} from './_lib/aiObservability.js';
 import {
   FEATURE_TYPES,
   recordDailyUsage,
@@ -8,12 +14,16 @@ import {
 import { enforceAiRateLimit } from './_lib/rateLimit.js';
 import { verifyAiFeatureAccess } from './_lib/featureAccess.js';
 import { BODY_LIMITS, INPUT_LIMITS, rejectOversizedBody } from './_lib/requestLimits.js';
-import { CLIENT_ERRORS, logApiError, respondError } from './_lib/safeError.js';
+import { CLIENT_ERRORS, respondError } from './_lib/safeError.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const requestId = randomUUID();
+  const observability = createAiObservabilityContext(requestId);
+  res.setHeader('X-Request-ID', requestId);
 
   if (rejectOversizedBody(req, res, BODY_LIMITS.AI)) {
     return;
@@ -43,6 +53,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .trim()
     .slice(0, INPUT_LIMITS.JOB_DESCRIPTION_MAX);
 
+  logAiEvent(observability, 'resume_received', {
+    // The frontend sends extracted/pasted text only; original PDF/DOCX type and
+    // client-side extraction duration are intentionally unavailable to this route.
+    inputTransport: 'text',
+    originalFileType: 'unavailable',
+    clientExtractionDurationMs: null,
+    resume: textMetadata(resumeText),
+    jobDescription: textMetadata(jobDescription),
+  });
+
   if (!resumeText || resumeText.length < 50) {
     return res.status(400).json({ error: 'Resume text is too short for analysis.' });
   }
@@ -52,11 +72,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const result = await analyzeResumeWithAi(resumeText, jobDescription);
+    const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability });
     await recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
+    logAiEvent(observability, 'request_completed', {
+      status: 200,
+      totalDurationMs: Date.now() - observability.startedAt,
+    });
     return res.status(200).json(result);
   } catch (err) {
-    logApiError('analyze-resume', err);
+    if (err instanceof AiPipelineError) {
+      logAiEvent(observability, 'request_failed', {
+        status: 502,
+        stage: err.stage,
+        code: err.code,
+        totalDurationMs: Date.now() - observability.startedAt,
+      });
+      return res.status(502).json({
+        error: 'Resume analysis could not be completed.',
+        pipelineError: { stage: err.stage, code: err.code },
+      });
+    }
+    console.error('[analyze-resume] unexpected failure', {
+      requestId,
+      errorType: err instanceof Error ? err.name : 'unknown',
+    });
+    logAiEvent(observability, 'request_failed', {
+      status: 502,
+      stage: 'openrouter_or_transport',
+      code: 'REQUEST_FAILED',
+      totalDurationMs: Date.now() - observability.startedAt,
+    });
     return respondError(res, 502, CLIENT_ERRORS.AI_ANALYSIS);
   }
 }

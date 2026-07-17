@@ -15,6 +15,12 @@ import {
   planResumeRecommendations,
 } from './recommendationPlanner.js';
 import { rankMissingSkills } from './missingSkillRanking.js';
+import {
+  logAiEvent,
+  textMetadata,
+  type AiObservabilityContext,
+} from './aiObservability.js';
+import type { ValidationTelemetry } from './aiValidation.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -137,23 +143,52 @@ export interface AiInterviewPrepFull {
   preparationSuggestions: string[];
 }
 
+export type AiPipelineStage = 'parser' | 'analyzer' | 'rewriter' | 'validation' | 'planner';
+
+/** A safe, structured failure that can cross the API boundary without provider details. */
+export class AiPipelineError extends Error {
+  constructor(
+    public readonly stage: AiPipelineStage,
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'AiPipelineError';
+  }
+}
+
 export async function callOpenRouter(
   messages: ChatMessage[],
-  options: { model?: string; maxTokens?: number; temperature?: number } = {},
+  options: {
+    model?: string;
+    maxTokens?: number;
+    temperature?: number;
+    observability?: AiObservabilityContext;
+    stage?: string;
+  } = {},
 ): Promise<string> {
   logOpenRouterDiagnostics('callOpenRouter');
   const apiKey = resolveOpenRouterApiKey();
   const models = getModelCandidates(options.model);
   let lastError: Error | null = null;
+  const prompt = messages.map((message) => message.content).join('\n');
 
   console.info('[openrouter] request start', {
     modelCandidates: models.slice(0, 3),
     keyMasked: maskApiKey(apiKey),
     referer: getAppBaseUrl(),
   });
+  logAiEvent(options.observability, 'openrouter_request_started', {
+    stage: options.stage || 'unknown',
+    modelCandidates: models,
+    maxTokens: options.maxTokens ?? 4096,
+    temperature: options.temperature ?? 0.25,
+    ...textMetadata(prompt),
+  });
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
+    const requestStartedAt = Date.now();
     try {
       const response = await fetch(OPENROUTER_URL, {
         method: 'POST',
@@ -176,7 +211,13 @@ export async function callOpenRouter(
         console.error('[openrouter] response error', {
           model,
           status: response.status,
-          bodyPreview: text.slice(0, 200),
+        });
+        logAiEvent(options.observability, 'openrouter_request_failed', {
+          stage: options.stage || 'unknown',
+          model,
+          status: response.status,
+          latencyMs: Date.now() - requestStartedAt,
+          retryAttempt: i + 1,
         });
         if (response.status === 401) {
           throw new Error(
@@ -194,6 +235,7 @@ export async function callOpenRouter(
 
       const data = (await response.json()) as {
         choices?: { message?: { content?: string } }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       };
 
       const content = data.choices?.[0]?.message?.content;
@@ -207,9 +249,25 @@ export async function callOpenRouter(
       }
 
       console.info('[openrouter] success', { model, status: response.status });
+      logAiEvent(options.observability, 'openrouter_request_completed', {
+        stage: options.stage || 'unknown',
+        model,
+        status: response.status,
+        latencyMs: Date.now() - requestStartedAt,
+        promptTokens: data.usage?.prompt_tokens ?? null,
+        completionTokens: data.usage?.completion_tokens ?? null,
+        totalTokens: data.usage?.total_tokens ?? null,
+      });
       return content;
     } catch (err: any) {
-      console.error('[openrouter] fetch throw', { model, err: err?.message || err });
+      console.error('[openrouter] fetch throw', { model, errorType: err instanceof Error ? err.name : 'unknown' });
+      logAiEvent(options.observability, 'openrouter_request_exception', {
+        stage: options.stage || 'unknown',
+        model,
+        latencyMs: Date.now() - requestStartedAt,
+        retryAttempt: i + 1,
+        errorType: err instanceof Error ? err.name : 'unknown',
+      });
       lastError = err instanceof Error ? err : new Error(String(err));
       if (i < models.length - 1) {
         await sleep(500);
@@ -829,6 +887,62 @@ function normalizeInterviewPrep(raw: any): AiInterviewPrepFull {
   };
 }
 
+function parseStageJson(
+  raw: string,
+  stage: Extract<AiPipelineStage, 'parser' | 'analyzer' | 'rewriter'>,
+  observability?: AiObservabilityContext,
+): Record<string, any> {
+  try {
+    const parsed = extractJsonFromText(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Expected a JSON object.');
+    }
+    logAiEvent(observability, 'raw_json_parse_completed', {
+      stage,
+      status: 'success',
+      rawResponseChars: raw.length,
+    });
+    return parsed as Record<string, any>;
+  } catch (error) {
+    console.error(`[pipeline] ${stage} JSON parsing failed`, {
+      errorType: error instanceof Error ? error.name : 'unknown',
+    });
+    logAiEvent(observability, 'raw_json_parse_completed', {
+      stage,
+      status: 'failed',
+      rawResponseChars: raw.length,
+    });
+    throw new AiPipelineError(stage, 'INVALID_JSON', `The ${stage} returned an invalid response.`);
+  }
+}
+
+function requiredScore(value: unknown, field: 'atsScore' | 'matchScore'): number {
+  const score = Number(value);
+  if (!Number.isFinite(score) || score < 0 || score > 100) {
+    throw new AiPipelineError('analyzer', 'INVALID_SCORE', `The analyzer returned an invalid ${field}.`);
+  }
+  return score;
+}
+
+function hasRecommendationOutput(value: Record<string, any>): boolean {
+  const fields = [
+    'atsIssues', 'formattingIssues', 'formattingSuggestions', 'improvementSuggestions',
+    'optimizationRecommendations', 'weakBullets', 'improvedBulletPoints',
+  ];
+  return fields.some((field) => Array.isArray(value[field]) && value[field].length > 0);
+}
+
+function recommendationOutputCount(value: Record<string, any>): number {
+  const fields = [
+    'atsIssues', 'formattingIssues', 'formattingSuggestions', 'improvementSuggestions',
+    'optimizationRecommendations', 'weakBullets', 'improvedBulletPoints',
+  ];
+  return fields.reduce(
+    (count, field) => count + (Array.isArray(value[field]) ? value[field].length : 0),
+    0,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // CORE EXPORTED API PIPELINE HANDLERS
 // ---------------------------------------------------------------------------
@@ -836,9 +950,28 @@ function normalizeInterviewPrep(raw: any): AiInterviewPrepFull {
 export async function analyzeResumeWithAi(
   resumeText: string,
   jobDescription: string,
+  options: { observability?: AiObservabilityContext } = {},
 ): Promise<AiResumeAnalysisFull> {
+  const observability = options.observability;
+  logAiEvent(observability, 'pipeline_started', {
+    resume: textMetadata(resumeText),
+    jobDescription: textMetadata(jobDescription),
+  });
   // Step 1: deterministic parsing establishes safe sections before the LLM enriches them.
   const localResume = parseResumeText(resumeText);
+  logAiEvent(observability, 'structured_parser_completed', {
+    sectionCounts: {
+      summary: localResume.summary ? 1 : 0,
+      experience: localResume.experience.length,
+      projects: localResume.projects.length,
+      skills: localResume.skills.length,
+      education: localResume.education.length,
+      certifications: localResume.certifications.length,
+      awards: localResume.awards.length,
+      languages: localResume.languages.length,
+    },
+    linkCount: localResume.links.items.length,
+  });
   const parserResume = JSON.stringify(toParserResumeInput(localResume), null, 2);
   const parserUserContent = `Job Description:\n${jobDescription.slice(0, 6000)}\n\nStructured Resume JSON:\n${parserResume}`;
   console.info('[pipeline] Running Step 1: Resume & Job Parser');
@@ -848,34 +981,12 @@ export async function analyzeResumeWithAi(
       { role: 'system', content: RESUME_PARSER_SYSTEM_PROMPT },
       { role: 'user', content: parserUserContent },
     ],
-    { maxTokens: 4000, temperature: 0.1 }
+    { maxTokens: 4000, temperature: 0.1, observability, stage: 'parser' }
   );
 
-  let parsedJson: any;
-  try {
-    parsedJson = extractJsonFromText(parsedRaw);
-  } catch (err) {
-    console.error('[pipeline] Parser failed, using default structure fallback', err);
-    parsedJson = {
-      resume: {
-        contact: { name: '', email: '', phone: '', location: '' },
-        summary: localResume.summary,
-        experience: localResume.experience,
-        projects: localResume.projects,
-        skills: localResume.skills,
-        education: localResume.education,
-        certifications: localResume.certifications,
-        awards: localResume.awards,
-        languages: localResume.languages,
-        links: []
-      },
-      job: {
-        title: '',
-        requiredSkills: [],
-        preferredSkills: [],
-        responsibilities: []
-      }
-    };
+  const parsedJson = parseStageJson(parsedRaw, 'parser', observability);
+  if (!parsedJson.resume || typeof parsedJson.resume !== 'object' || !parsedJson.job || typeof parsedJson.job !== 'object') {
+    throw new AiPipelineError('parser', 'INVALID_SCHEMA', 'The parser response is missing resume or job data.');
   }
 
   parsedJson.resume = mergeParsedResume(parsedJson.resume, localResume);
@@ -912,37 +1023,25 @@ export async function analyzeResumeWithAi(
         { role: 'system', content: ANALYZER_SYSTEM_PROMPT },
         { role: 'user', content: analysisUserContent }
       ],
-      { maxTokens: 4000, temperature: 0.2 }
+      { maxTokens: 4000, temperature: 0.2, observability, stage: 'analyzer' }
     ),
     callOpenRouter(
       [
         { role: 'system', content: REWRITER_SYSTEM_PROMPT },
         { role: 'user', content: rewriterUserContent }
       ],
-      { maxTokens: 3000, temperature: 0.3 }
+      { maxTokens: 3000, temperature: 0.3, observability, stage: 'rewriter' }
     )
   ]);
 
-  let analysisJson: any = {};
-  let rewriterJson: any = {};
-
-  try {
-    analysisJson = extractJsonFromText(analysisRaw);
-  } catch (err) {
-    console.error('[pipeline] Analysis JSON parsing failed', err);
-  }
-
-  try {
-    rewriterJson = extractJsonFromText(rewriterRaw);
-  } catch (err) {
-    console.error('[pipeline] Rewriter JSON parsing failed', err);
-  }
+  const analysisJson = parseStageJson(analysisRaw, 'analyzer', observability);
+  const rewriterJson = parseStageJson(rewriterRaw, 'rewriter', observability);
 
   // Combine and validate final structure
   const combinedRaw = {
     parsed: parsedJson.resume,
-    atsScore: analysisJson.atsScore || 70,
-    matchScore: analysisJson.matchScore || 50,
+    atsScore: requiredScore(analysisJson.atsScore, 'atsScore'),
+    matchScore: requiredScore(analysisJson.matchScore, 'matchScore'),
     existingSkills: analysisJson.existingSkills || [],
     missingSkills: analysisJson.missingSkills || analysisJson.missingKeywords || [],
     missingKeywords: analysisJson.missingSkills || analysisJson.missingKeywords || [],
@@ -962,13 +1061,47 @@ export async function analyzeResumeWithAi(
     jobMatchExplanation: analysisJson.jobMatchExplanation || {},
   };
 
-  return normalizeResumeAnalysis(
-    planResumeRecommendations(
-      rankMissingSkills(validateAiResumeOutput(combinedRaw, resumeText), jobDescription),
-      resumeText,
-    ),
-    resumeText,
-  );
+  let validated: Record<string, any>;
+  const validationTelemetry: ValidationTelemetry = {
+    acceptedRecommendations: 0,
+    rejectedRecommendations: 0,
+    rejectionReasons: {},
+  };
+  try {
+    validated = validateAiResumeOutput(combinedRaw, resumeText, jobDescription, validationTelemetry);
+  } catch (error) {
+    console.error('[pipeline] validation failed', {
+      errorType: error instanceof Error ? error.name : 'unknown',
+    });
+    throw new AiPipelineError('validation', 'VALIDATION_FAILED', 'The analysis could not be validated.');
+  }
+  logAiEvent(observability, 'validation_completed', validationTelemetry);
+  if (hasRecommendationOutput(combinedRaw) && !hasRecommendationOutput(validated)) {
+    throw new AiPipelineError('validation', 'ALL_RECOMMENDATIONS_REJECTED', 'All generated recommendations failed validation.');
+  }
+
+  let planned: Record<string, any>;
+  try {
+    planned = planResumeRecommendations(rankMissingSkills(validated, jobDescription), resumeText);
+  } catch (error) {
+    console.error('[pipeline] planner failed', {
+      errorType: error instanceof Error ? error.name : 'unknown',
+    });
+    throw new AiPipelineError('planner', 'PLANNING_FAILED', 'The analysis recommendations could not be planned.');
+  }
+  logAiEvent(observability, 'planner_completed', {
+    inputRecommendationCount: recommendationOutputCount(validated),
+    outputRecommendationCount: recommendationOutputCount(planned),
+  });
+  if (hasRecommendationOutput(validated) && !hasRecommendationOutput(planned)) {
+    throw new AiPipelineError('planner', 'ALL_RECOMMENDATIONS_REMOVED', 'All recommendations were removed during planning.');
+  }
+
+  const result = normalizeResumeAnalysis(planned, resumeText);
+  logAiEvent(observability, 'pipeline_completed', {
+    totalDurationMs: observability ? Date.now() - observability.startedAt : null,
+  });
+  return result;
 }
 
 export async function generateInterviewPrepWithAi(

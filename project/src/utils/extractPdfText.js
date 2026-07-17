@@ -15,6 +15,90 @@ function ensurePdfWorker() {
   }
 }
 
+/**
+ * PDF.js returns positioned text fragments, not document lines. Rebuild the
+ * reading order from their baselines so downstream section detection receives
+ * headings, bullets, and paragraphs on separate lines.
+ */
+function reconstructPageText(items) {
+  const fragments = items
+    .filter((item) => item && typeof item.str === 'string' && item.str.trim())
+    .map((item) => {
+      const x = Number(item.transform?.[4] ?? 0);
+      const y = Number(item.transform?.[5] ?? 0);
+      const height = Math.max(1, Math.abs(Number(item.height || item.transform?.[3] || 10)));
+      return {
+        text: item.str.replace(/\s+/g, ' ').trim(),
+        x,
+        y,
+        width: Math.abs(Number(item.width || 0)),
+        height,
+      };
+    });
+
+  if (!fragments.length) return '';
+
+  // Adjacent PDF fragments on the same baseline can vary slightly because of
+  // font metrics. Use a tolerance derived from the median text height.
+  const heights = fragments.map((fragment) => fragment.height).sort((a, b) => a - b);
+  const medianHeight = heights[Math.floor(heights.length / 2)] || 10;
+  const baselineTolerance = Math.max(2, Math.min(5, medianHeight * 0.35));
+  const lines = [];
+
+  for (const fragment of [...fragments].sort((a, b) => b.y - a.y || a.x - b.x)) {
+    const line = lines.find((candidate) => Math.abs(candidate.y - fragment.y) <= baselineTolerance);
+    if (line) {
+      line.fragments.push(fragment);
+      line.y = (line.y * (line.fragments.length - 1) + fragment.y) / line.fragments.length;
+      line.height = Math.max(line.height, fragment.height);
+    } else {
+      lines.push({ y: fragment.y, height: fragment.height, fragments: [fragment] });
+    }
+  }
+
+  const joinLine = (line) => {
+    const fragmentsOnLine = [...line.fragments].sort((a, b) => a.x - b.x);
+    let text = '';
+    let previous = null;
+
+    for (const fragment of fragmentsOnLine) {
+      if (!previous) {
+        text = fragment.text;
+      } else {
+        const gap = fragment.x - (previous.x + previous.width);
+        const noSpace =
+          gap <= Math.max(1, previous.height * 0.12) ||
+          /^[,.;:!?%\])}]/.test(fragment.text) ||
+          /[([{/]$/.test(text);
+        text += `${noSpace ? '' : ' '}${fragment.text}`;
+      }
+      previous = fragment;
+    }
+
+    return text.replace(/\s+/g, ' ').trim();
+  };
+
+  const orderedLines = lines
+    .map((line) => ({ ...line, text: joinLine(line) }))
+    .filter((line) => line.text)
+    .sort((a, b) => b.y - a.y || a.fragments[0].x - b.fragments[0].x);
+
+  const output = [];
+  for (let index = 0; index < orderedLines.length; index += 1) {
+    const line = orderedLines[index];
+    const previous = orderedLines[index - 1];
+    if (previous) {
+      const verticalGap = previous.y - line.y;
+      const normalLineGap = Math.max(previous.height, line.height) * 1.45;
+      // A visibly larger vertical gap normally marks a paragraph/section break.
+      if (verticalGap > normalLineGap) output.push('');
+    }
+    output.push(line.text);
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export async function extractPdfText(arrayBuffer, onProgress) {
   ensurePdfWorker();
 
@@ -28,11 +112,7 @@ export async function extractPdfText(arrayBuffer, onProgress) {
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
 
-    const pageText = textContent.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const pageText = reconstructPageText(textContent.items);
 
     if (pageText) pageTexts.push(pageText);
 

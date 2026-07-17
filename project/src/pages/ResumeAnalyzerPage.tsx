@@ -14,6 +14,7 @@ import {
 import LogoMark from '../components/LogoMark';
 import { supabase } from '../lib/supabase.js';
 import { fetchAiResumeAnalysis } from '../lib/api/analyzeResume.js';
+import { ApiRequestError } from '../lib/api/client.js';
 import { mapAiResumeToDisplay, type ResumeDisplayResults } from '../lib/api/mapAiResults.js';
 import {
   checkFeatureAccess,
@@ -36,6 +37,44 @@ import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 
 type AnalysisResults = ResumeDisplayResults;
+
+function analysisErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiRequestError)) {
+    return 'Resume analysis could not be completed. Please try again in a few moments.';
+  }
+
+  if (error.pipelineError) {
+    switch (error.pipelineError.stage) {
+      case 'parser':
+        return 'We could not read the resume structure. Please review the extracted resume text and try again.';
+      case 'analyzer':
+        return 'The resume analysis service returned an incomplete analysis. Please try again in a few moments.';
+      case 'rewriter':
+        return 'The bullet-point improvement service returned an incomplete response. Please try again in a few moments.';
+      case 'validation':
+        return 'The generated analysis could not be verified against your resume. Please try again.';
+      case 'planner':
+        return 'The generated recommendations could not be organized safely. Please try again.';
+    }
+  }
+
+  switch (error.code) {
+    case 'timeout':
+      return 'Resume analysis is taking longer than expected. Please try again in a few moments.';
+    case 'network':
+      return 'We could not connect to the resume analysis service. Please check your connection and try again.';
+    case 'unauthorized':
+      return 'Your session has expired. Please sign in again and retry your analysis.';
+    case 'rate_limited':
+      return 'Too many analysis requests were made. Please wait a moment and try again.';
+    case 'service_unavailable':
+      return 'Resume analysis is temporarily unavailable because the AI service is unavailable. Please try again in a few moments.';
+    case 'malformed_response':
+      return 'Resume analysis returned an incomplete response. Please try again in a few moments.';
+    default:
+      return 'Resume analysis could not be completed. Please try again in a few moments.';
+  }
+}
 
 interface ResumeAnalyzerPageProps {
   onNavigate: (page: string) => void;
@@ -146,11 +185,9 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     try {
       const ai = await fetchAiResumeAnalysis(text, jobDescription.trim());
       analysisResults = mapAiResumeToDisplay(ai) as AnalysisResults;
-    } catch {
+    } catch (error) {
       setAnalyzing(false);
-      setSaveError(
-        'Resume analysis is temporarily unavailable because the AI service could not be reached. Please try again in a few moments.',
-      );
+      setSaveError(analysisErrorMessage(error));
       return;
     }
 

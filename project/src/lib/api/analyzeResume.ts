@@ -1,5 +1,15 @@
 import { apiPost } from './client.js';
 
+const DEFAULT_ANALYSIS_TIMEOUT_MS = 120_000;
+const MIN_ANALYSIS_TIMEOUT_MS = 30_000;
+const MAX_ANALYSIS_TIMEOUT_MS = 180_000;
+
+function analysisTimeoutMs(): number {
+  const configured = Number(import.meta.env.VITE_AI_ANALYSIS_TIMEOUT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_ANALYSIS_TIMEOUT_MS;
+  return Math.min(MAX_ANALYSIS_TIMEOUT_MS, Math.max(MIN_ANALYSIS_TIMEOUT_MS, configured));
+}
+
 export interface ParsedResume {
   name: string;
   email: string;
@@ -52,5 +62,5 @@ export async function fetchAiResumeAnalysis(
     resumeText,
     jobDescription,
     jobRole: jobDescription,
-  }, { timeoutMs: 45_000 });
+  }, { timeoutMs: analysisTimeoutMs() });
 }
