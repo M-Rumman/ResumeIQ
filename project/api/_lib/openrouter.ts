@@ -18,20 +18,11 @@ import { rankMissingSkills } from './missingSkillRanking.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-/** Less popular free models first — avoids shared Llama 3.3 70B rate limits. */
-const DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
+/** Paid primary model with a compatible paid fallback. */
+const DEFAULT_MODEL = 'google/gemma-4-31b-it';
 
 const MODEL_FALLBACKS = [
-  'google/gemma-4-26b-a4b-it:free',
-  'openai/gpt-oss-20b:free',
-  'liquid/lfm-2.5-1.2b-instruct:free',
-  'nvidia/nemotron-nano-9b-v2:free',
-  'z-ai/glm-4.5-air:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
-  'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
-  'openai/gpt-oss-120b:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'meta-llama/llama-3.1-8b-instruct',
+  'google/gemma-4-26b-a4b-it',
 ] as const;
 
 function sleep(ms: number) {
