@@ -1,0 +1,17 @@
+{
+  "name": "ResuV",
+  "short_name": "ResuV",
+  "description": "AI resume optimizer and ATS resume checker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3c4a59",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
