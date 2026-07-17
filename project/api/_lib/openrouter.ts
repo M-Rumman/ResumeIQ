@@ -19,7 +19,7 @@ import { rankMissingSkills } from './missingSkillRanking.js';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 /** Less popular free models first — avoids shared Llama 3.3 70B rate limits. */
-const DEFAULT_MODEL = 'qwen/qwen3-235b-a22b:free';
+const DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
 
 const MODEL_FALLBACKS = [
   'google/gemma-4-26b-a4b-it:free',
@@ -27,10 +27,7 @@ const MODEL_FALLBACKS = [
   'liquid/lfm-2.5-1.2b-instruct:free',
   'nvidia/nemotron-nano-9b-v2:free',
   'z-ai/glm-4.5-air:free',
-  'qwen/qwen3-next-80b-a3b-instruct:free',
   'meta-llama/llama-3.2-3b-instruct:free',
-  'qwen/qwen3-coder:free',
-  'google/gemma-4-31b-it:free',
   'cognitivecomputations/dolphin-mistral-24b-venice-edition:free',
   'openai/gpt-oss-120b:free',
   'meta-llama/llama-3.3-70b-instruct:free',
