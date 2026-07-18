@@ -43,6 +43,14 @@ const RESUME_INSIGHTS = [
   'Proofread every application before submitting it.',
 ] as const;
 
+const INSIGHT_TILT_CLASSES = [
+  'rotate-[-1deg]', 'rotate-[0.7deg]', 'rotate-[-0.5deg]', 'rotate-[1deg]',
+  'rotate-[0.5deg]', 'rotate-[-0.8deg]', 'rotate-[0.9deg]', 'rotate-[-0.6deg]',
+  'rotate-[-0.7deg]', 'rotate-[0.4deg]', 'rotate-[-1deg]', 'rotate-[0.8deg]',
+  'rotate-[0.6deg]', 'rotate-[-0.4deg]', 'rotate-[0.9deg]', 'rotate-[-0.7deg]',
+  'rotate-[0.5deg]', 'rotate-[-0.9deg]',
+] as const;
+
 export default function HomePage({ onNavigate }: HomePageProps) {
   const [testimonialName, setTestimonialName] = useState('');
   const [testimonial, setTestimonial] = useState('');
@@ -201,8 +209,8 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal className="text-center mb-12">
             <p className="section-label mb-3">Career guidance</p>
-            <h2 className="text-4xl lg:text-5xl text-primary">Resume Insights</h2>
-            <p className="mt-4 text-lg text-body max-w-2xl mx-auto">
+            <h2 className="text-4xl lg:text-5xl text-[#1A2035]">Resume Insights</h2>
+            <p className="mt-4 text-lg text-[#1A2035] max-w-2xl mx-auto">
               Practical reminders to help every application make a stronger first impression.
             </p>
           </ScrollReveal>
@@ -210,13 +218,10 @@ export default function HomePage({ onNavigate }: HomePageProps) {
             {RESUME_INSIGHTS.map((insight, index) => (
               <ScrollReveal
                 key={insight}
-                className="glass-card-interactive min-h-[160px] p-6 flex items-center justify-center text-center"
+                className="h-full"
               >
-                <div className="flex flex-col items-center gap-4">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f4f7f9] text-xs font-extrabold text-[#3c4a59]">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <p className="text-base font-semibold leading-relaxed text-primary">{insight}</p>
+                <div className={`glass-card-interactive h-full min-h-[160px] p-6 flex items-center justify-center text-center transition-transform duration-300 hover:-translate-y-1 hover:rotate-0 ${INSIGHT_TILT_CLASSES[index]}`}>
+                  <p className="text-base font-semibold leading-relaxed text-[#1A2035]">{insight}</p>
                 </div>
               </ScrollReveal>
             ))}
