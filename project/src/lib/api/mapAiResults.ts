@@ -34,12 +34,6 @@ function buildJobSpecificImprovements(ai: AiResumeAnalysis): ImprovementItem[] {
   for (const text of ai.atsIssues || []) {
     items.push({ type: 'warning', text });
   }
-  for (const text of ai.formattingIssues || []) {
-    items.push({ type: 'info', text });
-  }
-  for (const text of ai.weakBullets || []) {
-    items.push({ type: 'warning', text: `Weak bullet: ${text}` });
-  }
   if (ai.missingRequiredSkills?.length) {
     items.push({
       type: 'error',

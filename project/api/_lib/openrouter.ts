@@ -56,7 +56,9 @@ function resolveOpenRouterApiKey(): string {
 
 function getModelCandidates(preferred?: string): string[] {
   const fromEnv = process.env.OPENROUTER_MODEL?.trim();
-  const candidates = [preferred, DEFAULT_MODEL, ...MODEL_FALLBACKS, fromEnv].filter(
+  // A deployment-level model choice must take effect immediately. The default
+  // and fallback models remain available only when that configured model fails.
+  const candidates = [preferred, fromEnv, DEFAULT_MODEL, ...MODEL_FALLBACKS].filter(
     (m): m is string => Boolean(m),
   );
   return [...new Set(candidates)];
@@ -136,6 +138,7 @@ export interface AiResumeAnalysisFull {
     partialMatches: string[];
     missingSkills: string[];
   };
+  roleStrengths: string[];
   hiringManagerAssessment: HiringManagerAssessment;
 }
 
@@ -303,7 +306,7 @@ export async function callOpenRouter(
   throw (
     lastError ||
     new Error(
-      'All free AI models are busy (rate limited). Wait 1–2 minutes and try again.',
+      'All configured AI providers are currently unavailable. Please try again shortly.',
     )
   );
 }
@@ -376,11 +379,17 @@ INPUT DATA STRUCTURE:
 You will receive JSON input containing:
 1. "resume": Structured Resume (with "contact" and "links" stripped to avoid leaks).
 2. "job": Structured Job Requirements.
-3. "gapAnalysis": Deterministic requirement-by-requirement comparison with status, resume evidence, and safe recommendation guidance.
+3. "jobProfile": Ranked Job Profile: required skills, preferred skills, responsibilities, and priority order.
+4. "gapAnalysis": Deterministic requirement-by-requirement comparison with status, resume evidence, and safe recommendation guidance.
 
 JOB-SPECIFIC RECRUITER OPERATING RULE:
 - Act as an experienced recruiter hiring ONLY for the supplied job, not as a generic resume reviewer.
+- Before writing every recommendation, internally ask: "If I were recruiting for this exact job today, what would stop me from interviewing this candidate?" Omit advice that does not answer that question or does not materially improve the hiring decision.
+- Order recommendations by hiring impact: Critical interview blockers first (missing required skills, absent practical evidence, or sections that prevent evaluation), then Important partial alignment, and only then minor formatting or wording polish.
 - The gapAnalysis is the PRIMARY source for every later ATS observation, missing-skill result, score explanation, and recommendation. Preserve its MATCHED, PARTIALLY MATCHED, MISSING, and NOT APPLICABLE classifications unless the supplied resume evidence directly proves it wrong.
+- Treat jobProfile as the source of priority. Required requirements are Critical, preferred requirements are Important, and responsibilities are Supporting role context. Do not let generic resume-review heuristics outrank a Critical or Important job requirement.
+- Follow this reasoning order exactly: (1) identify the target role and its ranked priorities; (2) compare each priority with resume evidence; (3) use gapAnalysis to classify the comparison; (4) explain ATS and job match through that comparison; (5) generate job-specific improvements; and only then (6) generate remaining general resume improvements.
+- The same resume paired with a different jobProfile must produce meaningfully different missing skills, match explanation, recommendation order, formatting priorities, and recruiter assessment. Do not reuse generic advice across roles.
 - Every recommendation MUST explicitly connect BOTH sides of the comparison: (1) a named job requirement, responsibility, or role-specific priority and (2) the exact resume section, bullet, project, skill, or absence that supports the observation.
 - Use this reasoning pattern: "The [job title/requirement] requires or emphasizes [requirement]. Your [resume evidence/section] [shows, partially shows, or does not show] [connection]." Do not emit the pattern mechanically, but preserve both facts in every recommendation.
 - For a MISSING item, recommend only truthful coursework, projects, or experience the candidate can add if applicable. For a PARTIALLY MATCHED item, recommend making the listed evidence explicit; never upgrade it to a full match without direct evidence.
@@ -398,20 +407,20 @@ TASKS TO PERFORM:
    - A skill already present in the structured resume MUST appear only in "existingSkills" and never in any missing-skill field. Do not invent candidate qualifications.
 
 2. ATS & FORMATTING ANALYSIS:
-   - Compute "matchScore" (0-100). The backend calculates "atsScore" deterministically from Resume Structure, Keyword Alignment, and Experience Alignment; do not attempt to adjust that score.
-   - Explain the score drivers using the structured fields below. Do not invent score factors.
+   - The backend calculates both "atsScore" and "matchScore" deterministically from the supplied resume and jobProfile; do not attempt to adjust either score.
+   - Explain the score drivers through the target jobProfile and its gapAnalysis. Do not invent score factors.
    - "atsScoreExplanation.strengths" must contain resume-specific positive observations; "missingElements" must contain absent resume elements; "formattingIssues" must contain concrete formatting/structure observations; and "keywordIssues" must contain missing technical requirements.
    - ATS explanation: "whatIncreasedScore" must identify the actual matched skills, sections, or evidence that raised the CURRENT ATS score. "whatReducedScore" must identify the actual missing requirement, missing section, weak bullet, or formatting issue that reduced it. Do not use generic advice or claim a score factor that is absent from the supplied data.
    - "jobMatchExplanation.strongMatches" must contain technical skills evidenced in both the resume and job data; "partialMatches" must contain relevant but incomplete evidence; and "missingSkills" must contain absent technical job requirements.
    - Detect present and missing standard resume sections ("detectedSections", "missingSections").
    - Produce exactly two non-overlapping recommendation sections using the existing fields:
-     1. "improvementSuggestions" = Job-Specific Improvements only. Every item must explain why it matters for THIS target job and cite both a job requirement/responsibility and the relevant resume evidence or absence.
-     2. "optimizationRecommendations" = General Resume Improvements only. Use this only for grammar, formatting, weak bullets, section ordering, or professional wording that remains after all job-specific observations are covered.
-   - Keep "atsIssues" job-specific and keep "formattingIssues" / "formattingSuggestions" general. Never mix general advice into "improvementSuggestions" or job-specific gap advice into "optimizationRecommendations".
+     1. "improvementSuggestions" = Job-Specific Improvements only. Generate 6-10 whenever the resume and jobProfile support that many distinct observations. Every MISSING and PARTIALLY MATCHED Critical or Important requirement must receive its own recommendation before broader alignment advice. Every item must explain why it matters for THIS target job and cite both a job requirement/responsibility and the relevant resume evidence or absence.
+     2. "optimizationRecommendations" = General Resume Improvements only. Generate 3-5 only when genuine grammar, formatting, weak-bullet, section-ordering, or section-naming issues exist after job-specific observations are complete. Each item must still explain why the affected resume section makes the candidate easier or harder to assess for THIS jobProfile; do not produce advice that could apply to any role.
+   - Keep "atsIssues" job-specific. FormattingIssues / formattingSuggestions may address general structure, but must prioritize sections that obscure the jobProfile's Critical or Important evidence. Never emit generic formatting advice without naming the affected resume section and target-role consequence.
    - Exhaustive recommendation coverage: enumerate EVERY distinct, meaningful improvement supported by the supplied resume and job data. Do not stop at 3–5 suggestions and do not apply an arbitrary target or maximum. If the resume supports 12 unique improvements, return all 12; if it supports only 4, return 4. Always complete Job-Specific Improvements first; general advice must never dominate the report.
    - Treat each concrete observation as one candidate improvement: summary coverage, each weak experience/project entry, missing or weak sections, formatting/ordering, job-requirement alignment, and non-duplicated technical keyword gaps. Keep each observation in its most appropriate output field and never repeat it in another field.
    - Every recommendation must name BOTH the job-specific reason and the resume-specific evidence/absence. For example: "The Embedded Engineer role requires firmware development in C/C++. Although C++ appears in Skills, no project bullet demonstrates firmware development." Never use generic advice such as "Improve your resume" or "Use action verbs" without this two-sided comparison.
-   - Within every recommendation array, list direct MISSING and PARTIALLY MATCHED job gaps first, then weaker job-alignment observations, and place any remaining generic polish last.
+   - Within every recommendation array, list direct MISSING requirements that could block an interview first, then PARTIALLY MATCHED requirements, then weaker job-alignment observations, and place minor formatting or wording polish last. Every item must state the hiring consequence for this role.
    - For every suggestion/issue, you MUST assign a confidence score: "High" (directly supported by resume evidence), "Medium" (strong inference), or "Low" (general ATS best practice).
    - Resume-specific observations ONLY: Every observation must cite or clearly derive from supplied resume or job data. Do not claim a project, technology, company, certification, or metric exists unless it appears in the input.
    - When suggesting a measurable result for a bullet or recommendation, use placeholders such as "[X]%", "[X] users", or "[X] requests" unless that exact metric is in the supplied resume.
@@ -465,12 +474,15 @@ HIRING MANAGER ASSESSMENT:
 Respond with valid JSON only.`;
 
 const REWRITER_SYSTEM_PROMPT = `You are an expert resume editor. Identify weak bullet points in the provided experience and projects list and rewrite them.
-The input contains experience and project content, a target-job context, and an optional job-gap focus list. Identify "weakBullets" only from the supplied experience and project arrays. The target-job context and job-gap focus list are priority context only, never evidence for a rewrite.
+The input contains experience and project content, a target-job context, ranked rewrite priorities, and evidence-backed job-gap focus. Identify "weakBullets" only from the supplied experience and project arrays. Target-job data is priority context only, never independent evidence for a rewrite.
 Generate "improvedBulletPoints" as before/after pairs (MINIMUM 4 pairs).
 
 Rules:
 - ONLY rewrite supplied experience or project bullets. Never add a new bullet based on information outside those arrays.
 - Rewrite for the supplied target job, not for a generic role. When a bullet already evidences a target-job requirement, naturally foreground the overlapping job terminology and technical contribution.
+- Start by comparing each individual bullet with "rewritePriorities" and "jobGapFocus". Use Critical required terms before Important terms. A bullet may be tailored only to a priority that its own text directly supports; never borrow evidence from a different bullet.
+- When the target role emphasizes firmware, foreground firmware only when the bullet explicitly describes firmware, embedded code, microcontroller programming, or an equivalent concrete activity. When it emphasizes automation, foreground automation only when the bullet explicitly describes automated systems, controls, or automation work. Apply the same rule to embedded programming, testing, validation, sensors, and other target-role themes.
+- Prefer the employer's terminology when it is truthful to the original bullet. For example, an original Arduino sensor-integration bullet may foreground embedded programming or sensor integration only when those activities are concretely supported by that bullet.
 - A target-job term may appear in an "after" bullet ONLY when the original bullet directly supports that term, an equivalent named technology, or the same concrete technical activity. A MISSING requirement is never permission to add the skill, technology, tool, responsibility, metric, or outcome to a bullet.
 - When a supplied bullet truthfully supports a MATCHED or PARTIALLY MATCHED job requirement in the optional gap focus list, make that existing connection clearer. For example, preserve an explicit sensor, Arduino, LiDAR, PID, microcontroller, or motor detail when it is already in the bullet and relevant to the target job.
 - If the target job does not overlap with a bullet's supported evidence, improve clarity and impact only; do not force unrelated job terminology into it.
@@ -595,18 +607,64 @@ export type JobGapItem = {
   recommendation: string;
 };
 
-export type JobGapAnalysis = { items: JobGapItem[] };
+/** Evidence for a job responsibility. Responsibilities are assessed separately
+ * from skills so they can inform role fit without being presented as skills. */
+export type ResponsibilityGapItem = {
+  responsibility: string;
+  status: GapStatus;
+  evidence: string[];
+};
+
+export type JobGapAnalysis = {
+  items: JobGapItem[];
+  responsibilities: ResponsibilityGapItem[];
+};
+
+/** A normalized, ranked view of the supplied role used by all analysis stages. */
+export type JobProfile = {
+  title: string;
+  requiredSkills: string[];
+  preferredSkills: string[];
+  responsibilities: string[];
+  priorities: { requirement: string; priority: 'Critical' | 'Important' | 'Supporting'; source: 'required' | 'preferred' | 'responsibility' }[];
+};
 
 export type AtsDimensionBreakdown = {
   structure: { score: number; reasons: string[] };
-  keywordAlignment: { score: number; reasons: string[] };
-  experienceAlignment: { score: number; reasons: string[] };
+  technicalSkillCoverage: { score: number; reasons: string[] };
+  experienceRelevance: { score: number; reasons: string[] };
+  keywordCoverage: { score: number; reasons: string[] };
+  sectionQuality: { score: number; reasons: string[] };
   total: number;
+};
+
+export type JobMatchBreakdown = {
+  requiredSkills: number;
+  requiredExperience: number;
+  preferredSkills: number;
+  industryRelevance: number;
+  projectRelevance: number;
+  roleSimilarity: number;
+  educationAlignment: number;
+  keywordCoverage: number;
+  weights: {
+    requiredSkills: number;
+    preferredSkills: number;
+    requiredExperience: number;
+    industryRelevance: number;
+    projectRelevance: number;
+    roleSimilarity: number;
+    educationAlignment: number;
+    keywordCoverage: number;
+  };
+  total: number;
+  topStrengths: string[];
+  topGaps: string[];
 };
 
 export type KeywordRecommendation = {
   keyword: string;
-  priority: 'Critical' | 'Important' | 'Optional';
+  priority: 'Critical' | 'Important' | 'Nice-to-Have';
   whyItMatters: string;
   recommendedSection: 'Skills' | 'Experience' | 'Projects';
 };
@@ -626,12 +684,53 @@ const GAP_RULES: Record<string, GapRule> = {
   stm32: { direct: ['stm32'], partial: ['microcontroller', 'arduino', 'esp32'] },
   esp32: { direct: ['esp32'], partial: ['microcontroller', 'arduino', 'stm32'] },
   mechatronics: { direct: ['mechatronics'], partial: ['electrical engineering', 'electronics engineering'] },
+  python: { direct: ['python'], partial: [] },
+  javascript: { direct: ['javascript', 'js'], partial: ['typescript'] },
+  typescript: { direct: ['typescript'], partial: ['javascript'] },
+  java: { direct: ['java'], partial: [] },
+  sql: { direct: ['sql', 'postgresql', 'mysql', 'sqlite'], partial: ['database'] },
+  react: { direct: ['react'], partial: ['reactjs', 'react js'] },
+  'node js': { direct: ['node js', 'nodejs'], partial: ['javascript', 'typescript'] },
+  'machine learning': { direct: ['machine learning', 'ml'], partial: ['tensorflow', 'pytorch', 'scikit learn', 'model training'] },
+  tensorflow: { direct: ['tensorflow'], partial: ['machine learning', 'pytorch'] },
+  pytorch: { direct: ['pytorch'], partial: ['machine learning', 'tensorflow'] },
+  'data pipelines': { direct: ['data pipeline', 'etl pipeline'], partial: ['etl', 'data engineering', 'airflow'] },
+  aws: { direct: ['aws', 'amazon web services'], partial: ['cloud', 'azure', 'google cloud'] },
+  azure: { direct: ['azure'], partial: ['cloud', 'aws', 'google cloud'] },
+  'google cloud': { direct: ['google cloud', 'gcp'], partial: ['cloud', 'aws', 'azure'] },
+  docker: { direct: ['docker'], partial: ['container', 'kubernetes'] },
+  kubernetes: { direct: ['kubernetes', 'k8s'], partial: ['container', 'docker'] },
+  'network security': { direct: ['network security', 'networking security'], partial: ['firewall', 'networking', 'security'] },
+  splunk: { direct: ['splunk'], partial: ['siem', 'soc', 'log analysis'] },
+  wazuh: { direct: ['wazuh'], partial: ['siem', 'soc', 'security monitoring'] },
+  siem: { direct: ['siem'], partial: ['splunk', 'wazuh', 'security monitoring'] },
+  'incident response': { direct: ['incident response'], partial: ['security incident', 'threat investigation', 'forensics'] },
+  'penetration testing': { direct: ['penetration testing', 'pen testing'], partial: ['vulnerability assessment', 'ethical hacking'] },
+  ros: { direct: ['ros', 'ros2'], partial: ['robot operating system', 'robotics'] },
+};
+
+/**
+ * Domain concepts let responsibility matching use observable work concepts
+ * instead of coincidental word overlap (for example, "testing" or "systems").
+ */
+const RESPONSIBILITY_CONCEPTS: Record<string, string[]> = {
+  embedded: ['embedded', 'firmware', 'microcontroller', 'arduino', 'stm32', 'esp32'],
+  sensors: ['sensor', 'lidar', 'actuator', 'motor', 'plc'],
+  testing: ['test', 'testing', 'validation', 'debug', 'troubleshoot', 'qa'],
+  hardware: ['hardware', 'pcb', 'circuit', 'board', 'electronics'],
+  software: ['software', 'application', 'api', 'backend', 'frontend'],
+  cloud: ['cloud', 'aws', 'azure', 'gcp', 'docker', 'kubernetes'],
+  security: ['security', 'siem', 'soc', 'incident', 'vulnerability', 'firewall'],
+  data: ['data', 'database', 'etl', 'analytics', 'machine learning', 'model'],
+  automation: ['automation', 'automated', 'robotics', 'robotic', 'control'],
+  documentation: ['documentation', 'document', 'report', 'technical writing'],
 };
 
 function normalizeGapTerm(value: string): string {
   return String(value || '')
     .toLowerCase()
     .replace(/c\+\+/g, 'cplusplus')
+    .replace(/c#/g, 'csharp')
     .replace(/[^a-z0-9+\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -647,6 +746,133 @@ function uniqueGapEvidence(values: string[]): string[] {
   });
 }
 
+function jobTextList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => {
+      const key = normalizeGapTerm(item);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+const RAW_JOB_TECHNICAL_TERMS = [
+  'C++', 'C#', 'Python', 'Java', 'JavaScript', 'TypeScript', 'SQL', 'React', 'Angular', 'Node.js',
+  'Docker', 'Kubernetes', 'Terraform', 'AWS', 'Azure', 'Google Cloud', 'PostgreSQL', 'MongoDB',
+  'TensorFlow', 'PyTorch', 'Machine Learning', 'Data Pipelines', 'Firmware Development',
+  'Embedded Programming', 'Arduino', 'STM32', 'ESP32', 'PCB Testing', 'Circuit Validation',
+  'Proteus', 'LTSpice', 'ROS', 'ROS2', 'Sensor Integration', 'Splunk', 'Wazuh', 'SIEM',
+  'SOC', 'Network Security', 'Incident Response', 'Penetration Testing', 'Linux', 'Git',
+] as const;
+
+function jobTermAppearsInSource(term: string, jobDescription: string): boolean {
+  const normalizedTerm = normalizeGapTerm(term);
+  return Boolean(normalizedTerm) && normalizeGapTerm(jobDescription).includes(normalizedTerm);
+}
+
+function rawJobTermIsPreferred(term: string, jobDescription: string): boolean {
+  const normalizedTerm = normalizeGapTerm(term);
+  const lines = String(jobDescription || '').split(/\r?\n/);
+  const index = lines.findIndex((line) => normalizeGapTerm(line).includes(normalizedTerm));
+  if (index < 0) return false;
+  const context = normalizeGapTerm([lines[index - 1], lines[index]].filter(Boolean).join(' '));
+  return /\b(?:preferred|bonus|nice to have|plus|desirable)\b/.test(context)
+    && !/\b(?:required|must have|mandatory|essential|requirements?)\b/.test(context);
+}
+
+/**
+ * Recovers visible responsibility bullets directly from the supplied job text.
+ * LLM-parsed responsibilities are accepted only when they occur in that text,
+ * so an invented responsibility cannot change a score or recommendation.
+ */
+function extractSourceResponsibilities(jobDescription: string): string[] {
+  const lines = String(jobDescription || '').replace(/\r\n/g, '\n').split('\n');
+  const responsibilities: string[] = [];
+  let inResponsibilities = false;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    const normalized = normalizeGapTerm(line);
+    if (!normalized) continue;
+    if (/^(?:responsibilities|what you will do|duties|key duties|role responsibilities)$/.test(normalized)) {
+      inResponsibilities = true;
+      continue;
+    }
+    if (/^(?:requirements|qualifications|skills|preferred|nice to have|education|about the role)$/.test(normalized)) {
+      inResponsibilities = false;
+      continue;
+    }
+    if (!inResponsibilities) continue;
+    const cleaned = line.replace(/^(?:[-*â€¢]+|\d+[.)])\s*/, '').trim();
+    if (cleaned.length >= 8 && cleaned.length <= 260) responsibilities.push(cleaned);
+  }
+  return jobTextList(responsibilities);
+}
+
+/**
+ * Validates AI-parsed job requirements against the original job description
+ * and recovers recognised technical requirements that the parser omitted.
+ */
+export function validateAndEnrichParsedJob(
+  rawJob: Record<string, unknown>,
+  jobDescription: string,
+): { title: string; requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[] } {
+  const sourceRequired = jobTextList(rawJob.requiredSkills).filter((term) => jobTermAppearsInSource(term, jobDescription));
+  const sourcePreferred = jobTextList(rawJob.preferredSkills).filter((term) => jobTermAppearsInSource(term, jobDescription));
+  const sourceResponsibilities = jobTextList(rawJob.responsibilities)
+    .filter((term) => jobTermAppearsInSource(term, jobDescription));
+  const recoveredTerms = RAW_JOB_TECHNICAL_TERMS.filter((term) => jobTermAppearsInSource(term, jobDescription));
+  const requiredSkills = uniqueGapEvidence([
+    ...sourceRequired,
+    ...recoveredTerms.filter((term) => !rawJobTermIsPreferred(term, jobDescription)),
+  ]);
+  const preferredSkills = uniqueGapEvidence([
+    ...sourcePreferred,
+    ...recoveredTerms.filter((term) => rawJobTermIsPreferred(term, jobDescription)),
+  ]).filter((term) => !requiredSkills.some((required) => normalizeGapTerm(required) === normalizeGapTerm(term)));
+  const titleFromSource = jobDescription.match(/(?:job\s*title|position|role)\s*:\s*([^\n]+)/i)?.[1]?.trim() || '';
+  const parsedTitle = typeof rawJob.title === 'string' ? rawJob.title.trim() : '';
+  return {
+    title: titleFromSource || parsedTitle || 'Target Role',
+    requiredSkills,
+    preferredSkills,
+    responsibilities: uniqueGapEvidence([
+      ...sourceResponsibilities,
+      ...extractSourceResponsibilities(jobDescription),
+    ]),
+  };
+}
+
+/**
+ * Converts the parsed job description into a stable job-led reasoning model.
+ * Required requirements outrank preferred requirements; responsibilities add
+ * role context without being misrepresented as candidate skills.
+ */
+export function buildJobProfile(job: {
+  title?: unknown;
+  requiredSkills?: unknown;
+  preferredSkills?: unknown;
+  responsibilities?: unknown;
+}): JobProfile {
+  const requiredSkills = jobTextList(job.requiredSkills);
+  const preferredSkills = jobTextList(job.preferredSkills)
+    .filter((skill) => !requiredSkills.some((required) => normalizeGapTerm(required) === normalizeGapTerm(skill)));
+  const responsibilities = jobTextList(job.responsibilities);
+  return {
+    title: typeof job.title === 'string' && job.title.trim() ? job.title.trim() : 'Target Role',
+    requiredSkills,
+    preferredSkills,
+    responsibilities,
+    priorities: [
+      ...requiredSkills.map((requirement) => ({ requirement, priority: 'Critical' as const, source: 'required' as const })),
+      ...preferredSkills.map((requirement) => ({ requirement, priority: 'Important' as const, source: 'preferred' as const })),
+      ...responsibilities.map((requirement) => ({ requirement, priority: 'Supporting' as const, source: 'responsibility' as const })),
+    ],
+  };
+}
+
 /**
  * Compares the structured resume against the parsed job requirements before
  * any downstream recommendation is generated. It intentionally uses only
@@ -654,7 +880,7 @@ function uniqueGapEvidence(values: string[]): string[] {
  */
 export function buildJobGapAnalysis(
   resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>,
-  job: { requiredSkills?: unknown },
+  job: { requiredSkills?: unknown; responsibilities?: unknown },
 ): JobGapAnalysis {
   const requiredSkills = Array.isArray(job.requiredSkills)
     ? job.requiredSkills.filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
@@ -669,8 +895,7 @@ export function buildJobGapAnalysis(
     resume.summary,
   ].filter((value): value is string => typeof value === 'string' && Boolean(value.trim()));
 
-  return {
-    items: requiredSkills.map((skill) => {
+  const items = requiredSkills.map((skill) => {
       const normalizedSkill = normalizeGapTerm(skill);
       if (!normalizedSkill || /^(?:n a|not applicable)$/i.test(normalizedSkill)) {
         return {
@@ -707,8 +932,45 @@ export function buildJobGapAnalysis(
           : `Mention ${skill} coursework, project work, or practical exposure only if it genuinely applies.`;
 
       return { skill, status, evidence, recommendation };
-    }),
-  };
+    });
+
+  const responsibilities = jobTextList(job.responsibilities);
+  const practicalEvidenceSources = [...resume.experience, ...resume.projects]
+    .filter((source) => typeof source === 'string' && Boolean(source.trim()));
+  const conceptsIn = (value: string) => new Set(
+    Object.entries(RESPONSIBILITY_CONCEPTS)
+      .filter(([, terms]) => {
+        const normalized = normalizeGapTerm(value);
+        return terms.some((term) => normalized.includes(normalizeGapTerm(term)));
+      })
+      .map(([concept]) => concept),
+  );
+  const responsibilityItems = responsibilities.map((responsibility) => {
+    const requiredConcepts = conceptsIn(responsibility);
+    const evidence = practicalEvidenceSources.filter((source) => {
+      const sourceConcepts = conceptsIn(source);
+      return [...requiredConcepts].some((concept) => sourceConcepts.has(concept));
+    });
+    const requirementTokens = normalizeGapTerm(responsibility).split(' ')
+      .filter((token) => token.length > 3 && !['assist', 'support', 'work', 'using', 'with', 'that', 'this', 'from'].includes(token));
+    const tokenEvidence = practicalEvidenceSources.filter((source) => {
+      const normalizedSource = normalizeGapTerm(source);
+      const overlap = requirementTokens.filter((token) => normalizedSource.includes(token)).length;
+      return overlap >= Math.min(2, Math.max(1, Math.ceil(requirementTokens.length * 0.4)));
+    });
+    const combinedEvidence = uniqueGapEvidence([...evidence, ...tokenEvidence]);
+    const conceptCoverage = requiredConcepts.size === 0 ? 0 : [...requiredConcepts].filter((concept) =>
+      combinedEvidence.some((source) => conceptsIn(source).has(concept)),
+    ).length / requiredConcepts.size;
+    const status: GapStatus = combinedEvidence.length === 0
+      ? 'MISSING'
+      : conceptCoverage >= 0.75 || (requiredConcepts.size === 0 && tokenEvidence.length > 0)
+        ? 'MATCHED'
+        : 'PARTIALLY MATCHED';
+    return { responsibility, status, evidence: combinedEvidence };
+  });
+
+  return { items, responsibilities: responsibilityItems };
 }
 
 /**
@@ -718,18 +980,18 @@ export function buildJobGapAnalysis(
 export function calculateJobSpecificAtsScore(
   resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards' | 'languages'>,
   gapAnalysis: JobGapAnalysis,
+  jobContext: { title?: unknown } = {},
 ): AtsDimensionBreakdown {
   const structureReasons: string[] = [];
   let structure = 0;
   const structureChecks: [boolean, number, string][] = [
     [Boolean(resume.summary.trim()), 4, 'summary'],
-    [resume.experience.length > 0, 6, 'experience'],
-    [resume.projects.length > 0, 5, 'projects'],
+    [resume.experience.length > 0 || resume.projects.length > 0, 5, 'practical experience or projects'],
     [resume.skills.length > 0, 5, 'skills'],
     [resume.education.length > 0, 4, 'education'],
     [resume.certifications.length > 0, 2, 'certifications'],
     [resume.awards.length > 0 || resume.languages.length > 0, 2, 'awards or languages'],
-    [resume.experience.length + resume.projects.length >= 3, 2, 'multiple evidence bullets'],
+    [resume.experience.length + resume.projects.length >= 3, 3, 'multiple evidence bullets'],
   ];
   for (const [present, points, label] of structureChecks) {
     if (present) {
@@ -742,46 +1004,225 @@ export function calculateJobSpecificAtsScore(
   const matched = applicableGaps.filter((item) => item.status === 'MATCHED');
   const partial = applicableGaps.filter((item) => item.status === 'PARTIALLY MATCHED');
   const missing = applicableGaps.filter((item) => item.status === 'MISSING');
-  const keywordFraction = applicableGaps.length === 0
+  const technicalCoverageFraction = applicableGaps.length === 0
     ? 0
     : (matched.length + partial.length * 0.5) / applicableGaps.length;
-  const keywordAlignment = Math.round(keywordFraction * 40);
+  const technicalSkillCoverage = Math.round(technicalCoverageFraction * 30);
 
-  const experienceEvidence = new Set([
-    ...resume.experience,
-    ...resume.projects,
-  ].map((item) => normalizeGapTerm(item)));
+  const educationText = [...resume.education, resume.summary].join(' ');
+  const roleTitle = typeof jobContext.title === 'string' ? jobContext.title : '';
+  const isStudentResume = /\b(?:student|undergraduate|pursuing|bachelor|bsc|bs)\b/i.test(educationText);
+  const isEarlyCareerRole = /\b(?:intern|internship|graduate|junior|entry[ -]?level|trainee)\b/i.test(roleTitle);
+  const projectsCountAsExperience = isStudentResume || isEarlyCareerRole;
+  const employmentEvidence = new Set(resume.experience.map((item) => normalizeGapTerm(item)));
+  const projectEvidence = new Set(resume.projects.map((item) => normalizeGapTerm(item)));
   const experienceApplicable = applicableGaps.filter(
     (item) => !/\b(?:bachelor|degree|mechatronics|electrical|electronics)\b/i.test(item.skill),
   );
   const experienceFraction = experienceApplicable.length === 0
     ? 0
     : experienceApplicable.reduce((total, item) => {
-      const demonstratedInWork = item.evidence.some((evidence) => experienceEvidence.has(normalizeGapTerm(evidence)));
-      if (item.status === 'MATCHED') return total + (demonstratedInWork ? 1 : 0.55);
-      if (item.status === 'PARTIALLY MATCHED') return total + (demonstratedInWork ? 0.5 : 0.25);
+      const inEmployment = item.evidence.some((evidence) => employmentEvidence.has(normalizeGapTerm(evidence)));
+      const inProjects = item.evidence.some((evidence) => projectEvidence.has(normalizeGapTerm(evidence)));
+      const practicalEvidence = inEmployment || (projectsCountAsExperience && inProjects);
+      if (item.status === 'MATCHED') return total + (practicalEvidence ? 1 : 0.5);
+      if (item.status === 'PARTIALLY MATCHED') return total + (practicalEvidence ? 0.55 : 0.25);
       return total;
     }, 0) / experienceApplicable.length;
-  const experienceAlignment = Math.round(experienceFraction * 30);
+  const experienceRelevance = Math.round(experienceFraction * 20);
+
+  const keywordEvidence = new Set([
+    ...resume.skills,
+    ...resume.experience,
+    ...resume.projects,
+    resume.summary,
+  ].map((item) => normalizeGapTerm(item)));
+  const keywordCoverageFraction = applicableGaps.length === 0 ? 0 : applicableGaps.reduce((total, item) => {
+    const exactRequirementMention = keywordEvidence.has(normalizeGapTerm(item.skill));
+    if (item.status === 'MATCHED') return total + (exactRequirementMention ? 1 : 0.8);
+    if (item.status === 'PARTIALLY MATCHED') return total + 0.35;
+    return total;
+  }, 0) / applicableGaps.length;
+  const keywordCoverage = Math.round(keywordCoverageFraction * 15);
+
+  const sectionQualityChecks: [boolean, number, string][] = [
+    [Boolean(resume.summary.trim()), 2, 'targetable summary'],
+    [resume.skills.length >= 3, 2, 'substantive skills section'],
+    [resume.education.length > 0, 2, 'education detail'],
+    [resume.experience.length + resume.projects.length >= 2, 3, 'multiple practical examples'],
+    [resume.certifications.length > 0 || resume.awards.length > 0, 1, 'additional qualification detail'],
+  ];
+  const sectionQualityReasons = sectionQualityChecks.filter(([present]) => present).map(([, , reason]) => reason);
+  const sectionQuality = sectionQualityChecks.reduce((total, [present, points]) => total + (present ? points : 0), 0);
 
   return {
     structure: {
       score: structure,
       reasons: structureReasons,
     },
-    keywordAlignment: {
-      score: keywordAlignment,
+    technicalSkillCoverage: {
+      score: technicalSkillCoverage,
       reasons: [
         `${matched.length} matched requirement${matched.length === 1 ? '' : 's'}`,
         `${partial.length} partially matched`,
         `${missing.length} missing`,
       ],
     },
-    experienceAlignment: {
-      score: experienceAlignment,
-      reasons: [`${experienceApplicable.length} applicable technical requirement${experienceApplicable.length === 1 ? '' : 's'} assessed against experience and projects`],
+    experienceRelevance: {
+      score: experienceRelevance,
+      reasons: [
+        `${experienceApplicable.length} applicable technical requirement${experienceApplicable.length === 1 ? '' : 's'} assessed against employment and projects`,
+        projectsCountAsExperience
+          ? 'projects counted as practical experience for this student or early-career role'
+          : 'projects treated as supporting evidence; employment evidence receives primary credit',
+      ],
     },
-    total: structure + keywordAlignment + experienceAlignment,
+    keywordCoverage: {
+      score: keywordCoverage,
+      reasons: [`${Math.round(keywordCoverageFraction * applicableGaps.length)} requirement${Math.round(keywordCoverageFraction * applicableGaps.length) === 1 ? '' : 's'} explicitly or directly represented in resume content`],
+    },
+    sectionQuality: {
+      score: sectionQuality,
+      reasons: sectionQualityReasons,
+    },
+    total: structure + technicalSkillCoverage + experienceRelevance + keywordCoverage + sectionQuality,
+  };
+}
+
+/** Domain classification replaces generic token overlap for role similarity. */
+function roleDomains(value: string): Set<string> {
+  const normalized = normalizeGapTerm(value);
+  return new Set(
+    Object.entries(RESPONSIBILITY_CONCEPTS)
+      .filter(([, terms]) => terms.some((term) => normalized.includes(normalizeGapTerm(term))))
+      .map(([domain]) => domain),
+  );
+}
+
+function responsibilityFraction(items: ResponsibilityGapItem[]): number {
+  const applicable = items.filter((item) => item.status !== 'NOT APPLICABLE');
+  return applicable.length === 0 ? 0 : applicable.reduce((total, item) =>
+    total + (item.status === 'MATCHED' ? 1 : item.status === 'PARTIALLY MATCHED' ? 0.5 : 0), 0,
+  ) / applicable.length;
+}
+
+/**
+ * Deterministic job-match calculation. Each dimension is derived from the
+ * supplied role profile and parsed resume evidence so different jobs yield
+ * materially different scores and explanations.
+ */
+export function calculateJobMatchScore(
+  resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>,
+  profile: JobProfile,
+  requiredGaps: JobGapAnalysis,
+): JobMatchBreakdown {
+  const required = requiredGaps.items.filter((item) => item.status !== 'NOT APPLICABLE');
+  const preferredGaps = buildJobGapAnalysis(resume, { requiredSkills: profile.preferredSkills }).items
+    .filter((item) => item.status !== 'NOT APPLICABLE');
+  const fraction = (items: JobGapItem[]) => items.length === 0
+    ? 0
+    : items.reduce((total, item) => total + (item.status === 'MATCHED' ? 1 : item.status === 'PARTIALLY MATCHED' ? 0.5 : 0), 0) / items.length;
+  // When no preferred criteria were supplied, their points are reassigned to
+  // required skills. A candidate never receives free preferred-skill credit.
+  const requiredSkillWeight = profile.preferredSkills.length === 0 ? 40 : 30;
+  const preferredSkillWeight = profile.preferredSkills.length === 0 ? 0 : 10;
+  const requiredSkills = Math.round(fraction(required) * requiredSkillWeight);
+  const preferredSkills = Math.round(fraction(preferredGaps) * preferredSkillWeight);
+
+  const experienceEvidence = new Set([...resume.experience, ...resume.projects].map(normalizeGapTerm));
+  const projectEvidence = new Set(resume.projects.map(normalizeGapTerm));
+  const technicalRequirements = required.filter((item) => !/\b(?:bachelor|degree|mechatronics|electrical|electronics)\b/i.test(item.skill));
+  const technicalExperienceFraction = technicalRequirements.length === 0 ? 1 :
+    technicalRequirements.reduce((total, item) => {
+      const inPracticalWork = item.evidence.some((evidence) => experienceEvidence.has(normalizeGapTerm(evidence)));
+      if (item.status === 'MATCHED') return total + (inPracticalWork ? 1 : 0.45);
+      if (item.status === 'PARTIALLY MATCHED') return total + (inPracticalWork ? 0.5 : 0.2);
+      return total;
+    }, 0) / technicalRequirements.length;
+  const responsibilityCoverage = responsibilityFraction(requiredGaps.responsibilities);
+  const requiredExperience = Math.round((technicalExperienceFraction * 0.8 + responsibilityCoverage * 0.2) * 20);
+  const technicalProjectFraction = technicalRequirements.length === 0 ? 1 :
+    technicalRequirements.reduce((total, item) => {
+      const inProject = item.evidence.some((evidence) => projectEvidence.has(normalizeGapTerm(evidence)));
+      return total + (inProject && item.status === 'MATCHED' ? 1 : inProject && item.status === 'PARTIALLY MATCHED' ? 0.5 : 0);
+    }, 0) / technicalRequirements.length;
+  const projectResponsibilityFraction = responsibilityFraction(requiredGaps.responsibilities.map((item) => ({
+    ...item,
+    evidence: item.evidence.filter((evidence) => projectEvidence.has(normalizeGapTerm(evidence))),
+    status: item.evidence.some((evidence) => projectEvidence.has(normalizeGapTerm(evidence))) ? item.status : 'MISSING' as GapStatus,
+  })));
+  const projectRelevance = Math.round((technicalProjectFraction * 0.75 + projectResponsibilityFraction * 0.25) * 10);
+
+  // Responsibilities describe the actual work expected in this job. Their
+  // evidence is therefore the industry-relevance signal, not word coincidence.
+  const industryRelevance = requiredGaps.responsibilities.length === 0
+    ? 5
+    : Math.round(responsibilityCoverage * 10);
+  const jobDomains = roleDomains([profile.title, ...profile.requiredSkills, ...profile.responsibilities].join(' '));
+  const resumeDomains = roleDomains([
+    resume.summary,
+    ...resume.experience,
+    ...resume.projects,
+    ...resume.skills,
+  ].join(' '));
+  const roleSimilarity = jobDomains.size === 0
+    ? 0
+    : Math.round([...jobDomains].filter((domain) => resumeDomains.has(domain)).length / jobDomains.size * 10);
+
+  const educationRequirements = profile.requiredSkills.filter((skill) => /\b(?:bachelor|degree|mechatronics|electrical|electronics|computer science|software engineering)\b/i.test(skill));
+  const educationText = normalizeGapTerm(resume.education.join(' '));
+  const educationAlignment = educationRequirements.length === 0
+    ? (resume.education.length > 0 ? 5 : 0)
+    : Math.round(educationRequirements.reduce((total, requirement) => total + (educationText.includes(normalizeGapTerm(requirement)) ? 1 : 0), 0) / educationRequirements.length * 5);
+
+  const keywordRequirements = [...profile.requiredSkills, ...profile.preferredSkills];
+  const resumeKeywordText = normalizeGapTerm([
+    resume.summary,
+    ...resume.skills,
+    ...resume.experience,
+    ...resume.projects,
+  ].join(' '));
+  const keywordCoverage = keywordRequirements.length === 0 ? 5 : Math.round(
+    keywordRequirements.reduce((total, requirement) => total + (resumeKeywordText.includes(normalizeGapTerm(requirement)) ? 1 : 0), 0) / keywordRequirements.length * 5,
+  );
+  const matchedNames = required.filter((item) => item.status === 'MATCHED').map((item) => item.skill);
+  const partialNames = required.filter((item) => item.status === 'PARTIALLY MATCHED').map((item) => item.skill);
+  const missingNames = required.filter((item) => item.status === 'MISSING').map((item) => item.skill);
+  const matchedResponsibilities = requiredGaps.responsibilities.filter((item) => item.status === 'MATCHED').map((item) => item.responsibility);
+  const missingResponsibilities = requiredGaps.responsibilities.filter((item) => item.status === 'MISSING').map((item) => item.responsibility);
+
+  return {
+    requiredSkills,
+    requiredExperience,
+    preferredSkills,
+    industryRelevance,
+    projectRelevance,
+    roleSimilarity,
+    educationAlignment,
+    keywordCoverage,
+    weights: {
+      requiredSkills: requiredSkillWeight,
+      preferredSkills: preferredSkillWeight,
+      requiredExperience: 20,
+      industryRelevance: 10,
+      projectRelevance: 10,
+      roleSimilarity: 10,
+      educationAlignment: 5,
+      keywordCoverage: 5,
+    },
+    total: requiredSkills + requiredExperience + preferredSkills + industryRelevance + projectRelevance + roleSimilarity + educationAlignment + keywordCoverage,
+    topStrengths: [
+      ...matchedNames.slice(0, 4).map((skill) => `Required skill matched: ${skill}`),
+      ...matchedResponsibilities.slice(0, 2).map((responsibility) => `Role responsibility evidenced: ${responsibility}`),
+      ...(projectRelevance >= 6 ? [`Projects provide practical evidence for the ${profile.title} role.`] : []),
+      ...(industryRelevance >= 6 ? [`Resume context aligns with the role's responsibilities.`] : []),
+    ].slice(0, 5),
+    topGaps: [
+      ...missingNames.slice(0, 4).map((skill) => `Required skill not evidenced: ${skill}`),
+      ...partialNames.slice(0, 3).map((skill) => `Required skill only partially evidenced: ${skill}`),
+      ...missingResponsibilities.slice(0, 2).map((responsibility) => `Role responsibility not evidenced: ${responsibility}`),
+      ...(projectRelevance < 4 && technicalRequirements.length > 0 ? ['Projects do not clearly demonstrate enough target-role requirements.'] : []),
+    ].slice(0, 5),
   };
 }
 
@@ -798,8 +1239,9 @@ function uniqueAssessmentItems(values: string[]): string[] {
 
 /**
  * Keeps the recruiter decision and interview probability reproducible. The AI
- * supplies the recruiter language; scores and gap evidence determine the
- * decision, confidence, and estimated hiring impact.
+ * supplies the recruiter language; the decision uses the independently
+ * calculated ATS and job-match scores, with explicit penalties for documented
+ * blockers. This avoids counting requirement coverage a second time.
  */
 function buildHiringManagerAssessment(
   raw: unknown,
@@ -818,14 +1260,19 @@ function buildHiringManagerAssessment(
   const matched = applicable.filter((item) => item.status === 'MATCHED');
   const partial = applicable.filter((item) => item.status === 'PARTIALLY MATCHED');
   const missing = applicable.filter((item) => item.status === 'MISSING');
-  const coverage = applicable.length ? (matched.length + partial.length * 0.5) / applicable.length : 0;
+  const missingResponsibilities = gapAnalysis.responsibilities.filter((item) => item.status === 'MISSING');
+  const partialResponsibilities = gapAnalysis.responsibilities.filter((item) => item.status === 'PARTIALLY MATCHED');
+  // This is a transparent estimate, not an outcome-calibrated prediction.
+  // Production calibration requires real recruiter outcome data.
+  const blockerPenalty = Math.min(24, missing.length * 6 + missingResponsibilities.length * 3);
+  const partialPenalty = Math.min(10, partial.length * 2 + partialResponsibilities.length);
   const estimatedInterviewProbability = Math.max(0, Math.min(100, Math.round(
-    atsScore * 0.4 + matchScore * 0.3 + coverage * 100 * 0.3,
+    atsScore * 0.3 + matchScore * 0.7 - blockerPenalty - partialPenalty,
   )));
-  const overallDecision: HiringDecision = estimatedInterviewProbability >= 82 ? 'Strong Match'
-    : estimatedInterviewProbability >= 68 ? 'Good Match'
-      : estimatedInterviewProbability >= 52 ? 'Potential Match'
-        : estimatedInterviewProbability >= 36 ? 'Weak Match'
+  const overallDecision: HiringDecision = matchScore >= 82 && missing.length <= 1 ? 'Strong Match'
+    : matchScore >= 68 && missing.length <= 2 ? 'Good Match'
+      : matchScore >= 52 ? 'Potential Match'
+        : matchScore >= 36 ? 'Weak Match'
           : 'Poor Match';
   const confidence: HiringManagerAssessment['confidence'] = applicable.length >= 3 && (resume.experience.length + resume.projects.length) >= 3
     ? 'High'
@@ -916,17 +1363,20 @@ export function buildKeywordRecommendations(
       ? 'Critical'
       : source === 'required' || appearsRepeatedly
         ? 'Important'
-        : 'Optional';
+        : 'Nice-to-Have';
     const recommendedSection: KeywordRecommendation['recommendedSection'] = item.evidence.some((evidence) => experienceEvidence.has(normalizeGapTerm(evidence)))
       ? 'Experience'
       : item.evidence.some((evidence) => projectEvidence.has(normalizeGapTerm(evidence)))
         ? 'Projects'
         : 'Skills';
+    const evidenceContext = item.status === 'PARTIALLY MATCHED'
+      ? ` The resume partially demonstrates this through ${item.evidence.slice(0, 2).join('; ')}; make that connection explicit only if accurate.`
+      : ` Do not add it unless you can support it with genuine coursework, project work, or practical exposure.`;
     const whyItMatters = source === 'required'
       ? item.status === 'MISSING'
-        ? `${item.skill} is required for the ${title} role and is not evidenced in the resume.`
-        : `${item.skill} is required for the ${title} role, but the resume shows only related evidence rather than an explicit match.`
-      : `${item.skill} is preferred for the ${title} role and is not strongly represented in the resume.`;
+        ? `${item.skill} is required for the ${title} role and is not evidenced in the resume.${evidenceContext}`
+        : `${item.skill} is required for the ${title} role, but the resume shows only related evidence rather than an explicit match.${evidenceContext}`
+      : `${item.skill} is preferred for the ${title} role and is not strongly represented in the resume.${evidenceContext}`;
     return { keyword: item.skill, priority, whyItMatters, recommendedSection };
   };
 
@@ -934,8 +1384,39 @@ export function buildKeywordRecommendations(
     ...requiredGapAnalysis.items.map((item) => toRecommendation(item, 'required')),
     ...preferredGapAnalysis.items.map((item) => toRecommendation(item, 'preferred')),
   ].filter((item): item is KeywordRecommendation => Boolean(item));
-  const priorityRank = { Critical: 0, Important: 1, Optional: 2 } as const;
+  const priorityRank = { Critical: 0, Important: 1, 'Nice-to-Have': 2 } as const;
   return recommendations.sort((left, right) => priorityRank[left.priority] - priorityRank[right.priority] || left.keyword.localeCompare(right.keyword));
+}
+
+/** Produces recruiter-facing strengths only from matched or related job-gap evidence. */
+export function buildRoleStrengths(
+  resume: StructuredResume,
+  job: { title?: unknown },
+  gapAnalysis: JobGapAnalysis,
+): string[] {
+  const title = typeof job.title === 'string' && job.title.trim() ? job.title.trim() : 'target role';
+  const experienceEvidence = new Set(resume.experience.map((item) => normalizeGapTerm(item)));
+  const projectEvidence = new Set(resume.projects.map((item) => normalizeGapTerm(item)));
+  const strengths: string[] = [];
+
+  for (const item of gapAnalysis.items) {
+    // Partial requirements are intentionally reserved for missing-keyword and
+    // improvement guidance so this positive section never repeats them.
+    if (item.status !== 'MATCHED') continue;
+    for (const evidence of item.evidence) {
+      const normalizedEvidence = normalizeGapTerm(evidence);
+      const section = experienceEvidence.has(normalizedEvidence)
+        ? 'Experience'
+        : projectEvidence.has(normalizedEvidence)
+          ? 'Projects'
+          : 'Skills or Education';
+      strengths.push(
+        `The ${section} evidence “${evidence}” demonstrates ${item.skill}, directly matching the ${title} role's requirement.`,
+      );
+    }
+  }
+
+  return uniqueAssessmentItems(strengths).slice(0, 10);
 }
 
 function sanitizeContentArray(value: unknown): string[] {
@@ -992,68 +1473,6 @@ function validateAndCleanKeywords(keywords: string[]): string[] {
       seen.add(lower);
       result.push(cleaned);
     }
-  }
-
-  return result;
-}
-
-function cleanRewrittenBullets(
-  improvedBullets: { before: string; after: string }[],
-  resumeText: string
-): { before: string; after: string }[] {
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-  const urlRegex = /https?:\/\/[^\s()<>]+/gi;
-  const linkedinRegex = /linkedin/i;
-
-  const result: { before: string; after: string }[] = [];
-  const resumeLower = resumeText.toLowerCase();
-
-  for (const pair of improvedBullets) {
-    if (!pair || !pair.before || !pair.after) continue;
-    let after = pair.after.trim();
-
-    // 1. Check for email, URL, or LinkedIn in 'after' bullet
-    const hasEmail = emailRegex.test(after);
-    const hasUrl = urlRegex.test(after);
-    const hasLinkedIn = linkedinRegex.test(after);
-
-    if (hasEmail || hasUrl || hasLinkedIn) {
-      after = pair.before;
-    }
-
-    // 2. Hallucination Guard: Ensure no numbers/percentages are fabricated
-    const numRegex = /\b\d+(?:\.\d+)?%?\b/g;
-    let match;
-    let sanitizedAfter = after;
-    numRegex.lastIndex = 0;
-    while ((match = numRegex.exec(after)) !== null) {
-      const numStr = match[0];
-      if (!resumeText.includes(numStr)) {
-        if (numStr.endsWith('%')) {
-          sanitizedAfter = sanitizedAfter.replace(numStr, '[X]%');
-        } else {
-          sanitizedAfter = sanitizedAfter.replace(numStr, '[X]');
-        }
-      }
-    }
-
-    // 3. Grounding Guard: Capitalized Proper Nouns not in resume
-    const words = sanitizedAfter.match(/\b[A-Z][a-zA-Z0-9+#.-]*\b/g) || [];
-    let isFabricated = false;
-    for (const word of words) {
-      const commonWords = new Set(['The', 'A', 'An', 'I', 'Led', 'Developed', 'Delivered', 'Optimized', 'Implemented', 'Designed', 'Built', 'Created', 'Managed', 'In', 'On', 'At', 'With', 'By', 'For', 'And']);
-      if (commonWords.has(word)) continue;
-      if (!resumeLower.includes(word.toLowerCase())) {
-        isFabricated = true;
-        break;
-      }
-    }
-
-    if (isFabricated) {
-      sanitizedAfter = pair.before;
-    }
-
-    result.push({ before: pair.before, after: sanitizedAfter });
   }
 
   return result;
@@ -1147,7 +1566,7 @@ function deduplicateAndPlanSuggestions(analysis: {
 // NORMALIZATION LAYER
 // ---------------------------------------------------------------------------
 
-function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysisFull {
+function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
   const o = raw || {};
   const parsed = o.parsed || {
     name: '',
@@ -1204,7 +1623,7 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
         const priority = candidate.priority;
         const recommendedSection = candidate.recommendedSection;
         if (!keyword || !whyItMatters
-          || !['Critical', 'Important', 'Optional'].includes(String(priority))
+          || !['Critical', 'Important', 'Nice-to-Have'].includes(String(priority))
           || !['Skills', 'Experience', 'Projects'].includes(String(recommendedSection))) return [];
         return [{
           keyword,
@@ -1247,7 +1666,10 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
     formattingSuggestions: mapWithConfidence(o.formattingSuggestions),
     formattingIssues: mapWithConfidence(o.formattingIssues),
     weakBullets: arr(o.weakBullets),
-    improvedBulletPoints: cleanRewrittenBullets(bullets, resumeText),
+    // Rewrites have already passed the central validation layer. Do not run a
+    // second, divergent sanitizer that can turn a rejected rewrite into an
+    // unchanged bullet and make it appear as a valid suggestion.
+    improvedBulletPoints: bullets,
     improvementSuggestions: mapWithConfidence(o.improvementSuggestions),
     optimizationRecommendations: mapWithConfidence(o.optimizationRecommendations),
     atsIssues: mapWithConfidence(o.atsIssues),
@@ -1272,11 +1694,12 @@ function normalizeResumeAnalysis(raw: any, resumeText: string): AiResumeAnalysis
       partialMatches: arr(jobMatchExplanation.partialMatches),
       missingSkills: arr(jobMatchExplanation.missingSkills),
     },
+    roleStrengths: arr(o.roleStrengths),
     hiringManagerAssessment: o.hiringManagerAssessment as HiringManagerAssessment,
   };
 
   if (result.atsScoreExplanation.strengths.length === 0) {
-    result.atsScoreExplanation.strengths = result.detectedSections.map((section) => `Detected ${section} section`);
+    result.atsScoreExplanation.strengths = result.roleStrengths;
   }
   if (result.atsScoreExplanation.missingElements.length === 0) {
     result.atsScoreExplanation.missingElements = result.missingSections;
@@ -1486,9 +1909,16 @@ export async function analyzeResumeWithAi(
   }
 
   parsedJson.resume = mergeParsedResume(parsedJson.resume, localResume);
-  const gapAnalysis = buildJobGapAnalysis(parsedJson.resume, parsedJson.job);
-  const atsBreakdown = calculateJobSpecificAtsScore(parsedJson.resume, gapAnalysis);
+  parsedJson.job = validateAndEnrichParsedJob(parsedJson.job, jobDescription);
+  const jobProfile = buildJobProfile(parsedJson.job);
+  const gapAnalysis = buildJobGapAnalysis(parsedJson.resume, jobProfile);
+  const atsBreakdown = calculateJobSpecificAtsScore(parsedJson.resume, gapAnalysis, jobProfile);
+  const jobMatchBreakdown = calculateJobMatchScore(parsedJson.resume, jobProfile, gapAnalysis);
   logAiEvent(observability, 'gap_analysis_completed', {
+    jobTitlePresent: Boolean(jobProfile.title),
+    requiredSkillCount: jobProfile.requiredSkills.length,
+    preferredSkillCount: jobProfile.preferredSkills.length,
+    responsibilityCount: jobProfile.responsibilities.length,
     matched: gapAnalysis.items.filter((item) => item.status === 'MATCHED').length,
     partiallyMatched: gapAnalysis.items.filter((item) => item.status === 'PARTIALLY MATCHED').length,
     missing: gapAnalysis.items.filter((item) => item.status === 'MISSING').length,
@@ -1511,6 +1941,7 @@ export async function analyzeResumeWithAi(
   const analysisUserContent = JSON.stringify({
     resume: safeResumeForAnalysis,
     job: parsedJson.job,
+    jobProfile,
     gapAnalysis,
   }, null, 2);
 
@@ -1523,7 +1954,8 @@ export async function analyzeResumeWithAi(
       preferredSkills: parsedJson.job.preferredSkills,
       responsibilities: parsedJson.job.responsibilities,
     },
-    jobGapFocus: gapAnalysis.items.map(({ skill, status }) => ({ skill, status })),
+    rewritePriorities: jobProfile.priorities,
+    jobGapFocus: gapAnalysis.items.map(({ skill, status, evidence }) => ({ skill, status, evidence })),
   }, null, 2);
 
   console.info('[pipeline] Running Step 2 & 3: Parallel Analyzer and Rewriter');
@@ -1565,9 +1997,9 @@ export async function analyzeResumeWithAi(
     .map((item) => item.skill);
   const deterministicAtsExplanation = {
     whatIncreasedScore: [
-      `Resume Structure: ${atsBreakdown.structure.score}/30 — ${atsBreakdown.structure.reasons.join(', ') || 'no standard sections detected'}.`,
-      `Keyword Alignment: ${atsBreakdown.keywordAlignment.score}/40 — ${atsBreakdown.keywordAlignment.reasons.join(', ')}.`,
-      `Experience Alignment: ${atsBreakdown.experienceAlignment.score}/30 — ${atsBreakdown.experienceAlignment.reasons.join(', ')}.`,
+      `Resume Structure and Section Quality: ${atsBreakdown.structure.score}/25 and ${atsBreakdown.sectionQuality.score}/10 — ${atsBreakdown.structure.reasons.join(', ') || 'no standard sections detected'}; ${atsBreakdown.sectionQuality.reasons.join(', ') || 'limited supporting section detail'}.`,
+      `Technical Skill and Keyword Coverage: ${atsBreakdown.technicalSkillCoverage.score}/30 and ${atsBreakdown.keywordCoverage.score}/15 — ${atsBreakdown.technicalSkillCoverage.reasons.join(', ')}; ${atsBreakdown.keywordCoverage.reasons.join(', ')}.`,
+      `Experience Relevance: ${atsBreakdown.experienceRelevance.score}/20 — ${atsBreakdown.experienceRelevance.reasons.join(', ')}.`,
     ],
     whatReducedScore: [
       ...(missingStructure.length ? [`Resume Structure lost points because ${missingStructure.join(', ')} ${missingStructure.length === 1 ? 'is' : 'are'} absent.`] : []),
@@ -1575,21 +2007,36 @@ export async function analyzeResumeWithAi(
       ...(weakExperienceSkills.length ? [`Experience Alignment lost points because ${weakExperienceSkills.join(', ')} ${weakExperienceSkills.length === 1 ? 'is' : 'are'} not demonstrated in Experience or Projects.`] : []),
     ],
   };
+  const deterministicJobMatchExplanation = {
+    strongMatches: jobMatchBreakdown.topStrengths,
+    partialMatches: [
+      `Required Skills: ${jobMatchBreakdown.requiredSkills}/${jobMatchBreakdown.weights.requiredSkills}; Required Experience: ${jobMatchBreakdown.requiredExperience}/${jobMatchBreakdown.weights.requiredExperience}; Preferred Skills: ${jobMatchBreakdown.preferredSkills}/${jobMatchBreakdown.weights.preferredSkills}.`,
+      `Industry Relevance: ${jobMatchBreakdown.industryRelevance}/${jobMatchBreakdown.weights.industryRelevance}; Project Relevance: ${jobMatchBreakdown.projectRelevance}/${jobMatchBreakdown.weights.projectRelevance}; Role Similarity: ${jobMatchBreakdown.roleSimilarity}/${jobMatchBreakdown.weights.roleSimilarity}.`,
+      `Education Alignment: ${jobMatchBreakdown.educationAlignment}/${jobMatchBreakdown.weights.educationAlignment}; Keyword Coverage: ${jobMatchBreakdown.keywordCoverage}/${jobMatchBreakdown.weights.keywordCoverage}.`,
+    ],
+    missingSkills: jobMatchBreakdown.topGaps,
+  };
+  // Keyword and missing-skill fields are derived from the same deterministic
+  // gap analysis that drives ATS, Job Match, and recommendations. Model-sent
+  // keyword lists are intentionally not allowed to become a second source.
+  const deterministicExistingSkills = gapAnalysis.items
+    .filter((item) => item.status === 'MATCHED')
+    .map((item) => item.skill);
+  const deterministicMissingSkills = gapAnalysis.items
+    .filter((item) => item.status === 'MISSING')
+    .map((item) => item.skill);
 
   // Combine and validate final structure
   const combinedRaw = {
     parsed: parsedJson.resume,
     atsScore: atsBreakdown.total,
-    matchScore: requiredScore(analysisJson.matchScore, 'matchScore'),
-    existingSkills: analysisJson.existingSkills || [],
-    missingSkills: analysisJson.missingSkills || analysisJson.missingKeywords || [],
-    missingKeywords: analysisJson.missingSkills || analysisJson.missingKeywords || [],
-    keywordSuggestions: analysisJson.keywordSuggestions || [],
-    keywordGaps: analysisJson.keywordGaps || [],
-    missingRequiredSkills: [
-      ...(analysisJson.missingRequiredSkills || []),
-      ...gapAnalysis.items.filter((item) => item.status === 'MISSING').map((item) => item.skill),
-    ],
+    matchScore: jobMatchBreakdown.total,
+    existingSkills: deterministicExistingSkills,
+    missingSkills: deterministicMissingSkills,
+    missingKeywords: deterministicMissingSkills,
+    keywordSuggestions: [],
+    keywordGaps: [],
+    missingRequiredSkills: deterministicMissingSkills,
     detectedSections: analysisJson.detectedSections || [],
     missingSections: analysisJson.missingSections || [],
     formattingIssues: analysisJson.formattingIssues || [],
@@ -1610,7 +2057,21 @@ export async function analyzeResumeWithAi(
         ...((analysisJson.atsScoreExplanation?.whatReducedScore) || []),
       ],
     },
-    jobMatchExplanation: analysisJson.jobMatchExplanation || {},
+    jobMatchExplanation: {
+      ...(analysisJson.jobMatchExplanation || {}),
+      strongMatches: [
+        ...deterministicJobMatchExplanation.strongMatches,
+        ...((analysisJson.jobMatchExplanation?.strongMatches) || []),
+      ],
+      partialMatches: [
+        ...deterministicJobMatchExplanation.partialMatches,
+        ...((analysisJson.jobMatchExplanation?.partialMatches) || []),
+      ],
+      missingSkills: [
+        ...deterministicJobMatchExplanation.missingSkills,
+        ...((analysisJson.jobMatchExplanation?.missingSkills) || []),
+      ],
+    },
     hiringManagerAssessment: analysisJson.hiringManagerAssessment,
   };
 
@@ -1635,7 +2096,7 @@ export async function analyzeResumeWithAi(
 
   let planned: Record<string, any>;
   try {
-    planned = planResumeRecommendations(rankMissingSkills(validated, jobDescription), resumeText, gapAnalysis);
+    planned = planResumeRecommendations(rankMissingSkills(validated, jobDescription), resumeText, gapAnalysis, jobProfile.title);
   } catch (error) {
     console.error('[pipeline] planner failed', {
       errorType: error instanceof Error ? error.name : 'unknown',
@@ -1652,23 +2113,24 @@ export async function analyzeResumeWithAi(
 
   planned.keywordRecommendations = buildKeywordRecommendations(
     parsedJson.resume,
-    parsedJson.job,
+    jobProfile,
     jobDescription,
     gapAnalysis,
   );
+  planned.roleStrengths = buildRoleStrengths(parsedJson.resume, jobProfile, gapAnalysis);
   planned.hiringManagerAssessment = buildHiringManagerAssessment(
     analysisJson.hiringManagerAssessment,
     parsedJson.resume,
     parsedJson.job,
     gapAnalysis,
     atsBreakdown.total,
-    requiredScore(analysisJson.matchScore, 'matchScore'),
+    jobMatchBreakdown.total,
     resumeText,
     jobDescription,
     planned,
   );
 
-  const result = normalizeResumeAnalysis(planned, resumeText);
+  const result = normalizeResumeAnalysis(planned);
   logAiEvent(observability, 'pipeline_completed', {
     totalDurationMs: observability ? Date.now() - observability.startedAt : null,
   });

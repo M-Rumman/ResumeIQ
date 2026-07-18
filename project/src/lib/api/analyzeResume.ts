@@ -31,7 +31,7 @@ export interface AiResumeAnalysis {
   missingKeywords: string[];
   keywordRecommendations: {
     keyword: string;
-    priority: 'Critical' | 'Important' | 'Optional';
+    priority: 'Critical' | 'Important' | 'Nice-to-Have';
     whyItMatters: string;
     recommendedSection: 'Skills' | 'Experience' | 'Projects';
   }[];
@@ -63,6 +63,7 @@ export interface AiResumeAnalysis {
     partialMatches: string[];
     missingSkills: string[];
   };
+  roleStrengths: string[];
   hiringManagerAssessment: {
     overallDecision: 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
     recruiterSummary: string;

@@ -154,7 +154,8 @@ function prioritizeRecommendations(output: Record<string, any>): RecommendationP
 export function planResumeRecommendations(
   raw: Record<string, any>,
   resumeText: string,
-  gapAnalysis?: { items?: { skill?: unknown; status?: unknown }[] },
+  gapAnalysis?: { items?: { skill?: unknown; status?: unknown; evidence?: unknown }[] },
+  jobTitle = 'target role',
 ): Record<string, any> {
   const output = { ...raw };
   const seen: string[] = [];
@@ -172,6 +173,32 @@ export function planResumeRecommendations(
     ...(Array.isArray(output.missingRequiredSkills) ? output.missingRequiredSkills : []),
     ...missingFromGap,
   ];
+
+  // Deterministic gaps always lead the job-specific list. This makes an
+  // interview blocker impossible to bury behind generic wording or format
+  // polish; model observations remain afterward and are semantically deduped.
+  if (Array.isArray(gapAnalysis?.items)) {
+    const gapRecommendations = [...gapAnalysis.items]
+      .sort((left, right) => {
+        const rank = (status: unknown) => status === 'MISSING' ? 0 : status === 'PARTIALLY MATCHED' ? 1 : 2;
+        return rank(left?.status) - rank(right?.status);
+      })
+      .flatMap((item) => {
+      const skill = typeof item?.skill === 'string' ? item.skill.trim() : '';
+      const evidence = Array.isArray(item?.evidence)
+        ? item.evidence.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).slice(0, 2)
+        : [];
+      if (!skill || item?.status === 'NOT APPLICABLE' || item?.status === 'MATCHED') return [];
+      if (item?.status === 'PARTIALLY MATCHED') {
+        return [`The ${jobTitle} role requires ${skill}. Your resume shows related evidence in ${evidence.join('; ') || 'the Skills, Experience, or Projects sections'}, but does not explicitly demonstrate ${skill}, so a recruiter cannot confirm this required capability.`];
+      }
+      return [`The ${jobTitle} role requires ${skill}. Your Skills, Experience, and Projects sections do not provide evidence of ${skill}, leaving a recruiter unable to verify this required capability; add only genuine coursework, project work, or practical exposure.`];
+    });
+    output.improvementSuggestions = [
+      ...gapRecommendations,
+      ...(Array.isArray(output.improvementSuggestions) ? output.improvementSuggestions : []),
+    ];
+  }
 
   for (const field of RECOMMENDATION_FIELDS) {
     output[field] = retainUniqueRecommendations(output[field], seen, resumeText);

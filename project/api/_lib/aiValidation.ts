@@ -31,6 +31,7 @@ const KEYWORD_FRAGMENT_PATTERNS = [
 ];
 const MISSING_SKILL_ACTION_PATTERN = /\b(?:add|mention|include|highlight|emphasize|demonstrate|show|address)\b/i;
 const TECHNICAL_REQUIREMENT_SIGNAL = /\b(?:api|architecture|automation|cad|circuit|cloud|database|design|development|docker|embedded|firmware|framework|hardware|integration|kubernetes|library|microcontroller|platform|programming|protocol|security|simulation|software|testing|tool|validation)\b|\b(?:aws|azure|gcp|react|angular|vue|node|python|java|typescript|javascript|c\+\+|c#|sql|stm32|esp32|arduino|ros|ltspice|proteus)\b|[+#\d]/i;
+const GENERIC_JOB_WORDS = new Set(['about', 'and', 'candidate', 'company', 'description', 'experience', 'for', 'from', 'have', 'job', 'role', 'skills', 'the', 'this', 'with', 'work', 'your']);
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -131,6 +132,19 @@ function isGroundedRecommendation(value: string, resumeText: string, jobDescript
   return terms.some((word) => source.has(word));
 }
 
+/** Formatting/polish advice must still explain why it matters for this job. */
+function isJobSpecificFormattingRecommendation(value: string, resumeText: string, jobDescription: string): boolean {
+  if (candidateMissingJobRequirement(value, resumeText, jobDescription)) return true;
+  const recommendationTerms = new Set((value.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 3));
+  const jobTerms = new Set((jobDescription.toLowerCase().match(/[a-z0-9+#]+/g) || [])
+    .filter((word) => word.length >= 3 && !GENERIC_JOB_WORDS.has(word)));
+  const resumeTerms = sourceWords(resumeText);
+  const mentionsJobEvidence = [...recommendationTerms].some((word) => jobTerms.has(word));
+  const mentionsResumeEvidence = [...recommendationTerms].some((word) => resumeTerms.has(word))
+    || /\b(?:summary|experience|projects?|skills?|education|certifications?|section|bullet)\b/i.test(value);
+  return mentionsJobEvidence && mentionsResumeEvidence;
+}
+
 function recommendationRejectionReason(value: string, resumeText: string, jobDescription: string): string {
   if (!value) return 'empty';
   if (hasSensitiveContent(value)) return 'sensitive_content';
@@ -169,6 +183,7 @@ function validateRecommendationGroups(
   telemetry?: ValidationTelemetry,
 ): void {
   const fields = ['atsIssues', 'improvementSuggestions', 'formattingIssues', 'formattingSuggestions', 'optimizationRecommendations'];
+  const formattingFields = new Set(['formattingIssues', 'formattingSuggestions', 'optimizationRecommendations']);
   const accepted: string[] = [];
 
   for (const field of fields) {
@@ -180,6 +195,13 @@ function validateRecommendationGroups(
           telemetry.rejectedRecommendations += 1;
           const reason = recommendationRejectionReason(text, resumeText, jobDescription);
           telemetry.rejectionReasons[reason] = (telemetry.rejectionReasons[reason] || 0) + 1;
+        }
+        return false;
+      }
+      if (formattingFields.has(field) && !isJobSpecificFormattingRecommendation(text, resumeText, jobDescription)) {
+        if (telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          telemetry.rejectionReasons.not_job_specific = (telemetry.rejectionReasons.not_job_specific || 0) + 1;
         }
         return false;
       }
@@ -250,7 +272,9 @@ function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
     const after = typeof pair.after === 'string' ? pair.after.trim() : '';
     if (!before || !after || !source.includes(normalize(before))) continue;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
-    if (hasInventedMetric(after, resumeText) || hasInventedNamedTerm(after, resumeText)) continue;
+    // A rewrite may use only technologies, metrics, and named terms supported
+    // by its own source bullet; evidence elsewhere in the resume is not enough.
+    if (hasInventedMetric(after, before) || hasInventedNamedTerm(after, before)) continue;
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
     accepted.push({ before, after });
   }
