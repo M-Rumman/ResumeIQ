@@ -22,6 +22,27 @@ interface HomePageProps {
   onNavigate: (page: string) => void;
 }
 
+const RESUME_INSIGHTS = [
+  'Your resume is the first thing recruiters see.',
+  'Tailor your resume for every job application.',
+  'ATS systems scan resumes before recruiters do.',
+  'Recruiters often spend only seconds on an initial resume review.',
+  'A well-written summary can immediately capture attention.',
+  'Missing keywords can prevent your resume from reaching a recruiter.',
+  'Projects can be just as valuable as work experience for students.',
+  'Strong action verbs make achievements more impactful.',
+  'Quantifying accomplishments increases credibility.',
+  'Generic resumes rarely perform well in competitive hiring.',
+  'A clean layout improves readability for both ATS systems and recruiters.',
+  'Interview preparation should begin before you receive an invitation.',
+  'Matching the job description improves your chances of shortlisting.',
+  'Technical skills should reflect the position you are applying for.',
+  'Every bullet point should demonstrate value, not only responsibilities.',
+  'Clear section headings make your experience easier to evaluate.',
+  'Relevant experience should appear before less related details.',
+  'Proofread every application before submitting it.',
+] as const;
+
 export default function HomePage({ onNavigate }: HomePageProps) {
   const [testimonialName, setTestimonialName] = useState('');
   const [testimonial, setTestimonial] = useState('');
@@ -175,6 +196,34 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         </div>
       </section>
 
+      {/* Resume Insights */}
+      <section className="py-16 lg:py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <ScrollReveal className="text-center mb-12">
+            <p className="section-label mb-3">Career guidance</p>
+            <h2 className="text-4xl lg:text-5xl text-primary">Resume Insights</h2>
+            <p className="mt-4 text-lg text-body max-w-2xl mx-auto">
+              Practical reminders to help every application make a stronger first impression.
+            </p>
+          </ScrollReveal>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {RESUME_INSIGHTS.map((insight, index) => (
+              <ScrollReveal
+                key={insight}
+                className="glass-card-interactive min-h-[160px] p-6 flex items-center justify-center text-center"
+              >
+                <div className="flex flex-col items-center gap-4">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f4f7f9] text-xs font-extrabold text-[#3c4a59]">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <p className="text-base font-semibold leading-relaxed text-primary">{insight}</p>
+                </div>
+              </ScrollReveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
       <section className="py-16 lg:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -262,7 +311,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
               <h2 className="text-3xl lg:text-4xl text-primary">
                 Unlimited analyses, exports, and full history
               </h2>
-              <p className="text-base text-primary leading-relaxed max-w-lg">
+              <p className={`text-base leading-relaxed max-w-lg ${proActive ? 'text-gray-900 font-medium' : 'text-primary'}`}>
                 {proActive
                   ? 'Your Pro subscription is active — unlimited resume optimization and interview prep.'
                   : `Upgrade to Pro for ${PRO_SUBSCRIPTION.priceDisplay}${PRO_SUBSCRIPTION.period} — unlimited resume optimization and interview prep.`}
