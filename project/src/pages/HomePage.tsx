@@ -209,8 +209,8 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal className="text-center mb-12">
             <p className="section-label mb-3">Career guidance</p>
-            <h2 className="text-4xl lg:text-5xl text-[#1A2035]">Resume Insights</h2>
-            <p className="mt-4 text-lg text-[#1A2035] max-w-2xl mx-auto">
+            <h2 className="text-4xl lg:text-5xl" style={{ color: '#1A2035' }}>Resume Insights</h2>
+            <p className="mt-4 text-lg max-w-2xl mx-auto" style={{ color: '#1A2035' }}>
               Practical reminders to help every application make a stronger first impression.
             </p>
           </ScrollReveal>
@@ -221,7 +221,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
                 className="h-full"
               >
                 <div className={`glass-card-interactive h-full min-h-[160px] p-6 flex items-center justify-center text-center transition-transform duration-300 hover:-translate-y-1 hover:rotate-0 ${INSIGHT_TILT_CLASSES[index]}`}>
-                  <p className="text-base font-semibold leading-relaxed text-[#1A2035]">{insight}</p>
+                  <p className="text-base font-semibold leading-relaxed" style={{ color: '#1A2035' }}>{insight}</p>
                 </div>
               </ScrollReveal>
             ))}
