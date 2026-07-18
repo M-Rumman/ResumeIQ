@@ -11,9 +11,12 @@ export type ResumeDisplayResults = {
   atsScore: number;
   matchScore: number;
   missingKeywords: string[];
+  keywordRecommendations: AiResumeAnalysis['keywordRecommendations'];
   detectedSections: string[];
   missingSections: string[];
   improvements: ImprovementItem[];
+  jobSpecificImprovements: ImprovementItem[];
+  generalResumeImprovements: ImprovementItem[];
   formattingSuggestions: string[];
   bulletSuggestions: BulletPair[];
   parsed: AiResumeAnalysis['parsed'];
@@ -22,10 +25,10 @@ export type ResumeDisplayResults = {
   engine: AiResumeAnalysis;
 };
 
-function buildImprovements(ai: AiResumeAnalysis): ImprovementItem[] {
+function buildJobSpecificImprovements(ai: AiResumeAnalysis): ImprovementItem[] {
   const items: ImprovementItem[] = [];
 
-  for (const text of ai.improvementSuggestions || ai.optimizationRecommendations || []) {
+  for (const text of ai.improvementSuggestions || []) {
     items.push({ type: 'info', text });
   }
   for (const text of ai.atsIssues || []) {
@@ -40,25 +43,34 @@ function buildImprovements(ai: AiResumeAnalysis): ImprovementItem[] {
   if (ai.missingRequiredSkills?.length) {
     items.push({
       type: 'error',
-      text: `Missing required skills: ${ai.missingRequiredSkills.slice(0, 8).join(', ')}`,
+      text: `Required by the target job but not evidenced in the resume: ${ai.missingRequiredSkills.slice(0, 8).join(', ')}`,
     });
   }
   if (ai.keywordGaps?.length) {
     items.push({
       type: 'info',
-      text: `Keyword gaps vs job description: ${ai.keywordGaps.slice(0, 10).join(', ')}`,
-    });
-  }
-  if (ai.detectedSections?.length) {
-    items.push({
-      type: 'success',
-      text: `Strong sections detected: ${ai.detectedSections.join(', ')}`,
+      text: `Target-job terms not evidenced in the resume: ${ai.keywordGaps.slice(0, 10).join(', ')}`,
     });
   }
 
-  return items.length > 0
-    ? items
-    : [{ type: 'info', text: 'Review the recommendations below to strengthen your resume.' }];
+  return items;
+}
+
+function buildGeneralResumeImprovements(ai: AiResumeAnalysis): ImprovementItem[] {
+  const items: ImprovementItem[] = [];
+  for (const text of ai.optimizationRecommendations || []) {
+    items.push({ type: 'info', text });
+  }
+  for (const text of ai.formattingIssues || []) {
+    items.push({ type: 'warning', text });
+  }
+  for (const text of ai.formattingSuggestions || []) {
+    items.push({ type: 'info', text });
+  }
+  for (const text of ai.weakBullets || []) {
+    items.push({ type: 'warning', text: `Weak bullet: ${text}` });
+  }
+  return items;
 }
 
 function mergeFormattingSuggestions(ai: AiResumeAnalysis): string[] {
@@ -83,13 +95,18 @@ function bulletsFromAi(ai: AiResumeAnalysis): BulletPair[] {
 }
 
 function mapAiResumeCore(ai: AiResumeAnalysis): ResumeDisplayResults {
+  const jobSpecificImprovements = buildJobSpecificImprovements(ai);
+  const generalResumeImprovements = buildGeneralResumeImprovements(ai);
   return {
     atsScore: ai.atsScore,
     matchScore: ai.matchScore,
     missingKeywords: mergeKeywords(ai),
+    keywordRecommendations: ai.keywordRecommendations || [],
     detectedSections: ai.detectedSections || [],
     missingSections: ai.missingSections || [],
-    improvements: buildImprovements(ai),
+    improvements: [...jobSpecificImprovements, ...generalResumeImprovements],
+    jobSpecificImprovements,
+    generalResumeImprovements,
     formattingSuggestions: mergeFormattingSuggestions(ai),
     bulletSuggestions: bulletsFromAi(ai),
     parsed: ai.parsed,

@@ -4,6 +4,7 @@ import { cleanResumeExtractionArtifacts, parseResumeText } from '../../api/_lib/
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
+import { buildJobGapAnalysis, buildKeywordRecommendations, calculateJobSpecificAtsScore } from '../../api/_lib/openrouter.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -78,6 +79,28 @@ const tests: TestCase[] = [
         'Circuit Validation',
         'Technical Documentation',
       ]);
+    },
+  },
+  {
+    name: 'ranks keyword suggestions and excludes strongly represented skills',
+    run: () => {
+      const resume = parseResumeText(fixtures.embeddedGapResume);
+      const job = {
+        title: 'Embedded Systems Intern',
+        requiredSkills: ['Arduino', 'STM32', 'Firmware Development', 'PCB Testing'],
+        preferredSkills: ['Technical Documentation'],
+      };
+      const requiredGaps = buildJobGapAnalysis(resume, job);
+      const suggestions = buildKeywordRecommendations(
+        resume,
+        job,
+        'Required: STM32, Firmware Development, and PCB Testing. STM32 experience is required. Technical Documentation is preferred.',
+        requiredGaps,
+      );
+      assert.equal(suggestions.some((item) => item.keyword === 'Arduino'), false);
+      assert.deepEqual(suggestions.map((item) => item.priority), ['Critical', 'Important', 'Important', 'Optional']);
+      assert.equal(suggestions.find((item) => item.keyword === 'STM32')?.recommendedSection, 'Projects');
+      assert.match(suggestions.find((item) => item.keyword === 'PCB Testing')?.whyItMatters || '', /required/i);
     },
   },
   {
@@ -207,6 +230,41 @@ const tests: TestCase[] = [
         'Use consistent formatting in the Experience section.',
         'Move the skills section above education.',
       ]);
+    },
+  },
+  {
+    name: 'builds a required-skill gap analysis before recommendations',
+    run: () => {
+      const resume = parseResumeText(fixtures.embeddedGapResume);
+      const gap = buildJobGapAnalysis(resume, {
+        requiredSkills: ['C/C++', 'Microcontrollers', 'Firmware Development', 'PCB Testing', 'Circuit Validation', 'Not Applicable'],
+      });
+      const statusFor = (skill: string) => gap.items.find((item) => item.skill === skill)?.status;
+      assert.equal(statusFor('C/C++'), 'MATCHED');
+      assert.equal(statusFor('Microcontrollers'), 'MATCHED');
+      assert.equal(statusFor('Firmware Development'), 'PARTIALLY MATCHED');
+      assert.equal(statusFor('PCB Testing'), 'MISSING');
+      assert.equal(statusFor('Circuit Validation'), 'PARTIALLY MATCHED');
+      assert.equal(statusFor('Not Applicable'), 'NOT APPLICABLE');
+      assert.match(gap.items.find((item) => item.skill === 'Firmware Development')?.recommendation || '', /only if/i);
+    },
+  },
+  {
+    name: 'calculates ATS from structure keywords and experience for the supplied job',
+    run: () => {
+      const resume = parseResumeText(fixtures.embeddedGapResume);
+      const alignedGap = buildJobGapAnalysis(resume, {
+        requiredSkills: ['C/C++', 'Microcontrollers', 'Proteus', 'Sensors and Actuators'],
+      });
+      const gapHeavyGap = buildJobGapAnalysis(resume, {
+        requiredSkills: ['STM32', 'ESP32', 'PCB Testing', 'Firmware Development', 'Technical Documentation'],
+      });
+      const alignedScore = calculateJobSpecificAtsScore(resume, alignedGap);
+      const gapHeavyScore = calculateJobSpecificAtsScore(resume, gapHeavyGap);
+      assert.equal(alignedScore.structure.score + alignedScore.keywordAlignment.score + alignedScore.experienceAlignment.score, alignedScore.total);
+      assert.equal(alignedScore.keywordAlignment.score <= 40, true);
+      assert.equal(alignedScore.experienceAlignment.score <= 30, true);
+      assert.ok(alignedScore.total >= gapHeavyScore.total + 15);
     },
   },
 ];

@@ -7,6 +7,13 @@ export type ValidationTelemetry = {
   rejectionReasons: Record<string, number>;
 };
 
+type HiringManagerAssessmentInput = {
+  recruiterSummary?: unknown;
+  topReasonsToInterview?: unknown;
+  topReasonsForRejection?: unknown;
+  biggestImprovements?: unknown;
+};
+
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
 const URL_PATTERN = /(?:https?:\/\/|www\.)\S+/i;
 const METRIC_PATTERN = /\b\d+(?:\.\d+)?%?\b/g;
@@ -161,7 +168,7 @@ function validateRecommendationGroups(
   jobDescription: string,
   telemetry?: ValidationTelemetry,
 ): void {
-  const fields = ['atsIssues', 'formattingIssues', 'formattingSuggestions', 'improvementSuggestions', 'optimizationRecommendations'];
+  const fields = ['atsIssues', 'improvementSuggestions', 'formattingIssues', 'formattingSuggestions', 'optimizationRecommendations'];
   const accepted: string[] = [];
 
   for (const field of fields) {
@@ -188,6 +195,47 @@ function validateRecommendationGroups(
       return true;
     });
   }
+}
+
+/** Assessment claims may cite either resume evidence or a documented job requirement. */
+function isGroundedAssessmentStatement(value: string, resumeText: string, jobDescription: string): boolean {
+  if (!value || hasSensitiveContent(value) || hasInventedMetric(value, resumeText)) return false;
+  if (hasInventedNamedTerm(value, `${resumeText}\n${jobDescription}`)) return false;
+  const terms = (value.toLowerCase().match(/[a-z0-9]+/g) || []).filter((word) => word.length >= 3);
+  const resumeTerms = sourceWords(resumeText);
+  const jobTerms = sourceWords(jobDescription);
+  return terms.some((term) => resumeTerms.has(term)) || terms.some((term) => jobTerms.has(term));
+}
+
+/** Keeps the new assessment grounded without mixing it into recommendation planning. */
+export function validateHiringManagerAssessment(
+  raw: unknown,
+  resumeText: string,
+  jobDescription: string,
+): {
+  recruiterSummary: string;
+  topReasonsToInterview: string[];
+  topReasonsForRejection: string[];
+  biggestImprovements: string[];
+} {
+  const value = raw && typeof raw === 'object' ? raw as HiringManagerAssessmentInput : {};
+  const cleanText = (input: unknown, limit: number) => Array.isArray(input)
+    ? input
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter((item) => isGroundedAssessmentStatement(item, resumeText, jobDescription))
+      .filter((item, index, items) => !items.slice(0, index).some((existing) => isSemanticDuplicate(item, existing)))
+      .slice(0, limit)
+    : [];
+  const summary = typeof value.recruiterSummary === 'string' && isGroundedAssessmentStatement(value.recruiterSummary.trim(), resumeText, jobDescription)
+    ? value.recruiterSummary.trim()
+    : '';
+  return {
+    recruiterSummary: summary,
+    topReasonsToInterview: cleanText(value.topReasonsToInterview, 5),
+    topReasonsForRejection: cleanText(value.topReasonsForRejection, 5),
+    biggestImprovements: cleanText(value.biggestImprovements, 5),
+  };
 }
 
 function validateRewrites(values: unknown, resumeText: string): RewritePair[] {

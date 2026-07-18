@@ -4,9 +4,9 @@ type RecommendationValue = string | { text?: unknown; confidence?: unknown };
 
 const RECOMMENDATION_FIELDS = [
   'atsIssues',
+  'improvementSuggestions',
   'formattingIssues',
   'formattingSuggestions',
-  'improvementSuggestions',
   'optimizationRecommendations',
 ] as const;
 
@@ -151,9 +151,27 @@ function prioritizeRecommendations(output: Record<string, any>): RecommendationP
  * Plans one resume recommendation per observation across ATS, format, and improvement sections.
  * Weak bullets are reserved for the bullet-rewrite section whenever a rewrite exists.
  */
-export function planResumeRecommendations(raw: Record<string, any>, resumeText: string): Record<string, any> {
+export function planResumeRecommendations(
+  raw: Record<string, any>,
+  resumeText: string,
+  gapAnalysis?: { items?: { skill?: unknown; status?: unknown }[] },
+): Record<string, any> {
   const output = { ...raw };
   const seen: string[] = [];
+
+  // The deterministic gap stage is the source of truth for required skills
+  // absent from the resume. Retain the existing field/API shape while making
+  // those gaps available to every downstream recommendation decision.
+  const missingFromGap = Array.isArray(gapAnalysis?.items)
+    ? gapAnalysis.items
+      .filter((item) => item?.status === 'MISSING' && typeof item.skill === 'string')
+      .map((item) => String(item.skill).trim())
+      .filter(Boolean)
+    : [];
+  output.missingRequiredSkills = [
+    ...(Array.isArray(output.missingRequiredSkills) ? output.missingRequiredSkills : []),
+    ...missingFromGap,
+  ];
 
   for (const field of RECOMMENDATION_FIELDS) {
     output[field] = retainUniqueRecommendations(output[field], seen, resumeText);

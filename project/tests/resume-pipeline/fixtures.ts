@@ -127,6 +127,20 @@ Maintained PostgreSQL data stores and Jest test suites.
 Projects
 Created REST APIs with GraphQL integration.
 Automated CI pipelines using Git and Kubernetes.`,
+
+  embeddedGapResume: `Avery Khan
+
+Summary
+Mechatronics student with embedded systems project experience.
+
+Skills
+C++
+Arduino
+Proteus
+Circuit Design
+
+Projects
+Built an Arduino line follower using sensors and BLDC motors.`,
 };
 
 /** Photo extraction is intentionally an expected unsupported capability today. */

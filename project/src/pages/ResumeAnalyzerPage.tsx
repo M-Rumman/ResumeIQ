@@ -73,6 +73,104 @@ function AtsScoreExplanation({ explanation }: { explanation: AnalysisResults['en
   );
 }
 
+function KeywordRecommendations({ recommendations }: { recommendations: AnalysisResults['keywordRecommendations'] }) {
+  if (recommendations.length === 0) return null;
+  const priorities = ['Critical', 'Important', 'Optional'] as const;
+  const priorityStyle = {
+    Critical: 'text-red-700 border-red-100 bg-red-50',
+    Important: 'text-amber-700 border-amber-100 bg-amber-50',
+    Optional: 'text-[#3c4a59] border-gray-200 bg-gray-50',
+  } as const;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-5">
+        <AlertCircle className="w-5 h-5 text-red-500" />
+        <h3 className="font-bold text-gray-900">Keyword Suggestions</h3>
+      </div>
+      <div className="space-y-5">
+        {priorities.map((priority) => {
+          const items = recommendations.filter((item) => item.priority === priority);
+          if (items.length === 0) return null;
+          return (
+            <div key={priority}>
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">{priority}</p>
+              <div className="space-y-2">
+                {items.map((item) => (
+                  <div key={`${item.priority}-${item.keyword}`} className={`rounded-xl border px-3 py-2.5 ${priorityStyle[priority]}`}>
+                    <p className="text-sm font-bold">{item.keyword}</p>
+                    <p className="mt-1 text-xs text-gray-700">{item.whyItMatters}</p>
+                    <p className="mt-1.5 text-xs font-semibold text-gray-700">Add to: {item.recommendedSection}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HiringManagerAssessmentCard({ assessment }: { assessment: AnalysisResults['engine']['hiringManagerAssessment'] }) {
+  const decisionStyle = {
+    'Strong Match': 'bg-emerald-100 text-emerald-800',
+    'Good Match': 'bg-green-100 text-green-800',
+    'Potential Match': 'bg-amber-100 text-amber-800',
+    'Weak Match': 'bg-orange-100 text-orange-800',
+    'Poor Match': 'bg-red-100 text-red-800',
+  } as const;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+        <div className="flex items-center gap-2">
+          <Target className="w-5 h-5 text-[#3c4a59]" />
+          <h3 className="font-bold text-gray-900">Hiring Manager&apos;s Assessment</h3>
+        </div>
+        <span className={`text-sm font-bold px-3 py-1.5 rounded-full ${decisionStyle[assessment.overallDecision]}`}>
+          {assessment.overallDecision}
+        </span>
+      </div>
+
+      <p className="text-sm leading-6 text-gray-700">{assessment.recruiterSummary}</p>
+      <div className="grid lg:grid-cols-2 gap-5 mt-5">
+        <div>
+          <p className="text-sm font-bold text-emerald-800 mb-2">Top Reasons to Interview</p>
+          <ul className="space-y-2">
+            {assessment.topReasonsToInterview.map((reason) => (
+              <li key={reason} className="flex gap-2 text-sm text-gray-700"><CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />{reason}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="text-sm font-bold text-red-800 mb-2">Top Reasons for Rejection</p>
+          <ul className="space-y-2">
+            {assessment.topReasonsForRejection.map((reason) => (
+              <li key={reason} className="flex gap-2 text-sm text-gray-700"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />{reason}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-4 mt-6 pt-5 border-t border-gray-100">
+        <div className="rounded-xl bg-[#f4f7f9] p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-600">Estimated Interview Probability</p>
+          <p className="mt-1 text-3xl font-extrabold text-[#3c4a59]">{assessment.estimatedInterviewProbability}%</p>
+          <p className="mt-1 text-xs text-gray-600">Confidence: {assessment.confidence}</p>
+        </div>
+        <div>
+          <p className="text-sm font-bold text-gray-900 mb-2">Biggest Improvements</p>
+          <ul className="space-y-1.5">
+            {assessment.biggestImprovements.map((improvement) => (
+              <li key={improvement.text} className="text-sm text-gray-700">{improvement.text} <span className="font-semibold text-emerald-700">(+{improvement.estimatedImpact}%)</span></li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function analysisErrorMessage(error: unknown): string {
   if (!(error instanceof ApiRequestError)) {
     return 'Resume analysis could not be completed. Please try again in a few moments.';
@@ -508,6 +606,8 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
               </div>
             </div>
 
+            <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
+
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-2 mb-5">
                 <FileText className="w-5 h-5 text-[#3c4a59]" />
@@ -551,32 +651,15 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
               </div>
             </div>
 
-            {results.missingKeywords.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-5">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                  <h3 className="font-bold text-gray-900">Keyword Suggestions</h3>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {results.missingKeywords.map((kw) => (
-                    <span key={kw} className="bg-red-50 text-red-700 border border-red-100 text-xs font-semibold px-3 py-1.5 rounded-full">
-                      + {kw}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-sm text-gray-700 mt-4">
-                  Add these keywords naturally in your experience and skills sections.
-                </p>
-              </div>
-            )}
+            <KeywordRecommendations recommendations={results.keywordRecommendations} />
 
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-2 mb-5">
                 <Lightbulb className="w-5 h-5 text-amber-500" />
-                <h3 className="font-bold text-gray-900">Resume Improvements</h3>
+                <h3 className="font-bold text-gray-900">Job-Specific Improvements</h3>
               </div>
               <div className="space-y-3">
-                {results.improvements.map((item, i) => {
+                {results.jobSpecificImprovements.map((item, i) => {
                   const styleMap = {
                     warning: { bg: 'bg-amber-50 border-amber-100', icon: 'text-amber-600', text: 'text-amber-900' },
                     error: { bg: 'bg-red-50 border-red-100', icon: 'text-red-600', text: 'text-red-900' },
@@ -598,16 +681,16 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-2 mb-5">
                 <FileText className="w-5 h-5 text-[#3c4a59]" />
-                <h3 className="font-bold text-gray-900">Formatting Suggestions</h3>
+                <h3 className="font-bold text-gray-900">General Resume Improvements</h3>
               </div>
-              {results.formattingSuggestions.length > 0 ? (
+              {results.generalResumeImprovements.length > 0 ? (
                 <ul className="space-y-2.5">
-                  {results.formattingSuggestions.map((s, i) => (
+                  {results.generalResumeImprovements.map((s, i) => (
                     <li key={i} className="flex items-start gap-2.5 text-sm text-gray-900">
                       <div className="w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                         <span className="text-[10px] font-bold text-gray-700">{i + 1}</span>
                       </div>
-                      {s}
+                      {s.text}
                     </li>
                   ))}
                 </ul>
@@ -674,6 +757,7 @@ function ResumeResultsPreview({ results }: { results: AnalysisResults }) {
           <ProgressBar value={results.matchScore} color="bg-gradient-to-r from-emerald-500 to-emerald-600" />
         </div>
       </div>
+      <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
     </>
   );
 }
@@ -681,29 +765,15 @@ function ResumeResultsPreview({ results }: { results: AnalysisResults }) {
 function ResumeResultsPremium({ results }: { results: AnalysisResults }) {
   return (
     <>
-      {results.missingKeywords.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <AlertCircle className="w-5 h-5 text-red-500" />
-            <h3 className="font-bold text-gray-900">Keyword Suggestions</h3>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {results.missingKeywords.map((kw) => (
-              <span key={kw} className="bg-red-50 text-red-700 border border-red-100 text-xs font-semibold px-3 py-1.5 rounded-full">
-                + {kw}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      <KeywordRecommendations recommendations={results.keywordRecommendations} />
 
       <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
         <div className="flex items-center gap-2 mb-5">
           <Lightbulb className="w-5 h-5 text-amber-500" />
-          <h3 className="font-bold text-gray-900">Resume Improvements</h3>
+          <h3 className="font-bold text-gray-900">Job-Specific Improvements</h3>
         </div>
         <div className="space-y-3">
-          {results.improvements.map((item, i) => {
+          {results.jobSpecificImprovements.map((item, i) => {
             const styleMap = {
               warning: { bg: 'bg-amber-50 border-amber-100', icon: 'text-amber-600', text: 'text-amber-900' },
               error: { bg: 'bg-red-50 border-red-100', icon: 'text-red-600', text: 'text-red-900' },
@@ -725,16 +795,16 @@ function ResumeResultsPremium({ results }: { results: AnalysisResults }) {
       <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
         <div className="flex items-center gap-2 mb-5">
           <FileText className="w-5 h-5 text-[#3c4a59]" />
-          <h3 className="font-bold text-gray-900">Formatting Suggestions</h3>
+          <h3 className="font-bold text-gray-900">General Resume Improvements</h3>
         </div>
-        {results.formattingSuggestions.length > 0 ? (
+        {results.generalResumeImprovements.length > 0 ? (
           <ul className="space-y-2.5">
-            {results.formattingSuggestions.map((s, i) => (
+            {results.generalResumeImprovements.map((s, i) => (
               <li key={i} className="flex items-start gap-2.5 text-sm text-gray-900">
                 <div className="w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                   <span className="text-[10px] font-bold text-gray-700">{i + 1}</span>
                 </div>
-                {s}
+                {s.text}
               </li>
             ))}
           </ul>

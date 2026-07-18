@@ -29,6 +29,12 @@ export interface AiResumeAnalysis {
   existingSkills: string[];
   missingSkills: string[];
   missingKeywords: string[];
+  keywordRecommendations: {
+    keyword: string;
+    priority: 'Critical' | 'Important' | 'Optional';
+    whyItMatters: string;
+    recommendedSection: 'Skills' | 'Experience' | 'Projects';
+  }[];
   keywordSuggestions: string[];
   keywordGaps: string[];
   missingRequiredSkills: string[];
@@ -56,6 +62,15 @@ export interface AiResumeAnalysis {
     strongMatches: string[];
     partialMatches: string[];
     missingSkills: string[];
+  };
+  hiringManagerAssessment: {
+    overallDecision: 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
+    recruiterSummary: string;
+    topReasonsToInterview: string[];
+    topReasonsForRejection: string[];
+    estimatedInterviewProbability: number;
+    biggestImprovements: { text: string; estimatedImpact: number }[];
+    confidence: 'High' | 'Medium' | 'Low';
   };
 }
 
