@@ -219,6 +219,36 @@ function StrengthsMatchingRoleCard({ strengths }: { strengths: AnalysisResults['
   );
 }
 
+/** Final, API-backed verdict shown after every analysis section. */
+function OverallAssessmentCard({ results }: { results: AnalysisResults }) {
+  const readiness = Math.max(0, Math.min(100, Math.round(results.engine.hiringManagerAssessment.estimatedInterviewProbability)));
+  const explanation = readiness >= 75
+    ? 'Your resume demonstrates strong alignment with this position. Addressing the remaining role-specific gaps could further improve your competitiveness.'
+    : 'This AI estimate reflects how well your resume aligns with the employer\'s requirements. Improving the recommended areas above can strengthen your competitiveness for this specific role.';
+
+  return (
+    <section className="w-full rounded-3xl border-2 border-[#3c4a59] bg-[#f4f7f9] p-7 shadow-md sm:p-10">
+      <div className="mx-auto max-w-4xl text-center">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#3c4a59]/20 bg-white px-4 py-2 text-sm font-bold text-[#3c4a59]">
+          <Target className="h-4 w-4" />
+          Overall Assessment
+        </div>
+        <p className="text-xl font-semibold leading-relaxed text-gray-900 sm:text-2xl">
+          Your resume has <span className="text-4xl font-extrabold text-[#3c4a59] sm:text-5xl">{results.matchScore}%</span> alignment with this Job Description.
+        </p>
+        <p className="mt-5 text-lg font-medium leading-relaxed text-gray-800 sm:text-xl">
+          Based on your current resume, our AI estimates that you have approximately{' '}
+          <span className="text-4xl font-extrabold text-emerald-700 sm:text-5xl">{readiness}%</span>{' '}
+          interview potential for this role.
+        </p>
+        <p className="mx-auto mt-7 max-w-3xl text-sm leading-6 text-gray-700 sm:text-base">
+          {explanation} This is an AI estimate based solely on this resume analysis, not a guarantee of an interview invitation.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function analysisErrorMessage(error: unknown): string {
   if (!(error instanceof ApiRequestError)) {
     return 'Resume analysis could not be completed. Please try again in a few moments.';
@@ -613,6 +643,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
                 </div>
               </>
             )}
+            <OverallAssessmentCard results={results} />
           </div>
         )}
       </div>

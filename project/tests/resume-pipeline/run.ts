@@ -4,7 +4,7 @@ import { cleanResumeExtractionArtifacts, parseResumeText } from '../../api/_lib/
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
-import { buildJobGapAnalysis, buildJobProfile, buildKeywordRecommendations, buildRoleStrengths, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
+import { buildJobGapAnalysis, buildJobProfile, buildKeywordRecommendations, buildRoleStrengths, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -470,6 +470,25 @@ Requirements:
       assert.equal(score.weights.preferredSkills, 0);
       assert.equal(score.preferredSkills, 0);
       assert.equal(score.total <= 100, true);
+    },
+  },
+  {
+    name: 'derives interview readiness from scores, structure, evidence, bullets, and missing requirements',
+    run: () => {
+      const resume = parseResumeText(`Summary\nEmbedded systems student\nSkills\nArduino\nEducation\nBS Mechatronics\nProjects\nBuilt an Arduino sensor prototype.\nExperience\nTested embedded interfaces.`);
+      const strongGap = buildJobGapAnalysis(resume, { requiredSkills: ['Arduino'] });
+      const weakGap = buildJobGapAnalysis(resume, { requiredSkills: ['STM32', 'PCB Testing', 'Firmware Development'] });
+      const strong = calculateInterviewReadinessScore(resume, strongGap, 78, 82, {
+        improvedBulletPoints: [{ before: 'Tested embedded interfaces.', after: 'Tested embedded interfaces.' }],
+        weakBullets: [],
+      });
+      const weak = calculateInterviewReadinessScore(resume, weakGap, 78, 82, {
+        improvedBulletPoints: [],
+        weakBullets: ['Tested embedded interfaces.'],
+      });
+      assert.ok(strong > weak);
+      assert.notEqual(strong, 82);
+      assert.equal(strong <= 100 && weak >= 0, true);
     },
   },
 ];

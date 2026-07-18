@@ -1238,6 +1238,45 @@ function uniqueAssessmentItems(values: string[]): string[] {
 }
 
 /**
+ * Produces a transparent resume-competitiveness estimate for the final
+ * assessment card. It is deliberately not a promise of an interview: the
+ * estimate uses only the supplied resume, target job, and validated analysis.
+ */
+export function calculateInterviewReadinessScore(
+  resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education'>,
+  gapAnalysis: JobGapAnalysis,
+  atsScore: number,
+  matchScore: number,
+  planned: Record<string, any>,
+): number {
+  const structureChecks = [
+    Boolean(resume.summary.trim()),
+    resume.skills.length > 0,
+    resume.education.length > 0,
+    resume.experience.length + resume.projects.length > 0,
+  ];
+  const structureScore = structureChecks.filter(Boolean).length / structureChecks.length * 100;
+  const practicalEvidenceScore = Math.min(100, (resume.experience.length + resume.projects.length) / 4 * 100);
+  const unresolvedWeakBullets = Array.isArray(planned.weakBullets) ? planned.weakBullets.length : 0;
+  const validatedRewrites = Array.isArray(planned.improvedBulletPoints) ? planned.improvedBulletPoints.length : 0;
+  const bulletQualityScore = Math.max(0, Math.min(100,
+    70 + Math.min(4, validatedRewrites) * 5 - Math.min(5, unresolvedWeakBullets) * 12,
+  ));
+  const missingRequirements = gapAnalysis.items.filter((item) => item.status === 'MISSING').length;
+  const partialRequirements = gapAnalysis.items.filter((item) => item.status === 'PARTIALLY MATCHED').length;
+  const missingKeywordPenalty = Math.min(18, missingRequirements * 4 + partialRequirements * 2);
+
+  return Math.max(0, Math.min(100, Math.round(
+    matchScore * 0.42
+      + atsScore * 0.28
+      + structureScore * 0.10
+      + practicalEvidenceScore * 0.10
+      + bulletQualityScore * 0.10
+      - missingKeywordPenalty,
+  )));
+}
+
+/**
  * Keeps the recruiter decision and interview probability reproducible. The AI
  * supplies the recruiter language; the decision uses the independently
  * calculated ATS and job-match scores, with explicit penalties for documented
@@ -1260,15 +1299,15 @@ function buildHiringManagerAssessment(
   const matched = applicable.filter((item) => item.status === 'MATCHED');
   const partial = applicable.filter((item) => item.status === 'PARTIALLY MATCHED');
   const missing = applicable.filter((item) => item.status === 'MISSING');
-  const missingResponsibilities = gapAnalysis.responsibilities.filter((item) => item.status === 'MISSING');
-  const partialResponsibilities = gapAnalysis.responsibilities.filter((item) => item.status === 'PARTIALLY MATCHED');
   // This is a transparent estimate, not an outcome-calibrated prediction.
   // Production calibration requires real recruiter outcome data.
-  const blockerPenalty = Math.min(24, missing.length * 6 + missingResponsibilities.length * 3);
-  const partialPenalty = Math.min(10, partial.length * 2 + partialResponsibilities.length);
-  const estimatedInterviewProbability = Math.max(0, Math.min(100, Math.round(
-    atsScore * 0.3 + matchScore * 0.7 - blockerPenalty - partialPenalty,
-  )));
+  const estimatedInterviewProbability = calculateInterviewReadinessScore(
+    resume,
+    gapAnalysis,
+    atsScore,
+    matchScore,
+    planned,
+  );
   const overallDecision: HiringDecision = matchScore >= 82 && missing.length <= 1 ? 'Strong Match'
     : matchScore >= 68 && missing.length <= 2 ? 'Good Match'
       : matchScore >= 52 ? 'Potential Match'
