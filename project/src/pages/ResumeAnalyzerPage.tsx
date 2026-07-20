@@ -18,7 +18,6 @@ import { ApiRequestError } from '../lib/api/client.js';
 import { mapAiResumeToDisplay, type ResumeDisplayResults } from '../lib/api/mapAiResults.js';
 import {
   checkFeatureAccess,
-  recordFeatureUsage,
   FEATURE_TYPES,
   getFeatureLabel,
 } from '../lib/usageLimits.js';
@@ -30,7 +29,7 @@ import BetaBanner from '../components/BetaBanner';
 import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 import { canExportPdf } from '../lib/planAccess.js';
-import { FREE_TRIAL_REPORT_LIMIT } from '../lib/planConfig.js';
+import { FREE_DAILY_RESUME_LIMIT } from '../lib/planConfig.js';
 import { downloadResumeAnalysisPdf } from '../utils/exportReportPdf.js';
 import { buildReportId } from '../lib/monetizationConfig.js';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
@@ -277,6 +276,9 @@ function analysisErrorMessage(error: unknown): string {
     case 'unauthorized':
       return 'Your session has expired. Please sign in again and retry your analysis.';
     case 'rate_limited':
+      if (error.status === 429 && /today's free resume analysis limit/i.test(error.message)) {
+        return error.message;
+      }
       return 'Too many analysis requests were made. Please wait a moment and try again.';
     case 'service_unavailable':
       return 'Resume analysis is temporarily unavailable because the AI service is unavailable. Please try again in a few moments.';
@@ -312,7 +314,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [usageInfo, setUsageInfo] = useState({
     used: 0,
-    limit: FREE_TRIAL_REPORT_LIMIT,
+    limit: FREE_DAILY_RESUME_LIMIT,
     isPro: false,
     loading: true,
   });
@@ -341,14 +343,14 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     } = await supabase.auth.getUser();
 
     if (!user) {
-      setUsageInfo({ used: 0, limit: FREE_TRIAL_REPORT_LIMIT, isPro: false, loading: false });
+      setUsageInfo({ used: 0, limit: FREE_DAILY_RESUME_LIMIT, isPro: false, loading: false });
       return;
     }
 
     const access = await checkFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
     setUsageInfo({
       used: access.used,
-      limit: access.limit === Infinity ? FREE_TRIAL_REPORT_LIMIT : access.limit,
+      limit: access.limit === Infinity ? FREE_DAILY_RESUME_LIMIT : access.limit,
       isPro: access.isPro,
       loading: false,
     });
@@ -383,6 +385,11 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
       setSaveError(access.error);
       return;
     }
+    if (!access.allowed) {
+      setAnalyzing(false);
+      setSaveError("You've reached today's free resume analysis limit. Your limit resets tomorrow or you can upgrade to Pro for unlimited analyses.");
+      return;
+    }
 
     const text = resumeText.trim();
 
@@ -399,6 +406,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     } catch (error) {
       setAnalyzing(false);
       setSaveError(analysisErrorMessage(error));
+      await refreshUsageStatus();
       return;
     }
 
@@ -427,10 +435,6 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     if (insertError) {
       setSaveError('Analysis completed but could not be saved. Please try again.');
       return;
-    }
-
-    if (PAYMENTS_ENABLED && !access.isPro) {
-      await recordFeatureUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
     }
 
     if (inserted?.id) {

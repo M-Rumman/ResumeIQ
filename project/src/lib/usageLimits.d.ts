@@ -16,8 +16,6 @@ export function checkFeatureAccess(
   upgradeMessage: string | null;
 }>;
 
-export function recordFeatureUsage(userId: string, featureType: string): Promise<void>;
-
 export function getFeatureLabel(featureType: string): string;
 
 export function getUserPlan(

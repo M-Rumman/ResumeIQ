@@ -4,8 +4,6 @@
 
 export const FREE_DAILY_RESUME_LIMIT = 2;
 export const FREE_DAILY_INTERVIEW_LIMIT = 2;
-/** Lifetime full-access reports per type for free users (no blur / paywall). */
-export const FREE_TRIAL_REPORT_LIMIT = 2;
 export const FREE_HISTORY_LIMIT = 5;
 export const FREE_INTERVIEW_QUESTIONS_PER_CATEGORY = 3;
 
@@ -19,8 +17,8 @@ export const PRICING_PLANS = [
     cta: 'Get Started Free',
     highlight: false,
     features: [
-      { text: '2 full Resume Analyses', included: true },
-      { text: '2 full Interview Prep reports', included: true },
+      { text: '2 Resume Analyses per day', included: true },
+      { text: '2 Interview Prep sessions per day', included: true },
       { text: 'Basic ATS Score', included: true },
       { text: 'Resume section analysis', included: true },
       { text: 'Keyword detection', included: true },

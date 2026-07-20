@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PaywallOverlay from './PaywallOverlay';
-import { PAYWALL_PREVIEW_PERCENT, getFreeTrialExhaustedMessage, parseReportId } from '../lib/monetizationConfig.js';
+import { PAYWALL_PREVIEW_PERCENT, getDailyLimitMessage, parseReportId } from '../lib/monetizationConfig.js';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 
 interface PaywallBlurGateProps {
@@ -50,7 +50,7 @@ export default function PaywallBlurGate({
   }
 
   const { type: reportType } = parseReportId(reportId);
-  const limitMessage = getFreeTrialExhaustedMessage(reportType);
+  const limitMessage = getDailyLimitMessage(reportType);
 
   return (
     <div className="paywall-gate relative" data-report-id={reportId}>

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import {
   checkFeatureAccess,
-  recordFeatureUsage,
   FEATURE_TYPES,
   getFeatureLabel,
 } from '../lib/usageLimits.js';
@@ -12,12 +11,13 @@ import PaywallBlurGate from '../components/PaywallBlurGate';
 import BetaBanner from '../components/BetaBanner';
 import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
-import { FREE_TRIAL_REPORT_LIMIT } from '../lib/planConfig.js';
+import { FREE_DAILY_INTERVIEW_LIMIT } from '../lib/planConfig.js';
+import { ApiRequestError } from '../lib/api/client.js';
 import { buildReportId } from '../lib/monetizationConfig.js';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 import { fetchAiInterviewPrep } from '../lib/api/interviewPrepApi.js';
-import { mapAiInterviewToDisplayWithContext, mapLocalInterviewToDisplay } from '../lib/api/mapInterviewAi.js';
+import { mapAiInterviewToDisplayWithContext } from '../lib/api/mapInterviewAi.js';
 import {
   MessageSquare,
   ChevronDown,
@@ -130,7 +130,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [usageInfo, setUsageInfo] = useState({
     used: 0,
-    limit: FREE_TRIAL_REPORT_LIMIT,
+    limit: FREE_DAILY_INTERVIEW_LIMIT,
     isPro: false,
     loading: true,
   });
@@ -157,14 +157,14 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     } = await supabase.auth.getUser();
 
     if (!user) {
-      setUsageInfo({ used: 0, limit: FREE_TRIAL_REPORT_LIMIT, isPro: false, loading: false });
+      setUsageInfo({ used: 0, limit: FREE_DAILY_INTERVIEW_LIMIT, isPro: false, loading: false });
       return;
     }
 
     const access = await checkFeatureAccess(user.id, FEATURE_TYPES.INTERVIEW_PREP);
     setUsageInfo({
       used: access.used,
-      limit: access.limit === Infinity ? FREE_TRIAL_REPORT_LIMIT : access.limit,
+      limit: access.limit === Infinity ? FREE_DAILY_INTERVIEW_LIMIT : access.limit,
       isPro: access.isPro,
       loading: false,
     });
@@ -201,6 +201,11 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
       setSaveError(access.error);
       return;
     }
+    if (!access.allowed) {
+      setLoading(false);
+      setSaveError("You've reached today's free interview preparation limit. Your limit resets tomorrow or upgrade to Pro for unlimited interview preparation.");
+      return;
+    }
 
     let prepResults: InterviewData;
 
@@ -212,12 +217,17 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
         experienceLevel,
         skills,
       ) as InterviewData;
-    } catch {
-      prepResults = mapLocalInterviewToDisplay(
-        jobRole.trim(),
-        experienceLevel,
-        skills,
-      ) as InterviewData;
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 429 && /today's free interview preparation limit/i.test(error.message)) {
+        setLoading(false);
+        setSaveError(error.message);
+        await refreshUsageStatus();
+        return;
+      }
+      setLoading(false);
+      setSaveError('Interview preparation is temporarily unavailable. Please try again in a few moments.');
+      await refreshUsageStatus();
+      return;
     }
 
     const { data: inserted, error: insertError } = await supabase
@@ -238,10 +248,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     if (insertError) {
       setSaveError('Questions generated but could not be saved. Please try again.');
       return;
-    }
-
-    if (PAYMENTS_ENABLED && !access.isPro) {
-      await recordFeatureUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
     }
 
     if (inserted?.id) {

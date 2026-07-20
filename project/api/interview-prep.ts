@@ -3,6 +3,7 @@ import { getUserFromRequest } from './_lib/auth.js';
 import { generateInterviewPrepWithAi } from './_lib/openrouter.js';
 import {
   FEATURE_TYPES,
+  releaseDailyUsage,
   recordDailyUsage,
 } from './_lib/dailyUsage.js';
 import { enforceAiRateLimit } from './_lib/rateLimit.js';
@@ -32,11 +33,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const access = await verifyAiFeatureAccess(user.id, FEATURE_TYPES.INTERVIEW_PREP);
-  if ('status' in access) {
-    return respondError(res, access.status, access.message);
-  }
-
   const body = req.body as {
     jobRole?: string;
     experienceLevel?: string;
@@ -51,11 +47,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const experienceLevel = (body.experienceLevel || 'mid').trim().slice(0, 64);
   const skills = (body.skills || '').trim().slice(0, INPUT_LIMITS.SKILLS_MAX);
 
+  const access = await verifyAiFeatureAccess(user.id, FEATURE_TYPES.INTERVIEW_PREP);
+  if ('status' in access) {
+    return respondError(res, access.status, access.message);
+  }
+
   try {
     const result = await generateInterviewPrepWithAi(jobRole, experienceLevel, skills);
     await recordDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
     return res.status(200).json(result);
   } catch (err) {
+    if (access.dailyUsageReserved) {
+      await releaseDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP, access.dailyUsageResetDate);
+    }
     logApiError('interview-prep', err);
     return respondError(res, 502, CLIENT_ERRORS.INTERVIEW_PREP);
   }

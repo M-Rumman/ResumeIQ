@@ -9,6 +9,7 @@ import {
 } from './_lib/aiObservability.js';
 import {
   FEATURE_TYPES,
+  releaseDailyUsage,
   recordDailyUsage,
 } from './_lib/dailyUsage.js';
 import { enforceAiRateLimit } from './_lib/rateLimit.js';
@@ -42,11 +43,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const access = await verifyAiFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
-  if ('status' in access) {
-    return respondError(res, access.status, access.message);
-  }
-
   const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string };
   const resumeText = (body.resumeText || '').trim().slice(0, INPUT_LIMITS.RESUME_TEXT_MAX);
   const jobDescription = (body.jobDescription || body.jobRole || '')
@@ -71,6 +67,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Target job description is required.' });
   }
 
+  const access = await verifyAiFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
+  if ('status' in access) {
+    return respondError(res, access.status, access.message);
+  }
+
   try {
     const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability });
     await recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
@@ -80,6 +81,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     return res.status(200).json(result);
   } catch (err) {
+    if (access.dailyUsageReserved) {
+      await releaseDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS, access.dailyUsageResetDate);
+    }
     if (err instanceof AiPipelineError) {
       logAiEvent(observability, 'request_failed', {
         status: 502,

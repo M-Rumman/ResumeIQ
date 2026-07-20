@@ -22,7 +22,7 @@ export function usePaywallAccess(reportId: string | null) {
         isPro: false,
         subscriptionStatus: 'inactive',
         unlockedReports: [],
-        freeTrialReportIds: [],
+        dailyFreeReportIds: [],
         error: null,
       });
       setLoading(false);
