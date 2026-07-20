@@ -4,7 +4,7 @@ import { cleanResumeExtractionArtifacts, normalizeSectionHeading, parseResumeTex
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
-import { buildJobGapAnalysis, buildJobProfile, buildKeywordRecommendations, buildRoleStrengths, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
+import { buildJobGapAnalysis, buildJobProfile, buildKeywordRecommendations, buildRoleStrengths, calculateAssessmentConfidence, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -88,6 +88,14 @@ Dean's List`);
       assert.deepEqual(resume.education, ['BS Mechatronics Engineering']);
       assert.deepEqual(resume.certifications, ['Proteus Circuit Simulation']);
       assert.deepEqual(resume.awards, ["Dean's List"]);
+    },
+  },
+  {
+    name: 'extracts summary from an exact PROFESSIONAL SUMMARY header',
+    run: () => {
+      const resume = parseResumeText('PROFESSIONAL SUMMARY\nEmbedded systems student with hands-on Arduino, sensor-interfacing, and hardware-prototyping experience.\n\nTECHNICAL SKILLS\nArduino, C++');
+      assert.match(resume.summary, /Embedded systems student/i);
+      assert.equal(resume.skills.includes('Arduino'), true);
     },
   },
   {
@@ -609,6 +617,43 @@ Requirements:
     },
   },
   {
+    name: 'never cites academic tutoring as evidence for CAD',
+    run: () => {
+      const resume = parseResumeText('Experience\nProvided academic tutoring in Mathematics and Science to O-Level and A-Level students.\n\nSkills\nPython');
+      const gaps = buildJobGapAnalysis(resume, { requiredSkills: ['CAD'] });
+      const cad = gaps.items.find((item) => item.skill === 'CAD');
+      const strengths = buildRoleStrengths(resume, { title: 'Mechanical Design Intern' }, gaps);
+      assert.equal(cad?.status, 'MISSING');
+      assert.deepEqual(cad?.evidence, []);
+      assert.deepEqual(cad?.evidenceSpans, []);
+      assert.match(cad?.recommendation || '', /not explicitly evidenced/i);
+      assert.equal(strengths.some((strength) => /academic tutoring|Mathematics and Science/i.test(strength)), false);
+    },
+  },
+  {
+    name: 'gives related microcontroller evidence partial credit without treating ESP32 as absent',
+    run: () => {
+      const relatedResume = parseResumeText('Skills\nArduino\n\nProjects\nAutonomous Robot Prototype\n- Built a microcontroller-based embedded navigation system using Arduino.');
+      const relatedGap = buildJobGapAnalysis(relatedResume, { requiredSkills: ['ESP-32'] });
+      const esp32 = relatedGap.items[0];
+      assert.equal(esp32.status, 'PARTIALLY MATCHED');
+      assert.equal(esp32.matchClassification, 'RELATED_SKILL_EVIDENCED');
+      assert.match(esp32.matchReason, /Related skill evidenced: Arduino/i);
+      assert.equal(esp32.evidence.some((evidence) => /Arduino/i.test(evidence)), true);
+      assert.equal(relatedGap.items.some((item) => item.skill === 'ESP-32' && item.status === 'MISSING'), false);
+      const relatedStrengths = buildRoleStrengths(relatedResume, { title: 'Embedded Systems Intern' }, relatedGap);
+      assert.equal(relatedStrengths.some((strength) => /ESP-32/i.test(strength)), false);
+      const relatedMatch = calculateJobMatchScore(relatedResume, buildJobProfile({ title: 'Embedded Systems Intern', requiredSkills: ['ESP-32'] }), relatedGap);
+      assert.match(relatedMatch.topGaps.join(' '), /Related skill evidenced: Arduino.*exact ESP-32 tool not confirmed/i);
+
+      const exactResume = parseResumeText('Skills\nESP32\n\nProjects\nESP32 Sensor Controller\n- Developed an ESP32-based sensor controller.');
+      const exactGap = buildJobGapAnalysis(exactResume, { requiredSkills: ['ESP32'] });
+      assert.equal(exactGap.items[0]?.status, 'MATCHED');
+      assert.equal(exactGap.items[0]?.matchClassification, 'EXACT_MATCH');
+      assert.equal(buildRoleStrengths(exactResume, { title: 'Embedded Systems Intern' }, exactGap).some((strength) => /ESP32/i.test(strength)), true);
+    },
+  },
+  {
     name: 'calculates ATS from five job-specific dimensions for the supplied job',
     run: () => {
       const resume = parseResumeText(fixtures.embeddedGapResume);
@@ -685,6 +730,18 @@ Requirements:
     },
   },
   {
+    name: 'treats robot assembly and calibration as implied practical evidence when related hands-on work is documented',
+    run: () => {
+      const resume = parseResumeText('Projects\nPhysical Autonomous Robot\n- Built a physical autonomous robot with sensor interfacing, hardware prototyping, breadboard prototyping, and testing.');
+      const gap = buildJobGapAnalysis(resume, { responsibilities: ['Perform robot assembly and calibration'] });
+      const item = gap.responsibilities[0];
+      assert.equal(item?.status, 'PARTIALLY MATCHED');
+      assert.equal(item?.matchClassification, 'IMPLIED_PRACTICAL_EVIDENCE');
+      assert.match(item?.matchReason || '', /Implied but not explicitly stated/i);
+      assert.equal(item?.evidence.some((value) => /sensor interfacing|hardware prototyping/i.test(value)), true);
+    },
+  },
+  {
     name: 'does not award preferred-skill points when a job has no preferred skills',
     run: () => {
       const resume = parseResumeText(`Skills\nPython\nProjects\nBuilt Python automation scripts.`);
@@ -718,6 +775,35 @@ Requirements:
       assert.ok(strong > weak);
       assert.notEqual(strong, 82);
       assert.equal(strong <= 100 && weak >= 0, true);
+    },
+  },
+  {
+    name: 'derives assessment confidence from citable direct evidence rather than resume section counts',
+    run: () => {
+      const resume = parseResumeText(`Summary
+Embedded systems student.
+
+Skills
+Arduino, C++, Proteus
+
+Projects
+Autonomous Sensor Robot
+- Built an Arduino sensor controller in C++ and validated circuits in Proteus.
+
+Embedded Monitoring Prototype
+- Developed and tested an Arduino-based monitoring prototype.`);
+      const stronglyEvidenced = buildJobGapAnalysis(resume, {
+        requiredSkills: ['Arduino', 'C++', 'Proteus'],
+        responsibilities: ['Design and test embedded hardware systems'],
+      });
+      assert.equal(calculateAssessmentConfidence(resume, stronglyEvidenced), 'High');
+
+      const ambiguous = buildJobGapAnalysis(resume, {
+        requiredSkills: ['STM32', 'ESP32', 'PCB Testing'],
+        responsibilities: ['Perform robot assembly and calibration'],
+      });
+      assert.notEqual(calculateAssessmentConfidence(resume, ambiguous), 'High');
+      assert.equal(calculateAssessmentConfidence(resume, ambiguous), 'Medium');
     },
   },
   {

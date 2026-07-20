@@ -57,7 +57,7 @@ const INTERNATIONAL_PHONE_FRAGMENT_PATTERN = /\+\d{1,3}(?:[\s.-]+\d{1,4}){1,2}(?
 
 const SECTION_ALIASES = {
   summary: [
-    'summary', 'professional summary', 'career summary', 'career profile', 'profile', 'about me',
+    'summary', 'professional summary', 'career summary', 'career profile', 'profile', 'about', 'about me',
     'objective', 'career objective', 'professional profile', 'personal profile', 'personal statement',
   ],
   // Leadership and extracurricular work is practical experience, so it is
