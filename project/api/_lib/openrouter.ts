@@ -600,10 +600,27 @@ function toParserResumeInput(resume: StructuredResume) {
 
 export type GapStatus = 'MATCHED' | 'PARTIALLY MATCHED' | 'MISSING' | 'NOT APPLICABLE';
 
+/** A source-specific resume excerpt that supports a deterministic job match. */
+export type ResumeEvidenceSpan = {
+  section: 'Summary' | 'Skills' | 'Experience' | 'Projects' | 'Education' | 'Certifications' | 'Awards';
+  /** The original parser entry containing the support. */
+  text: string;
+  /** Character offsets within text for the matched term or related phrase. */
+  start: number;
+  end: number;
+  /** Exact text at the span, retained for traceable ATS explanations. */
+  matchedText: string;
+  /** Project title when the evidence is inside a structured project entry. */
+  context?: string;
+};
+
 export type JobGapItem = {
   skill: string;
   status: GapStatus;
+  /** Legacy text-only evidence retained for existing consumers. */
   evidence: string[];
+  /** Source-aware support for matched and partially matched requirements. */
+  evidenceSpans: ResumeEvidenceSpan[];
   recommendation: string;
 };
 
@@ -746,6 +763,84 @@ function uniqueGapEvidence(values: string[]): string[] {
   });
 }
 
+type ResumeEvidenceSource = {
+  section: ResumeEvidenceSpan['section'];
+  text: string;
+  context?: string;
+};
+
+function uniqueEvidenceSpans(values: ResumeEvidenceSpan[]): ResumeEvidenceSpan[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = [value.section, value.text, value.start, value.end, value.context || ''].join('|').toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Returns the actual span inside a parser entry. Normalized matching is used
+ * for classification, while this function retains a readable original-text
+ * offset for explanations and downstream auditability.
+ */
+function evidenceSpanFor(source: ResumeEvidenceSource, term: string): ResumeEvidenceSpan {
+  const normalizedTerm = normalizeGapTerm(term);
+  const lowerText = source.text.toLowerCase();
+  const directIndex = lowerText.indexOf(term.toLowerCase());
+  const originalTokens = term.match(/[A-Za-z0-9+#]+/g) || [];
+  const anchor = originalTokens.find((token) => token.length > 1) || originalTokens[0] || term;
+  const anchorIndex = lowerText.indexOf(anchor.toLowerCase());
+  const start = directIndex >= 0 ? directIndex : anchorIndex >= 0 ? anchorIndex : 0;
+  const end = directIndex >= 0 ? start + term.length : anchorIndex >= 0 ? start + anchor.length : source.text.length;
+  return {
+    section: source.section,
+    text: source.text,
+    start,
+    end,
+    matchedText: source.text.slice(start, end) || normalizedTerm,
+    ...(source.context ? { context: source.context } : {}),
+  };
+}
+
+function matchingEvidenceSpans(sources: ResumeEvidenceSource[], terms: string[]): ResumeEvidenceSpan[] {
+  return uniqueEvidenceSpans(sources.flatMap((source) => {
+    const normalizedSource = normalizeGapTerm(source.text);
+    const matchedTerm = terms.find((term) => {
+      const normalizedTerm = normalizeGapTerm(term);
+      return Boolean(normalizedTerm) && normalizedSource.includes(normalizedTerm);
+    });
+    return matchedTerm ? [evidenceSpanFor(source, matchedTerm)] : [];
+  }));
+}
+
+function buildResumeEvidenceSources(
+  resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>
+    & Partial<Pick<StructuredResume, 'projectDetails'>>,
+): ResumeEvidenceSource[] {
+  const sourceList = (section: ResumeEvidenceSpan['section'], values: string[]): ResumeEvidenceSource[] =>
+    values.filter((value) => typeof value === 'string' && Boolean(value.trim())).map((text) => ({ section, text }));
+  const structuredProjectSources = (resume.projectDetails || []).flatMap((project) => {
+    const context = project.title.trim();
+    return [project.description, ...project.bullets, ...project.technologies, ...project.outcomes]
+      .filter((text) => typeof text === 'string' && Boolean(text.trim()))
+      .map((text) => ({ section: 'Projects' as const, text, ...(context ? { context } : {}) }));
+  });
+
+  // Project entries are intentionally first: a skill demonstrated in project
+  // work is stronger evidence than the same word appearing only in Skills.
+  return [
+    ...structuredProjectSources,
+    ...sourceList('Experience', resume.experience),
+    ...sourceList('Projects', resume.projects),
+    ...sourceList('Skills', resume.skills),
+    ...sourceList('Education', resume.education),
+    ...sourceList('Certifications', resume.certifications),
+    ...sourceList('Awards', resume.awards),
+    ...(resume.summary.trim() ? [{ section: 'Summary' as const, text: resume.summary }] : []),
+  ];
+}
+
 function jobTextList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -885,15 +980,7 @@ export function buildJobGapAnalysis(
   const requiredSkills = Array.isArray(job.requiredSkills)
     ? job.requiredSkills.filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
     : [];
-  const evidenceSources = [
-    ...resume.skills,
-    ...resume.experience,
-    ...resume.projects,
-    ...resume.education,
-    ...resume.certifications,
-    ...resume.awards,
-    resume.summary,
-  ].filter((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+  const evidenceSources = buildResumeEvidenceSources(resume);
 
   const items = requiredSkills.map((skill) => {
       const normalizedSkill = normalizeGapTerm(skill);
@@ -902,6 +989,7 @@ export function buildJobGapAnalysis(
           skill,
           status: 'NOT APPLICABLE' as const,
           evidence: [],
+          evidenceSpans: [],
           recommendation: 'No resume action is needed for this non-applicable requirement.',
         };
       }
@@ -910,19 +998,14 @@ export function buildJobGapAnalysis(
         direct: [normalizedSkill],
         partial: normalizedSkill.split(' ').filter((word) => word.length > 3),
       };
-      const directEvidence = evidenceSources.filter((source) => {
-        const normalizedSource = normalizeGapTerm(source);
-        return rule.direct.some((term) => normalizedSource.includes(normalizeGapTerm(term)));
-      });
-      const partialEvidence = evidenceSources.filter((source) => {
-        const normalizedSource = normalizeGapTerm(source);
-        return rule.partial.some((term) => normalizedSource.includes(normalizeGapTerm(term)));
-      });
-      const evidence = uniqueGapEvidence([...directEvidence, ...partialEvidence]);
+      const directEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.direct);
+      const partialEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial);
+      const evidenceSpans = uniqueEvidenceSpans([...directEvidenceSpans, ...partialEvidenceSpans]);
+      const evidence = uniqueGapEvidence(evidenceSpans.map((span) => span.text));
 
-      const status: GapStatus = directEvidence.length > 0
+      const status: GapStatus = directEvidenceSpans.length > 0
         ? 'MATCHED'
-        : partialEvidence.length > 0
+        : partialEvidenceSpans.length > 0
           ? 'PARTIALLY MATCHED'
           : 'MISSING';
       const recommendation = status === 'MATCHED'
@@ -931,7 +1014,7 @@ export function buildJobGapAnalysis(
           ? `Make the existing related evidence explicitly connect to ${skill}, but only if that connection is accurate.`
           : `Mention ${skill} coursework, project work, or practical exposure only if it genuinely applies.`;
 
-      return { skill, status, evidence, recommendation };
+      return { skill, status, evidence, evidenceSpans, recommendation };
     });
 
   const responsibilities = jobTextList(job.responsibilities);
@@ -1008,14 +1091,42 @@ export function calculateJobSpecificAtsScore(
     ? 0
     : (matched.length + partial.length * 0.5) / applicableGaps.length;
   const technicalSkillCoverage = Math.round(technicalCoverageFraction * 30);
+  const matchedEvidenceReasons = matched.flatMap((item) => item.evidenceSpans.slice(0, 1).map((span) =>
+    `${item.skill} evidenced by ${span.context ? `${span.context}: ` : ''}${span.text}`,
+  )).slice(0, 3);
 
   const educationText = [...resume.education, resume.summary].join(' ');
   const roleTitle = typeof jobContext.title === 'string' ? jobContext.title : '';
   const isStudentResume = /\b(?:student|undergraduate|pursuing|bachelor|bsc|bs)\b/i.test(educationText);
   const isEarlyCareerRole = /\b(?:intern|internship|graduate|junior|entry[ -]?level|trainee)\b/i.test(roleTitle);
-  const projectsCountAsExperience = isStudentResume || isEarlyCareerRole;
-  const employmentEvidence = new Set(resume.experience.map((item) => normalizeGapTerm(item)));
+  const studentAwareEvaluation = isStudentResume || isEarlyCareerRole;
+  const leadershipPattern = /\b(?:leadership|society|club|committee|captain|volunteer|extracurricular|positions? of responsibility)\b/i;
+  const competitionPattern = /\b(?:competition|contest|challenge|hackathon|olympiad|tournament)\b/i;
+  const academicWorkPattern = /\b(?:academic|coursework|course project|university|thesis|capstone|final year project)\b/i;
+  const engineeringProjectPattern = /\b(?:engineering|embedded|robot|automation|software|hardware|firmware|circuit|pcb|simulation|prototype|design|control|sensor|programming|system)\b/i;
+  const leadershipEvidence = resume.experience.filter((item) => leadershipPattern.test(item));
+  const competitionEvidence = [...resume.experience, ...resume.projects, ...resume.awards]
+    .filter((item) => competitionPattern.test(item));
+  const academicWorkEvidence = [...resume.projects, ...resume.education]
+    .filter((item) => academicWorkPattern.test(item));
+  const engineeringProjectEvidence = resume.projects.filter((item) => engineeringProjectPattern.test(item));
+  // Leadership and competitions can be parsed under Experience, but they are
+  // student practical work rather than employment history for ATS purposes.
+  const employmentEvidence = new Set(resume.experience
+    .filter((item) => !leadershipPattern.test(item) && !competitionPattern.test(item))
+    .map((item) => normalizeGapTerm(item)));
   const projectEvidence = new Set(resume.projects.map((item) => normalizeGapTerm(item)));
+  const studentPracticalEvidence = new Set([
+    ...engineeringProjectEvidence,
+    ...competitionEvidence,
+    ...academicWorkEvidence,
+    ...leadershipEvidence,
+  ].map((item) => normalizeGapTerm(item)));
+  const hasEmploymentHistory = employmentEvidence.size > 0;
+  const hasMultipleEngineeringProjects = engineeringProjectEvidence.length >= 2;
+  const studentPracticalDepth = studentAwareEvaluation && !hasEmploymentHistory
+    ? Math.min(0.2, (hasMultipleEngineeringProjects ? 0.12 : 0) + (competitionEvidence.length ? 0.04 : 0) + (academicWorkEvidence.length ? 0.02 : 0) + (leadershipEvidence.length ? 0.02 : 0))
+    : 0;
   const experienceApplicable = applicableGaps.filter(
     (item) => !/\b(?:bachelor|degree|mechatronics|electrical|electronics)\b/i.test(item.skill),
   );
@@ -1024,9 +1135,13 @@ export function calculateJobSpecificAtsScore(
     : experienceApplicable.reduce((total, item) => {
       const inEmployment = item.evidence.some((evidence) => employmentEvidence.has(normalizeGapTerm(evidence)));
       const inProjects = item.evidence.some((evidence) => projectEvidence.has(normalizeGapTerm(evidence)));
-      const practicalEvidence = inEmployment || (projectsCountAsExperience && inProjects);
-      if (item.status === 'MATCHED') return total + (practicalEvidence ? 1 : 0.5);
-      if (item.status === 'PARTIALLY MATCHED') return total + (practicalEvidence ? 0.55 : 0.25);
+      const inStudentPracticalWork = item.evidence.some((evidence) => studentPracticalEvidence.has(normalizeGapTerm(evidence)));
+      const practicalEvidence = inEmployment || (studentAwareEvaluation && (inProjects || inStudentPracticalWork));
+      // With no employment history, multiple substantive student activities
+      // provide modest supporting credit, but never replace skill-specific
+      // project or work evidence.
+      if (item.status === 'MATCHED') return total + (practicalEvidence ? 1 : 0.5 + studentPracticalDepth);
+      if (item.status === 'PARTIALLY MATCHED') return total + (practicalEvidence ? 0.55 : 0.25 + studentPracticalDepth);
       return total;
     }, 0) / experienceApplicable.length;
   const experienceRelevance = Math.round(experienceFraction * 20);
@@ -1066,15 +1181,19 @@ export function calculateJobSpecificAtsScore(
         `${matched.length} matched requirement${matched.length === 1 ? '' : 's'}`,
         `${partial.length} partially matched`,
         `${missing.length} missing`,
+        ...matchedEvidenceReasons,
       ],
     },
     experienceRelevance: {
       score: experienceRelevance,
       reasons: [
-        `${experienceApplicable.length} applicable technical requirement${experienceApplicable.length === 1 ? '' : 's'} assessed against employment and projects`,
-        projectsCountAsExperience
-          ? 'projects counted as practical experience for this student or early-career role'
+        `${experienceApplicable.length} applicable technical requirement${experienceApplicable.length === 1 ? '' : 's'} assessed against practical evidence`,
+        studentAwareEvaluation
+          ? `student-aware evaluation: ${engineeringProjectEvidence.length} engineering project entr${engineeringProjectEvidence.length === 1 ? 'y' : 'ies'}, ${competitionEvidence.length} competition entr${competitionEvidence.length === 1 ? 'y' : 'ies'}, ${academicWorkEvidence.length} academic-work entr${academicWorkEvidence.length === 1 ? 'y' : 'ies'}, and ${leadershipEvidence.length} leadership entr${leadershipEvidence.length === 1 ? 'y' : 'ies'} considered before employment history`
           : 'projects treated as supporting evidence; employment evidence receives primary credit',
+        studentAwareEvaluation && !hasEmploymentHistory && hasMultipleEngineeringProjects
+          ? 'multiple engineering projects count as practical experience because no employment history is documented'
+          : 'employment history evaluated when documented',
       ],
     },
     keywordCoverage: {

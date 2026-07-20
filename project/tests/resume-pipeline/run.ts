@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { fixtures, capabilityExpectations } from './fixtures.js';
-import { cleanResumeExtractionArtifacts, parseResumeText } from '../../api/_lib/resumeParser.js';
+import { cleanResumeExtractionArtifacts, normalizeSectionHeading, parseResumeText } from '../../api/_lib/resumeParser.js';
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
@@ -49,6 +49,235 @@ const tests: TestCase[] = [
       assert.deepEqual(resume.skills, ['Python', 'FastAPI', 'PostgreSQL']);
       assert.deepEqual(resume.certifications, ['AWS Certified Cloud Practitioner']);
       assert.deepEqual(resume.languages, ['English', 'Urdu']);
+    },
+  },
+  {
+    name: 'classifies decorated semantic section-heading variants',
+    run: () => {
+      const resume = parseResumeText(`â˜… PROFESSIONAL SUMMARY â˜…
+Embedded systems student focused on sensor integration.
+
+â€¢ TECHNICAL SKILLS â€¢
+C++
+
+CORE COMPETENCIES
+Circuit Validation
+
+ACADEMIC PROJECTS
+Built an Arduino navigation prototype.
+
+LEADERSHIP & EXTRACURRICULARS
+Led the robotics society design team.
+
+ACADEMIC BACKGROUND
+BS Mechatronics Engineering
+
+TRAINING
+Proteus Circuit Simulation
+
+HONORS
+Dean's List`);
+      assert.equal(normalizeSectionHeading('â˜… Leadership & Extracurriculars â˜…'), 'leadership and extracurriculars');
+      assert.match(resume.summary, /sensor integration/i);
+      assert.equal(resume.skills.includes('C++'), true);
+      assert.equal(resume.skills.includes('Circuit Validation'), true);
+      assert.deepEqual(resume.technicalKeywords.microcontrollers, ['Arduino']);
+      assert.deepEqual(resume.technicalKeywords.simulationTools, ['Proteus']);
+      assert.deepEqual(resume.projects, ['Built an Arduino navigation prototype.']);
+      assert.deepEqual(resume.experience, ['Led the robotics society design team.']);
+      assert.deepEqual(resume.education, ['BS Mechatronics Engineering']);
+      assert.deepEqual(resume.certifications, ['Proteus Circuit Simulation']);
+      assert.deepEqual(resume.awards, ["Dean's List"]);
+    },
+  },
+  {
+    name: 'parses semantic inline headings and side-by-side column sections',
+    run: () => {
+      const resume = parseResumeText('Professional Profile: Mechatronics student focused on robotics.\n\nAcademic Qualifications     Personal Skills\nBS Mechatronics Engineering     Python, C++\nRelevant Coursework     Embedded Systems, Control Systems\n\nWork Experience and Internships\nResearch Intern at RoboLab\n- Tested embedded interfaces.\n\nSelected Design Projects\nAutonomous Navigation Prototype\n- Designed an Arduino-based sensor system.');
+      assert.match(resume.summary, /Mechatronics student/i);
+      assert.equal(resume.education.some((entry) => /BS Mechatronics/i.test(entry)), true);
+      assert.equal(resume.education.some((entry) => /Relevant Coursework/i.test(entry)), true);
+      assert.equal(resume.skills.includes('Python'), true);
+      assert.equal(resume.skills.includes('C++'), true);
+      assert.equal(resume.experience.some((entry) => /Research Intern/i.test(entry)), true);
+      assert.equal(resume.projects.some((entry) => /Autonomous Navigation Prototype/i.test(entry)), true);
+    },
+  },
+  {
+    name: 'normalizes source-template syntax into semantic resume sections',
+    run: () => {
+      const resume = parseResumeText('\\section{Education and Training}\n\\textbf{BS Electrical Engineering}\n\\section*{Technical Proficiencies}\n\\item Python, Proteus\n\\section{Research Projects}\n\\item Smart Sensor Platform\n\\item Designed an STM32 monitoring prototype.');
+      assert.equal(resume.education.includes('BS Electrical Engineering'), true);
+      assert.equal(resume.skills.includes('Python'), true);
+      assert.equal(resume.skills.includes('Proteus'), true);
+      assert.equal(resume.projects.some((entry) => /Smart Sensor Platform/i.test(entry)), true);
+      assert.equal(resume.projects.some((entry) => /STM32 monitoring prototype/i.test(entry)), true);
+    },
+  },
+  {
+    name: 'self-heals empty sections from deterministic resume evidence',
+    run: () => {
+      const resume = parseResumeText('Amina Khan\namina@example.com\nEmerging embedded engineer focused on practical sensor and control-system work.\n\nBachelor of Science in Electrical Engineering\n\nSolidWorks | Proteus | STM32\n\nSmart Sensor Platform\n- Developed an STM32 monitoring prototype using Proteus.');
+      assert.match(resume.summary, /Emerging embedded engineer/i);
+      assert.deepEqual(resume.education, ['Bachelor of Science in Electrical Engineering']);
+      assert.equal(resume.skills.includes('SolidWorks'), true);
+      assert.equal(resume.skills.includes('Proteus'), true);
+      assert.equal(resume.skills.includes('STM32'), true);
+      assert.equal(resume.projects.some((entry) => /Smart Sensor Platform/i.test(entry)), true);
+      assert.equal(resume.projectDetails.some((project) => project.title === 'Smart Sensor Platform'), true);
+    },
+  },
+  {
+    name: 'parser benchmark extracts student sections across semantic heading variants',
+    run: () => {
+      const headingSets = [
+        {
+          summary: 'Professional Summary', skills: 'Technical Skills', engineering: 'Engineering Skills',
+          leadership: 'Leadership & Extracurriculars', projects: 'Academic Projects',
+          education: 'Education', certifications: 'Certifications',
+        },
+        {
+          summary: 'Career Profile', skills: 'Digital Skills', engineering: 'Hardware Skills',
+          leadership: 'Positions of Responsibility', projects: 'Selected Design Projects',
+          education: 'Academic Qualifications', certifications: 'Professional Development',
+        },
+      ];
+      for (const headings of headingSets) {
+        const resume = parseResumeText(`${headings.summary}\nMechatronics student with hands-on robotics and control-system project work.\n\n${headings.skills}\nProgramming Languages\nPython, C++\n${headings.engineering}\nPCB Design, Circuit Validation\n\n${headings.projects}\nAutonomous Navigation Robot\n- Built an Arduino sensor-navigation prototype.\n\n${headings.leadership}\nRobotics Society Captain coordinating autonomous vehicle testing.\n\n${headings.education}\nBS Mechatronics Engineering\n\n${headings.certifications}\nProteus Circuit Simulation Training`);
+        assert.match(resume.summary, /Mechatronics student/i);
+        assert.equal(resume.skills.includes('Python'), true);
+        assert.equal(resume.skills.includes('PCB Design'), true);
+        assert.equal(resume.skillCategories.programming.includes('C++'), true);
+        assert.equal(resume.skillCategories.engineering.includes('Circuit Validation'), true);
+        assert.equal(resume.projects.some((entry) => /Autonomous Navigation Robot/i.test(entry)), true);
+        assert.equal(resume.experience.some((entry) => /Robotics Society Captain/i.test(entry)), true);
+        assert.equal(resume.education.some((entry) => /BS Mechatronics/i.test(entry)), true);
+        assert.equal(resume.certifications.some((entry) => /Proteus Circuit Simulation/i.test(entry)), true);
+      }
+    },
+  },
+  {
+    name: 'parser benchmark extracts two-column student resume content by semantic column role',
+    run: () => {
+      const resume = parseResumeText('Career Profile\nElectrical engineering student building practical embedded systems.\n\nAcademic Background     Core Competencies\nBS Electrical Engineering     Python, C++, Arduino\n\nLeadership Experience     Selected Projects\nIEEE Student Branch Chair     Smart Energy Monitor Prototype\nOrganized circuit-validation workshops.     - Developed an Arduino power-monitoring prototype.\n\nCourses     Licenses\nEmbedded Systems Design     Proteus Simulation Certificate');
+      assert.match(resume.summary, /Electrical engineering student/i);
+      assert.equal(resume.education.some((entry) => /BS Electrical Engineering/i.test(entry)), true);
+      assert.equal(resume.skills.includes('Python'), true);
+      assert.equal(resume.skills.includes('Arduino'), true);
+      assert.equal(resume.experience.some((entry) => /IEEE Student Branch Chair/i.test(entry)), true);
+      assert.equal(resume.projects.some((entry) => /Smart Energy Monitor Prototype/i.test(entry)), true);
+      assert.equal(resume.certifications.some((entry) => /Proteus Simulation Certificate/i.test(entry)), true);
+    },
+  },
+  {
+    name: 'parser benchmark extracts industry resume content without relying on student headings',
+    run: () => {
+      const resume = parseResumeText('Professional Profile\nMechanical design engineer with production and structural-analysis experience.\n\nTechnical Proficiencies\nEngineering Software\nSolidWorks, ANSYS\nTools\nAutoCAD\n\nEmployment History\nMechanical Design Engineer, Atlas Engineering Ltd\n- Produced manufacturable assemblies and validated structural designs.\n\nKey Projects\nLattice Transmission Tower\n- Performed ANSYS structural simulation and design validation.\n\nAcademic History\nBS Mechanical Engineering\n\nLicenses\nCertified SolidWorks Associate');
+      assert.match(resume.summary, /Mechanical design engineer/i);
+      assert.equal(resume.skills.includes('SolidWorks'), true);
+      assert.equal(resume.skillCategories.software.includes('ANSYS'), true);
+      assert.equal(resume.experience.some((entry) => /Mechanical Design Engineer/i.test(entry)), true);
+      assert.equal(resume.projects.some((entry) => /Lattice Transmission Tower/i.test(entry)), true);
+      assert.equal(resume.education.some((entry) => /BS Mechanical Engineering/i.test(entry)), true);
+      assert.equal(resume.certifications.some((entry) => /Certified SolidWorks Associate/i.test(entry)), true);
+    },
+  },
+  {
+    name: 'extracts grouped skills into categories and a flat master list',
+    run: () => {
+      const resume = parseResumeText(`TECHNICAL SKILLS
+Programming:
+Python, C++
+Languages
+TypeScript
+Engineering Software
+SolidWorks
+ANSYS
+Proteus
+Engineering Skills
+CAD Design
+PCB Design
+Frameworks
+React
+Tools
+Git`);
+      assert.deepEqual(resume.skillCategories.programming, ['Python', 'C++', 'TypeScript']);
+      assert.deepEqual(resume.skillCategories.software, ['SolidWorks', 'ANSYS', 'Proteus']);
+      assert.deepEqual(resume.skillCategories.engineering, ['CAD Design', 'PCB Design']);
+      assert.deepEqual(resume.skillCategories.frameworks, ['React']);
+      assert.deepEqual(resume.skillCategories.tools, ['Git']);
+      assert.deepEqual(resume.skills, [
+        'Python', 'C++', 'TypeScript', 'SolidWorks', 'ANSYS', 'Proteus', 'CAD Design', 'PCB Design', 'React', 'Git',
+      ]);
+    },
+  },
+  {
+    name: 'parses independent projects into structured project records',
+    run: () => {
+      const resume = parseResumeText(`PROJECTS
+Autonomous Navigation Robot
+Technologies: Arduino, C++, LiDAR
+- Built real-time obstacle detection for autonomous navigation.
+- Improved route completion by 20%.
+
+Smart Energy Monitor
+Software Used:
+Proteus
+MATLAB
+Designed a power-monitoring prototype for laboratory testing.`);
+      assert.equal(resume.projectDetails.length, 2);
+      assert.deepEqual(resume.projectDetails[0], {
+        title: 'Autonomous Navigation Robot',
+        description: '',
+        bullets: [
+          'Built real-time obstacle detection for autonomous navigation.',
+          'Improved route completion by 20%.',
+        ],
+        technologies: ['Arduino', 'C++', 'LiDAR'],
+        outcomes: ['Improved route completion by 20%.'],
+      });
+      assert.deepEqual(resume.projectDetails[1], {
+        title: 'Smart Energy Monitor',
+        description: 'Designed a power-monitoring prototype for laboratory testing.',
+        bullets: [],
+        technologies: ['Proteus', 'MATLAB'],
+        outcomes: [],
+      });
+      assert.deepEqual(resume.projects, [
+        'Autonomous Navigation Robot',
+        'Technologies: Arduino, C++, LiDAR',
+        'Built real-time obstacle detection for autonomous navigation.',
+        'Improved route completion by 20%.',
+        'Smart Energy Monitor',
+        'Software Used',
+        'Proteus',
+        'MATLAB',
+        'Designed a power-monitoring prototype for laboratory testing.',
+      ]);
+    },
+  },
+  {
+    name: 'reclassifies project and experience entries beyond their section headings',
+    run: () => {
+      const resume = parseResumeText(`EXPERIENCE
+Autonomous Robot Prototype
+- Designed a sensor-guided navigation prototype.
+
+Embedded Systems Intern, RoboTech Inc
+- Tested hardware interfaces and documented results.
+
+PROJECTS
+Research Assistant at Applied Systems Company
+- Supported laboratory testing and reporting.
+
+Capstone Design Project
+- Built a PCB simulation model.`);
+      assert.equal(resume.projects.some((entry) => /Autonomous Robot Prototype/i.test(entry)), true);
+      assert.equal(resume.projects.some((entry) => /Capstone Design Project/i.test(entry)), true);
+      assert.equal(resume.projects.some((entry) => /Research Assistant/i.test(entry)), false);
+      assert.equal(resume.experience.some((entry) => /Embedded Systems Intern/i.test(entry)), true);
+      assert.equal(resume.experience.some((entry) => /Research Assistant/i.test(entry)), true);
+      assert.equal(resume.experience.some((entry) => /Autonomous Robot Prototype/i.test(entry)), false);
     },
   },
   {
@@ -415,7 +644,7 @@ Requirements:
       const nonStudentResume = { ...studentResume, education: [] };
       const nonStudentScore = calculateJobSpecificAtsScore(nonStudentResume, gap, { title: 'Senior Embedded Engineer' });
       assert.ok(studentScore.experienceRelevance.score > nonStudentScore.experienceRelevance.score);
-      assert.match(studentScore.experienceRelevance.reasons.join(' '), /projects counted/i);
+      assert.match(studentScore.experienceRelevance.reasons.join(' '), /student-aware evaluation/i);
     },
   },
   {
@@ -489,6 +718,56 @@ Requirements:
       assert.ok(strong > weak);
       assert.notEqual(strong, 82);
       assert.equal(strong <= 100 && weak >= 0, true);
+    },
+  },
+  {
+    name: 'deterministically extracts discrete engineering keywords before LLM analysis',
+    run: () => {
+      const resume = parseResumeText('Summary\nCurrently pursuing a Mechatronics degree. Expected graduation 2027.\n\nSkills\nPython, C++, Problem solving\n\nEngineering Software\nSolidWorks, ANSYS, Proteus, LTSpice, Altium\n\nProjects\nBuilt an Embedded Systems prototype using Arduino and STM32. Implemented PID and FSM logic for Sensor Integration and PCB Design.\n\nTechnical Skills\nI2C, SPI, UART, CAN, ROS');
+      assert.deepEqual(resume.technicalKeywords.programmingLanguages, ['Python', 'C++']);
+      assert.deepEqual(resume.technicalKeywords.cadSoftware, ['SolidWorks', 'Altium']);
+      assert.deepEqual(resume.technicalKeywords.simulationTools, ['ANSYS', 'Proteus', 'LTSpice']);
+      assert.deepEqual(resume.technicalKeywords.microcontrollers, ['STM32', 'Arduino']);
+      assert.deepEqual(resume.technicalKeywords.protocols, ['I2C', 'SPI', 'UART', 'CAN']);
+      assert.deepEqual(resume.technicalKeywords.frameworks, ['ROS']);
+      assert.deepEqual(resume.technicalKeywords.engineeringConcepts, ['PID Control', 'Sensor Integration', 'PCB Design']);
+      assert.deepEqual(resume.technicalKeywords.algorithms, ['FSM']);
+      assert.deepEqual(resume.technicalKeywords.technicalDomains, ['Embedded Systems']);
+      assert.equal(resume.skills.includes('Python'), true);
+      assert.equal(resume.skills.includes('Currently pursuing'), false);
+      assert.equal(Object.values(resume.technicalKeywords).flat().some((keyword) => /expected graduation|problem solving/i.test(keyword)), false);
+    },
+  },
+  {
+    name: 'stores project-context evidence spans for matched technical skills',
+    run: () => {
+      const resume = parseResumeText('Skills\nSolidWorks\nANSYS\n\nProjects\nMechanical Workshop Workbench Design\nTechnologies: SolidWorks\nDesigned a workshop workbench in SolidWorks.\n\nLattice Transmission Tower\nSoftware Used: ANSYS\nPerformed structural simulation using ANSYS.');
+      const gaps = buildJobGapAnalysis(resume, { requiredSkills: ['SolidWorks', 'ANSYS'] });
+      const solidWorks = gaps.items.find((item) => item.skill === 'SolidWorks');
+      const ansys = gaps.items.find((item) => item.skill === 'ANSYS');
+      assert.equal(solidWorks?.status, 'MATCHED');
+      assert.equal(solidWorks?.evidenceSpans.some((span) => span.section === 'Projects' && span.context === 'Mechanical Workshop Workbench Design' && /solidworks/i.test(span.text)), true);
+      assert.equal(ansys?.evidenceSpans.some((span) => span.section === 'Projects' && span.context === 'Lattice Transmission Tower' && /ansys/i.test(span.text)), true);
+      assert.equal(solidWorks?.evidenceSpans.every((span) => span.start >= 0 && span.end > span.start && span.end <= span.text.length), true);
+      const ats = calculateJobSpecificAtsScore(resume, gaps, { title: 'Mechanical Design Intern' });
+      assert.match(ats.technicalSkillCoverage.reasons.join(' '), /SolidWorks evidenced by Mechanical Workshop Workbench Design/i);
+    },
+  },
+  {
+    name: 'uses projects competitions academic work and leadership before penalizing student employment history in ATS',
+    run: () => {
+      const resume = parseResumeText('Education\nBachelor of Science in Mechatronics\nAcademic coursework in embedded control systems.\n\nLeadership & Extracurriculars\nRobotics Society Captain leading autonomous vehicle testing.\n\nProjects\nAutonomous Robot Prototype\nBuilt an Arduino sensor-navigation prototype.\n\nPCB Simulation Capstone\nValidated circuits in Proteus.\n\nAwards\nNational Robotics Competition finalist.');
+      const gap = buildJobGapAnalysis(resume, { requiredSkills: ['Arduino', 'Proteus'] });
+      const internScore = calculateJobSpecificAtsScore(resume, gap, { title: 'Embedded Systems Intern' });
+      const reasons = internScore.experienceRelevance.reasons.join(' ');
+      assert.equal(resume.experience.some((entry) => /Robotics Society Captain/i.test(entry)), true);
+      assert.equal(resume.projects.length >= 2, true);
+      assert.match(reasons, /student-aware evaluation/i);
+      assert.match(reasons, /competition entr/i);
+      assert.match(reasons, /academic-work entr/i);
+      assert.match(reasons, /leadership entr/i);
+      assert.match(reasons, /multiple engineering projects count as practical experience/i);
+      assert.equal(internScore.experienceRelevance.score >= 16, true);
     },
   },
 ];

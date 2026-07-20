@@ -33,6 +33,7 @@ function reconstructPageText(items) {
         y,
         width: Math.abs(Number(item.width || 0)),
         height,
+        hasEOL: Boolean(item.hasEOL),
       };
     });
 
@@ -56,8 +57,8 @@ function reconstructPageText(items) {
     }
   }
 
-  const joinLine = (line) => {
-    const fragmentsOnLine = [...line.fragments].sort((a, b) => a.x - b.x);
+  const joinLine = (fragments) => {
+    const fragmentsOnLine = [...fragments].sort((a, b) => a.x - b.x);
     let text = '';
     let previous = null;
 
@@ -78,10 +79,50 @@ function reconstructPageText(items) {
     return text.replace(/\s+/g, ' ').trim();
   };
 
+  // A wide gap on the same baseline usually means a sidebar/second column,
+  // not a space inside one paragraph. Keep those visual groups separate.
+  const splitVisualSegments = (line) => {
+    const fragmentsOnLine = [...line.fragments].sort((a, b) => a.x - b.x);
+    const segments = [];
+    let current = [];
+    let previous = null;
+    for (const fragment of fragmentsOnLine) {
+      const gap = previous ? fragment.x - (previous.x + previous.width) : 0;
+      const columnGap = Math.max(72, Math.max(fragment.height, previous?.height || 0) * 7);
+      if (previous && gap > columnGap && current.length > 0) {
+        segments.push(current);
+        current = [];
+      }
+      current.push(fragment);
+      previous = fragment;
+    }
+    if (current.length > 0) segments.push(current);
+    return segments.map((segment) => ({
+      y: line.y,
+      height: Math.max(...segment.map((fragment) => fragment.height)),
+      x: segment[0].x,
+      text: joinLine(segment),
+    }));
+  };
+
   const orderedLines = lines
-    .map((line) => ({ ...line, text: joinLine(line) }))
+    .flatMap(splitVisualSegments)
     .filter((line) => line.text)
-    .sort((a, b) => b.y - a.y || a.fragments[0].x - b.fragments[0].x);
+    .sort((a, b) => b.y - a.y || a.x - b.x);
+
+  const baselineGaps = orderedLines
+    .slice(1)
+    .map((line, index) => orderedLines[index].y - line.y)
+    .filter((gap) => gap > 0.5)
+    .sort((a, b) => a - b);
+  const medianBaselineGap = baselineGaps[Math.floor(baselineGaps.length / 2)] || medianHeight * 1.2;
+  const isLikelyHeading = (line) => {
+    const letters = line.text.replace(/[^A-Za-z]/g, '');
+    const words = line.text.trim().split(/\s+/).filter(Boolean);
+    const allCaps = letters.length >= 3 && letters === letters.toUpperCase();
+    const largerText = line.height >= medianHeight * 1.25;
+    return line.text.length <= 90 && words.length <= 10 && (allCaps || largerText);
+  };
 
   const output = [];
   for (let index = 0; index < orderedLines.length; index += 1) {
@@ -89,11 +130,16 @@ function reconstructPageText(items) {
     const previous = orderedLines[index - 1];
     if (previous) {
       const verticalGap = previous.y - line.y;
-      const normalLineGap = Math.max(previous.height, line.height) * 1.45;
+      const paragraphGap = Math.max(
+        medianBaselineGap * 1.45,
+        Math.max(previous.height, line.height) * 1.65,
+      );
       // A visibly larger vertical gap normally marks a paragraph/section break.
-      if (verticalGap > normalLineGap) output.push('');
+      if (verticalGap > paragraphGap && output[output.length - 1] !== '') output.push('');
     }
+    if (isLikelyHeading(line) && output.length > 0 && output[output.length - 1] !== '') output.push('');
     output.push(line.text);
+    if (isLikelyHeading(line) && orderedLines[index + 1] && output[output.length - 1] !== '') output.push('');
   }
 
   return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
