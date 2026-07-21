@@ -24,6 +24,9 @@ import {
 import type { ValidationTelemetry } from './aiValidation.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 110_000;
+const MIN_OPENROUTER_REQUEST_TIMEOUT_MS = 30_000;
+const MAX_OPENROUTER_REQUEST_TIMEOUT_MS = 120_000;
 
 /** Paid primary model with a compatible paid fallback. */
 const DEFAULT_MODEL = 'google/gemma-4-31b-it';
@@ -43,6 +46,12 @@ function hasSourceSummaryHeader(resumeText: string): boolean {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function openRouterRequestTimeoutMs(): number {
+  const configured = Number(process.env.OPENROUTER_REQUEST_TIMEOUT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS;
+  return Math.min(MAX_OPENROUTER_REQUEST_TIMEOUT_MS, Math.max(MIN_OPENROUTER_REQUEST_TIMEOUT_MS, configured));
 }
 
 /** Trim whitespace/quotes — common copy-paste mistakes in Vercel env vars. */
@@ -229,6 +238,13 @@ export async function callOpenRouter(
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
     const requestStartedAt = Date.now();
+    const controller = new AbortController();
+    const requestTimeoutMs = openRouterRequestTimeoutMs();
+    let requestTimedOut = false;
+    const requestTimeout = setTimeout(() => {
+      requestTimedOut = true;
+      controller.abort();
+    }, requestTimeoutMs);
     try {
       const response = await fetch(OPENROUTER_URL, {
         method: 'POST',
@@ -244,6 +260,7 @@ export async function callOpenRouter(
           max_tokens: options.maxTokens ?? 4096,
           temperature: options.temperature ?? 0.25,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -307,12 +324,16 @@ export async function callOpenRouter(
         latencyMs: Date.now() - requestStartedAt,
         retryAttempt: i + 1,
         errorType: err instanceof Error ? err.name : 'unknown',
+        timedOut: requestTimedOut,
+        requestTimeoutMs,
       });
       lastError = err instanceof Error ? err : new Error(String(err));
       if (i < models.length - 1) {
         await sleep(500);
         continue;
       }
+    } finally {
+      clearTimeout(requestTimeout);
     }
   }
 
@@ -2394,7 +2415,7 @@ export async function analyzeResumeWithAi(
       { role: 'system', content: RESUME_PARSER_SYSTEM_PROMPT },
       { role: 'user', content: parserUserContent },
     ],
-    { maxTokens: 4000, temperature: 0.1, observability, stage: 'parser' }
+    { maxTokens: 2600, temperature: 0.1, observability, stage: 'parser' }
   );
 
   const parsedJson = parseStageJson(parsedRaw, 'parser', observability);
@@ -2461,14 +2482,14 @@ export async function analyzeResumeWithAi(
         { role: 'system', content: ANALYZER_SYSTEM_PROMPT },
         { role: 'user', content: analysisUserContent }
       ],
-      { maxTokens: 5000, temperature: 0.2, observability, stage: 'analyzer' }
+      { maxTokens: 4000, temperature: 0.2, observability, stage: 'analyzer' }
     ),
     callOpenRouter(
       [
         { role: 'system', content: REWRITER_SYSTEM_PROMPT },
         { role: 'user', content: rewriterUserContent }
       ],
-      { maxTokens: 3000, temperature: 0.3, observability, stage: 'rewriter' }
+      { maxTokens: 1800, temperature: 0.3, observability, stage: 'rewriter' }
     )
   ]);
 

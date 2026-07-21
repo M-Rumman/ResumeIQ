@@ -1,8 +1,10 @@
 import { apiPost } from './client.js';
 
-const DEFAULT_ANALYSIS_TIMEOUT_MS = 120_000;
-const MIN_ANALYSIS_TIMEOUT_MS = 30_000;
-const MAX_ANALYSIS_TIMEOUT_MS = 180_000;
+// Resume analysis is a three-stage AI pipeline. Keep the browser alive long
+// enough for a paid provider to complete it, while retaining a finite cap.
+const DEFAULT_ANALYSIS_TIMEOUT_MS = 240_000;
+const MIN_ANALYSIS_TIMEOUT_MS = 180_000;
+const MAX_ANALYSIS_TIMEOUT_MS = 300_000;
 
 function analysisTimeoutMs(): number {
   const configured = Number(import.meta.env.VITE_AI_ANALYSIS_TIMEOUT_MS);
