@@ -2420,6 +2420,41 @@ function parseStageJson(
   }
 }
 
+/**
+ * A provider may occasionally stop before closing a JSON object. Retry that
+ * stage once with an explicit compact-JSON instruction instead of surfacing a
+ * partial model response as a completed analysis.
+ */
+async function callStructuredStage(
+  stage: Extract<AiPipelineStage, 'parser' | 'analyzer' | 'rewriter'>,
+  messages: ChatMessage[],
+  options: { maxTokens: number; temperature: number; observability?: AiObservabilityContext },
+): Promise<Record<string, any>> {
+  const request = async (retry: boolean) => {
+    const stageMessages: ChatMessage[] = retry
+      ? [...messages, {
+        role: 'user',
+        content: 'Return only one complete, valid JSON object. Keep each array concise and close every JSON array and object; do not add markdown or commentary.',
+      }]
+      : messages;
+    const raw = await callOpenRouter(stageMessages, {
+      maxTokens: options.maxTokens,
+      temperature: options.temperature,
+      observability: options.observability,
+      stage,
+    });
+    return parseStageJson(raw, stage, options.observability);
+  };
+
+  try {
+    return await request(false);
+  } catch (error) {
+    if (!(error instanceof AiPipelineError) || error.code !== 'INVALID_JSON') throw error;
+    logAiEvent(options.observability, 'structured_stage_retry', { stage, reason: 'invalid_json' });
+    return request(true);
+  }
+}
+
 function requiredScore(value: unknown, field: 'atsScore' | 'matchScore'): number {
   const score = Number(value);
   if (!Number.isFinite(score) || score < 0 || score > 100) {
@@ -2484,15 +2519,14 @@ export async function analyzeResumeWithAi(
   const parserUserContent = `Job Description:\n${jobDescription.slice(0, 6000)}\n\nStructured Resume JSON:\n${parserResume}`;
   console.info('[pipeline] Running Step 1: Resume & Job Parser');
   
-  const parsedRaw = await callOpenRouter(
+  const parsedJson = await callStructuredStage(
+    'parser',
     [
       { role: 'system', content: RESUME_PARSER_SYSTEM_PROMPT },
       { role: 'user', content: parserUserContent },
     ],
-    { maxTokens: 2600, temperature: 0.1, observability, stage: 'parser' }
+    { maxTokens: 3000, temperature: 0.1, observability }
   );
-
-  const parsedJson = parseStageJson(parsedRaw, 'parser', observability);
   if (!parsedJson.resume || typeof parsedJson.resume !== 'object' || !parsedJson.job || typeof parsedJson.job !== 'object') {
     throw new AiPipelineError('parser', 'INVALID_SCHEMA', 'The parser response is missing resume or job data.');
   }
@@ -2554,25 +2588,24 @@ export async function analyzeResumeWithAi(
 
   console.info('[pipeline] Running Step 2 & 3: Parallel Analyzer and Rewriter');
   
-  const [analysisRaw, rewriterRaw] = await Promise.all([
-    callOpenRouter(
+  const [analysisJson, rewriterJson] = await Promise.all([
+    callStructuredStage(
+      'analyzer',
       [
         { role: 'system', content: ANALYZER_SYSTEM_PROMPT },
         { role: 'user', content: analysisUserContent }
       ],
-      { maxTokens: 4000, temperature: 0.2, observability, stage: 'analyzer' }
+      { maxTokens: 4800, temperature: 0.2, observability }
     ),
-    callOpenRouter(
+    callStructuredStage(
+      'rewriter',
       [
         { role: 'system', content: REWRITER_SYSTEM_PROMPT },
         { role: 'user', content: rewriterUserContent }
       ],
-      { maxTokens: 1800, temperature: 0.3, observability, stage: 'rewriter' }
+      { maxTokens: 2200, temperature: 0.3, observability }
     )
   ]);
-
-  const analysisJson = parseStageJson(analysisRaw, 'analyzer', observability);
-  const rewriterJson = parseStageJson(rewriterRaw, 'rewriter', observability);
 
   const missingStructure = [
     !parsedJson.resume.summary && 'summary',

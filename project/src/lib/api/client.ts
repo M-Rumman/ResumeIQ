@@ -39,8 +39,10 @@ async function parseJsonResponse<T>(response: Response): Promise<T & { error?: s
     return JSON.parse(body) as T & { error?: string };
   } catch {
     throw new ApiRequestError(
-      'malformed_response',
-      'The analysis service returned an invalid response.',
+      response.status >= 500 ? 'service_unavailable' : 'malformed_response',
+      response.status >= 500
+        ? 'The analysis service is temporarily unavailable.'
+        : 'The analysis service returned an invalid response.',
       response.status,
     );
   }
