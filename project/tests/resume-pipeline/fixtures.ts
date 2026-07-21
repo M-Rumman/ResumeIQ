@@ -149,28 +149,28 @@ export const requirementMatchingFixtures = [
     name: 'verbatim technical skill',
     resume: 'Skills\nArduino\n\nProjects\nBuilt an Arduino sensor controller.',
     requirement: 'Arduino',
-    tier: 'Strong',
+    tier: 'Strong Match',
     section: 'Skills',
   },
   {
     name: 'normalized credential abbreviation',
     resume: 'Certifications\nPADI AOW Diver',
     requirement: 'PADI Advanced Open Water',
-    tier: 'Strong',
+    tier: 'Strong Match',
     section: 'Certifications',
   },
   {
     name: 'higher education degree subsumes bachelor requirement',
     resume: 'Education\nM.S. in Marine Biology',
     requirement: "Bachelor's in Marine Biology or related field",
-    tier: 'Strong',
+    tier: 'Exceeded Requirement',
     section: 'Education',
   },
   {
     name: 'related hardware tool stays partial',
     resume: 'Skills\nArduino\n\nProjects\nBuilt a microcontroller-based navigation prototype.',
     requirement: 'ESP32',
-    tier: 'Partial',
+    tier: 'Related Match',
     section: 'Skills',
   },
   {
@@ -181,11 +181,13 @@ export const requirementMatchingFixtures = [
     section: null,
   },
   {
-    name: 'project technology direct evidence',
+    name: 'project technology is normalized into the global skills index',
     resume: 'Projects\nMechanical Workbench\n- Designed components using SolidWorks.',
     requirement: 'SolidWorks',
-    tier: 'Strong',
-    section: 'Projects',
+    tier: 'Strong Match',
+    // Deterministic extraction exposes this discrete technology in Skills.
+    // The global evidence priority correctly cites Skills before Projects.
+    section: 'Skills',
   },
 ] as const;
 

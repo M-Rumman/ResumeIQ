@@ -10,7 +10,7 @@ import {
   sanitizeResumeContentLine,
   type StructuredResume,
 } from './resumeParser.js';
-import { validateAiResumeOutput, validateHiringManagerAssessment } from './aiValidation.js';
+import { validateAiResumeOutput } from './aiValidation.js';
 import {
   planInterviewRecommendations,
   planResumeRecommendations,
@@ -192,7 +192,7 @@ export interface AiInterviewPrepFull {
   preparationSuggestions: string[];
 }
 
-export type AiPipelineStage = 'parser' | 'analyzer' | 'rewriter' | 'validation' | 'planner';
+export type AiPipelineStage = 'parser' | 'verification' | 'analyzer' | 'rewriter' | 'validation' | 'planner';
 
 /** A safe, structured failure that can cross the API boundary without provider details. */
 export class AiPipelineError extends Error {
@@ -420,7 +420,7 @@ JOB-SPECIFIC RECRUITER OPERATING RULE:
 - Act as an experienced recruiter hiring ONLY for the supplied job, not as a generic resume reviewer.
 - Before writing every recommendation, internally ask: "If I were recruiting for this exact job today, what would stop me from interviewing this candidate?" Omit advice that does not answer that question or does not materially improve the hiring decision.
 - Order recommendations by hiring impact: Critical interview blockers first (missing required skills, absent practical evidence, or sections that prevent evaluation), then Important partial alignment, and only then minor formatting or wording polish.
-- The gapAnalysis is the PRIMARY source for every later ATS observation, missing-skill result, score explanation, and recommendation. Preserve its MATCHED, PARTIALLY MATCHED, MISSING, and NOT APPLICABLE classifications unless the supplied resume evidence directly proves it wrong.
+- Complete the deterministic requirement-verification pass before producing any ATS, Job Match, keyword, recommendation, interview, or hiring-summary conclusion. Its exclusive evidence tiers are authoritative: Strong Match, Exceeded Requirement, Equivalent Match, Related Match, Weak Evidence, or Missing. Preserve the underlying MATCHED, PARTIALLY MATCHED, MISSING, and NOT APPLICABLE compatibility statuses unless the supplied resume evidence directly proves them wrong.
 - Treat jobProfile as the source of priority. Required requirements are Critical, preferred requirements are Important, and responsibilities are Supporting role context. Do not let generic resume-review heuristics outrank a Critical or Important job requirement.
 - Follow this reasoning order exactly: (1) identify the target role and its ranked priorities; (2) compare each priority with resume evidence; (3) use gapAnalysis to classify the comparison; (4) explain ATS and job match through that comparison; (5) generate job-specific improvements; and only then (6) generate remaining general resume improvements.
 - The same resume paired with a different jobProfile must produce meaningfully different missing skills, match explanation, recommendation order, formatting priorities, and recruiter assessment. Do not reuse generic advice across roles.
@@ -644,11 +644,11 @@ function toParserResumeInput(resume: StructuredResume) {
 }
 
 export type GapStatus = 'MATCHED' | 'PARTIALLY MATCHED' | 'MISSING' | 'NOT APPLICABLE';
-export type SkillMatchClassification = 'EXACT_MATCH' | 'RELATED_SKILL_EVIDENCED' | 'NOT_EVIDENCED' | 'NOT_APPLICABLE';
+export type SkillMatchClassification = 'EXACT_MATCH' | 'EXCEEDED_REQUIREMENT' | 'EQUIVALENT_MATCH' | 'RELATED_MATCH' | 'WEAK_EVIDENCE' | 'NOT_EVIDENCED' | 'NOT_APPLICABLE';
 
 /** A source-specific resume excerpt that supports a deterministic job match. */
 export type ResumeEvidenceSpan = {
-  section: 'Summary' | 'Skills' | 'Experience' | 'Projects' | 'Education' | 'Certifications' | 'Awards';
+  section: 'Summary' | 'Skills' | 'Languages' | 'Experience' | 'Projects' | 'Education' | 'Certifications' | 'Awards';
   /** The original parser entry containing the support. */
   text: string;
   /** Character offsets within text for the matched term or related phrase. */
@@ -667,10 +667,10 @@ const MIN_CITATION_CONFIDENCE = 0.72;
 export type JobGapItem = {
   skill: string;
   status: GapStatus;
-  /** User-facing deterministic tier; never derived from model certainty. */
-  matchTier: 'Strong' | 'Partial' | 'Missing' | 'Not Applicable';
+  /** Exclusive deterministic tier; never derived from model certainty. */
+  matchTier: 'Strong Match' | 'Exceeded Requirement' | 'Equivalent Match' | 'Related Match' | 'Weak Evidence' | 'Missing' | 'Not Applicable';
   /** Debuggable threshold responsible for the tier. */
-  matchTrigger: 'normalized_exact' | 'credential_subsumption' | 'related_evidence' | 'no_evidence' | 'not_applicable';
+  matchTrigger: 'normalized_exact' | 'recognized_synonym' | 'qualification_exceeds_requirement' | 'credential_subsumption' | 'related_evidence' | 'weak_evidence' | 'no_evidence' | 'not_applicable';
   /** Distinguishes an exact tool match from transferable parent/family evidence. */
   matchClassification: SkillMatchClassification;
   matchReason: string;
@@ -678,6 +678,8 @@ export type JobGapItem = {
   evidence: string[];
   /** Source-aware support for matched and partially matched requirements. */
   evidenceSpans: ResumeEvidenceSpan[];
+  /** Ordered verification question that produced this final classification. */
+  verificationStep: 1 | 2 | 3 | 4 | 5 | 6 | 0;
   recommendation: string;
 };
 
@@ -692,6 +694,7 @@ export type ResponsibilityGapItem = {
 };
 
 export type JobGapAnalysis = {
+  verificationCompleted: true;
   items: JobGapItem[];
   responsibilities: ResponsibilityGapItem[];
 };
@@ -837,6 +840,15 @@ const GAP_RULES: Record<string, GapRule> = {
 };
 
 /**
+ * Indirect context is deliberately kept separate from the closely related
+ * terminology above. It can support a cautious observation, never a claim
+ * that the exact requirement has been demonstrated.
+ */
+const WEAK_EVIDENCE_RULES: Record<string, string[]> = {
+  'strong swimmer': ['scientific diver', 'open water research', 'open water diving', 'diving'],
+};
+
+/**
  * Domain concepts let responsibility matching use observable work concepts
  * instead of coincidental word overlap (for example, "testing" or "systems").
  */
@@ -946,6 +958,10 @@ function gapRuleForSkill(normalizedSkill: string): GapRule {
   };
 }
 
+function weakEvidenceTermsForSkill(normalizedSkill: string): string[] {
+  return WEAK_EVIDENCE_RULES[normalizedSkill] || [];
+}
+
 function uniqueGapEvidence(values: string[]): string[] {
   const seen = new Set<string>();
   return values.filter((value) => {
@@ -956,11 +972,42 @@ function uniqueGapEvidence(values: string[]): string[] {
   });
 }
 
-type ResumeEvidenceSource = {
+export type ResumeEvidenceSource = {
   section: ResumeEvidenceSpan['section'];
   text: string;
   context?: string;
 };
+
+export type ResumeEvidenceIndexEntry = {
+  canonical: string;
+  kind: 'education' | 'certification' | 'skill' | 'language' | 'experience' | 'project' | 'summary' | 'award' | 'other';
+  section: ResumeEvidenceSpan['section'];
+  text: string;
+  confidence: number;
+  reason: string;
+  context?: string;
+};
+
+export type ResumeEvidenceIndex = {
+  sources: ResumeEvidenceSource[];
+  entries: ResumeEvidenceIndexEntry[];
+};
+
+const EVIDENCE_SEARCH_SCOPE = 'Certifications, Education, Skills, Languages, Experience, Projects, Summary, and Awards';
+
+/** Formats the exact deterministic evidence behind a requirement conclusion. */
+function requirementEvidenceCitation(item: JobGapItem): string {
+  const span = item.evidenceSpans[0];
+  if (span) {
+    const context = span.context ? `${span.context}: ` : '';
+    return `Requirement: ${item.skill}. Evidence: ${span.section} — "${context}${span.text}". Classification: ${item.matchTier}.`;
+  }
+  return `Requirement: ${item.skill}. Evidence searched: ${EVIDENCE_SEARCH_SCOPE}; no matching resume evidence was found. Classification: Missing.`;
+}
+
+function requirementEvidenceCitationList(items: JobGapItem[], limit = 3): string[] {
+  return items.slice(0, limit).map(requirementEvidenceCitation);
+}
 
 function uniqueEvidenceSpans(values: ResumeEvidenceSpan[]): ResumeEvidenceSpan[] {
   const seen = new Set<string>();
@@ -1020,9 +1067,23 @@ function credentialSubsumptionEvidenceSpans(
   }));
 }
 
+/** Distinguishes a higher degree from an equal-level degree equivalence. */
+function qualificationExceedsRequirement(
+  sources: ResumeEvidenceSource[],
+  requirement: string,
+): boolean {
+  const degree = degreeRequirement(requirement);
+  if (!degree) return false;
+  return sources.some((source) =>
+    source.section === 'Education'
+    && degreeLevel(source.text) > degree.level
+    && degree.fields.some((field) => containsNormalizedPhrase(source.text, field)),
+  );
+}
+
 function buildResumeEvidenceSources(
   resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>
-    & Partial<Pick<StructuredResume, 'projectDetails'>>,
+    & Partial<Pick<StructuredResume, 'projectDetails' | 'languages'>>,
 ): ResumeEvidenceSource[] {
   const sourceList = (section: ResumeEvidenceSpan['section'], values: string[]): ResumeEvidenceSource[] =>
     values.filter((value) => typeof value === 'string' && Boolean(value.trim())).map((text) => ({ section, text }));
@@ -1033,18 +1094,61 @@ function buildResumeEvidenceSources(
       .map((text) => ({ section: 'Projects' as const, text, ...(context ? { context } : {}) }));
   });
 
-  // Project entries are intentionally first: a skill demonstrated in project
-  // work is stronger evidence than the same word appearing only in Skills.
+  // Explicit evidence sources are deliberately ordered before practical and
+  // inferred evidence. This order is the source of truth for exact citations.
   return [
-    ...structuredProjectSources,
-    ...sourceList('Experience', resume.experience),
-    ...sourceList('Projects', resume.projects),
-    ...sourceList('Skills', resume.skills),
-    ...sourceList('Education', resume.education),
     ...sourceList('Certifications', resume.certifications),
-    ...sourceList('Awards', resume.awards),
+    ...sourceList('Education', resume.education),
+    ...sourceList('Skills', resume.skills),
+    ...sourceList('Languages', resume.languages || []),
+    ...sourceList('Experience', resume.experience),
+    ...structuredProjectSources,
+    ...sourceList('Projects', resume.projects),
     ...(resume.summary.trim() ? [{ section: 'Summary' as const, text: resume.summary }] : []),
+    ...sourceList('Awards', resume.awards),
   ];
+}
+
+function canonicalEvidenceValue(value: string): string {
+  const normalized = normalizeGapTerm(value);
+  if (/\bpadi\s+(?:advanced\s+open\s+water|aow)\b/.test(normalized)) return 'padi advanced open water certification';
+  if (/\bsolidworks?\b/.test(normalized)) return 'solidworks';
+  return normalized;
+}
+
+/**
+ * Builds one global, source-aware view before requirement matching. The index
+ * keeps the original text and section so a later explanation cites the same
+ * span that produced its Strong/Partial/Missing decision.
+ */
+export function buildResumeEvidenceIndex(
+  resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>
+    & Partial<Pick<StructuredResume, 'projectDetails' | 'languages'>>,
+): ResumeEvidenceIndex {
+  const sources = buildResumeEvidenceSources(resume);
+  const kindFor = (section: ResumeEvidenceSpan['section']): ResumeEvidenceIndexEntry['kind'] => ({
+    Education: 'education', Certifications: 'certification', Skills: 'skill', Experience: 'experience',
+    Projects: 'project', Summary: 'summary', Awards: 'award', Languages: 'language',
+  }[section] || 'other') as ResumeEvidenceIndexEntry['kind'];
+  const entries = sources.map((source) => ({
+    canonical: canonicalEvidenceValue(source.text),
+    kind: kindFor(source.section),
+    section: source.section,
+    text: source.text,
+    confidence: 1,
+    reason: `Explicit ${source.section.toLowerCase()} evidence indexed from the parsed resume.`,
+    ...(source.context ? { context: source.context } : {}),
+  }));
+  return { sources, entries };
+}
+
+/** Finds the first highest-priority source that explicitly supports a term. */
+function indexedExactEvidenceSpans(index: ResumeEvidenceIndex, terms: string[]): ResumeEvidenceSpan[] {
+  for (const source of index.sources) {
+    const term = terms.find((candidate) => containsNormalizedPhrase(source.text, candidate));
+    if (term) return [evidenceSpanFor(source, term, 1)];
+  }
+  return [];
 }
 
 function jobTextList(value: unknown): string[] {
@@ -1175,18 +1279,20 @@ export function buildJobProfile(job: {
 }
 
 /**
- * Compares the structured resume against the parsed job requirements before
- * any downstream recommendation is generated. It intentionally uses only
- * observable resume evidence and never infers unlisted candidate experience.
+ * Ordered verification pass. It must complete before any downstream ATS,
+ * Job Match, keyword, interview, hiring-summary, or recommendation logic can
+ * consume a requirement conclusion.
  */
 export function buildJobGapAnalysis(
   resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>,
   job: { requiredSkills?: unknown; responsibilities?: unknown },
+  suppliedEvidenceIndex?: ResumeEvidenceIndex,
 ): JobGapAnalysis {
   const requiredSkills = Array.isArray(job.requiredSkills)
     ? job.requiredSkills.filter((skill): skill is string => typeof skill === 'string' && Boolean(skill.trim()))
     : [];
-  const evidenceSources = buildResumeEvidenceSources(resume);
+  const evidenceIndex = suppliedEvidenceIndex || buildResumeEvidenceIndex(resume);
+  const evidenceSources = evidenceIndex.sources;
 
   const items = requiredSkills.map((skill) => {
       const normalizedSkill = normalizeGapTerm(skill);
@@ -1200,6 +1306,7 @@ export function buildJobGapAnalysis(
           matchReason: 'No comparison is required for this non-applicable requirement.',
           evidence: [],
           evidenceSpans: [],
+          verificationStep: 0 as const,
           recommendation: 'No resume action is needed for this non-applicable requirement.',
         };
       }
@@ -1208,56 +1315,103 @@ export function buildJobGapAnalysis(
       // Exact normalized phrase matching runs before hierarchy/related terms.
       // A literal or normalized abbreviation match is a Strong Match and no
       // later fuzzy/related stage is allowed to downgrade it.
-      const exactEvidenceSpans = matchingEvidenceSpans(evidenceSources, [skill], 1);
+      const exactEvidenceSpans = indexedExactEvidenceSpans(evidenceIndex, [skill]);
       const subsumptionEvidenceSpans = exactEvidenceSpans.length === 0
         ? credentialSubsumptionEvidenceSpans(evidenceSources, skill)
         : [];
+      const exceedsQualification = subsumptionEvidenceSpans.length > 0
+        && qualificationExceedsRequirement(evidenceSources, skill);
       const directEvidenceSpans = exactEvidenceSpans.length || subsumptionEvidenceSpans.length
         ? uniqueEvidenceSpans([...exactEvidenceSpans, ...subsumptionEvidenceSpans])
-        : matchingEvidenceSpans(evidenceSources, rule.direct, 1);
-      const partialEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
+        : indexedExactEvidenceSpans(evidenceIndex, rule.direct);
+      const relatedEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
+      const weakEvidenceSpans = relatedEvidenceSpans.length === 0
+        ? matchingEvidenceSpans(evidenceSources, weakEvidenceTermsForSkill(normalizedSkill), 0.4)
+        : [];
       // Citations always come from the same spans that established the tier.
       // Do not append loosely related snippets after a direct match.
       const evidenceSpans = directEvidenceSpans.length > 0
         ? directEvidenceSpans
-        : partialEvidenceSpans;
+        : relatedEvidenceSpans.length > 0
+          ? relatedEvidenceSpans
+          : weakEvidenceSpans;
       const evidence = uniqueGapEvidence(evidenceSpans.map((span) => span.text));
 
       const status: GapStatus = directEvidenceSpans.length > 0
         ? 'MATCHED'
-        : partialEvidenceSpans.length > 0
+        : relatedEvidenceSpans.length > 0 || weakEvidenceSpans.length > 0
           ? 'PARTIALLY MATCHED'
           : 'MISSING';
-      const matchClassification: SkillMatchClassification = status === 'MATCHED'
+      const hasRecognizedSynonym = !exactEvidenceSpans.length && !subsumptionEvidenceSpans.length && directEvidenceSpans.length > 0;
+      const matchClassification: SkillMatchClassification = exactEvidenceSpans.length || hasRecognizedSynonym
         ? 'EXACT_MATCH'
-        : status === 'PARTIALLY MATCHED'
-          ? 'RELATED_SKILL_EVIDENCED'
-          : 'NOT_EVIDENCED';
-      const matchTier = status === 'MATCHED'
-        ? 'Strong' as const
-        : status === 'PARTIALLY MATCHED'
-          ? 'Partial' as const
-          : 'Missing' as const;
+        : exceedsQualification
+          ? 'EXCEEDED_REQUIREMENT'
+        : subsumptionEvidenceSpans.length > 0
+          ? 'EQUIVALENT_MATCH'
+          : relatedEvidenceSpans.length > 0
+            ? 'RELATED_MATCH'
+            : weakEvidenceSpans.length > 0
+              ? 'WEAK_EVIDENCE'
+              : 'NOT_EVIDENCED';
+      const matchTier = matchClassification === 'EXACT_MATCH'
+        ? 'Strong Match' as const
+        : matchClassification === 'EXCEEDED_REQUIREMENT'
+          ? 'Exceeded Requirement' as const
+        : matchClassification === 'EQUIVALENT_MATCH'
+          ? 'Equivalent Match' as const
+          : matchClassification === 'RELATED_MATCH'
+            ? 'Related Match' as const
+            : matchClassification === 'WEAK_EVIDENCE'
+              ? 'Weak Evidence' as const
+              : 'Missing' as const;
       const matchTrigger = exactEvidenceSpans.length > 0
         ? 'normalized_exact' as const
+        : exceedsQualification
+          ? 'qualification_exceeds_requirement' as const
         : subsumptionEvidenceSpans.length > 0
           ? 'credential_subsumption' as const
-          : partialEvidenceSpans.length > 0
+          : hasRecognizedSynonym
+            ? 'recognized_synonym' as const
+          : relatedEvidenceSpans.length > 0
             ? 'related_evidence' as const
+            : weakEvidenceSpans.length > 0
+              ? 'weak_evidence' as const
             : 'no_evidence' as const;
-      const relatedSkillLabels = uniqueGapEvidence(partialEvidenceSpans.map((span) => span.matchedText));
+      const relatedSkillLabels = uniqueGapEvidence(relatedEvidenceSpans.map((span) => span.matchedText));
+      const weakEvidenceLabels = uniqueGapEvidence(weakEvidenceSpans.map((span) => span.matchedText));
       const matchReason = matchClassification === 'EXACT_MATCH'
         ? `Exact ${skill} evidence is documented in the resume.`
-        : matchClassification === 'RELATED_SKILL_EVIDENCED'
-          ? `Related skill evidenced: ${relatedSkillLabels.join(', ')}; exact ${skill} tool not confirmed.`
+        : matchClassification === 'EXCEEDED_REQUIREMENT'
+          ? `A higher qualification exceeds ${skill}.`
+        : matchClassification === 'EQUIVALENT_MATCH'
+          ? `A higher or equivalent qualification satisfies ${skill}.`
+        : matchClassification === 'RELATED_MATCH'
+          ? `Related skill evidenced: ${relatedSkillLabels.join(', ')}; the resume does not explicitly name ${skill}.`
+        : matchClassification === 'WEAK_EVIDENCE'
+            ? `Indirect evidence (${weakEvidenceLabels.join(', ')}) may relate to ${skill}; the requirement is not explicitly named in the resume.`
           : `${skill} is not explicitly evidenced in the resume.`;
       const recommendation = status === 'MATCHED'
         ? `Keep the existing ${skill} evidence prominent in the most relevant experience or project entry.`
-        : status === 'PARTIALLY MATCHED'
+        : matchClassification === 'RELATED_MATCH'
           ? `Make the existing related evidence explicitly connect to ${skill}, but only if that connection is accurate.`
+          : matchClassification === 'WEAK_EVIDENCE'
+            ? `Clarify whether the existing indirect evidence demonstrates ${skill}; do not claim it unless accurate.`
           : `${skill} is not explicitly evidenced in the resume. Mention coursework, project work, or practical exposure only if it genuinely applies.`;
 
-      return { skill, status, matchTier, matchTrigger, matchClassification, matchReason, evidence, evidenceSpans, recommendation };
+      const verificationStep = matchClassification === 'EXACT_MATCH'
+        ? 1 as const
+        : matchClassification === 'EXCEEDED_REQUIREMENT'
+          ? 2 as const
+        : matchClassification === 'EQUIVALENT_MATCH'
+          ? 3 as const
+        : matchClassification === 'RELATED_MATCH'
+          ? 4 as const
+        : matchClassification === 'WEAK_EVIDENCE'
+          ? 5 as const
+          : 6 as const;
+
+      return { skill, status, matchTier, matchTrigger, matchClassification, matchReason, evidence, evidenceSpans, verificationStep, recommendation };
     });
 
   const responsibilities = jobTextList(job.responsibilities);
@@ -1313,7 +1467,7 @@ export function buildJobGapAnalysis(
     return { responsibility, status, matchClassification, matchReason, evidence: finalEvidence };
   });
 
-  return { items, responsibilities: responsibilityItems };
+  return { verificationCompleted: true, items, responsibilities: responsibilityItems };
 }
 
 /**
@@ -1323,18 +1477,23 @@ export function buildJobGapAnalysis(
 export function buildKeywordCompatibility(
   resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>,
   jobProfile: Pick<JobProfile, 'requiredSkills' | 'preferredSkills'>,
+  evidenceIndex?: ResumeEvidenceIndex,
 ): KeywordCompatibility {
   const requirements = uniqueGapEvidence([
     ...jobProfile.requiredSkills,
     ...jobProfile.preferredSkills,
   ]);
-  const comparison = buildJobGapAnalysis(resume, { requiredSkills: requirements });
+  // The pipeline passes its pre-built index here so the keyword view cites the
+  // same prioritized evidence as the primary JD gap analysis. Callers outside
+  // the pipeline remain supported because buildJobGapAnalysis builds one when
+  // it is not supplied.
+  const comparison = buildJobGapAnalysis(resume, { requiredSkills: requirements }, evidenceIndex);
   const items = comparison.items.filter((item) => item.status !== 'NOT APPLICABLE');
   const strongMatches = items
-    .filter((item) => item.matchClassification === 'EXACT_MATCH')
+    .filter((item) => item.matchClassification === 'EXACT_MATCH' || item.matchClassification === 'EXCEEDED_REQUIREMENT' || item.matchClassification === 'EQUIVALENT_MATCH')
     .map((item) => item.skill);
   const partialMatches = items
-    .filter((item) => item.matchClassification === 'RELATED_SKILL_EVIDENCED')
+    .filter((item) => item.matchClassification === 'RELATED_MATCH' || item.matchClassification === 'WEAK_EVIDENCE')
     .map((item) => item.skill);
   const missing = items
     .filter((item) => item.matchClassification === 'NOT_EVIDENCED')
@@ -1522,6 +1681,33 @@ function buildAtsDisplayBreakdown(breakdown: AtsDimensionBreakdown): AtsDisplayB
   ];
 }
 
+function evidenceGroundAtsBreakdown(
+  breakdown: AtsDisplayBreakdownItem[],
+  resume: StructuredResume,
+  gapAnalysis: JobGapAnalysis,
+): AtsDisplayBreakdownItem[] {
+  const matched = gapAnalysis.items.filter((item) => item.status === 'MATCHED');
+  const partial = gapAnalysis.items.filter((item) => item.status === 'PARTIALLY MATCHED');
+  const missing = gapAnalysis.items.filter((item) => item.status === 'MISSING');
+  const structuralEvidence = [
+    resume.summary && `Summary — "${resume.summary}"`,
+    resume.education[0] && `Education — "${resume.education[0]}"`,
+    resume.skills[0] && `Skills — "${resume.skills[0]}"`,
+    resume.experience[0] && `Experience — "${resume.experience[0]}"`,
+    resume.projects[0] && `Projects — "${resume.projects[0]}"`,
+  ].find(Boolean) || 'No populated parsed resume section was available.';
+  const evidenceFor = (items: JobGapItem[]) => requirementEvidenceCitationList(items, 1)[0] || structuralEvidence;
+
+  return breakdown.map((item) => {
+    const evidence = item.label === 'Keyword Coverage' || item.label === 'Evidence Strength'
+      ? evidenceFor([...matched, ...partial, ...missing])
+      : item.label === 'Experience Relevance'
+        ? evidenceFor([...matched, ...partial])
+        : structuralEvidence;
+    return { ...item, explanation: `${item.explanation} Evidence: ${evidence}` };
+  });
+}
+
 /** Domain classification replaces generic token overlap for role similarity. */
 function roleDomains(value: string): Set<string> {
   const normalized = normalizeGapTerm(value);
@@ -1652,9 +1838,11 @@ export function calculateJobMatchScore(
     ].slice(0, 5),
     topGaps: [
       ...missingNames.slice(0, 4).map((skill) => `Required skill not evidenced: ${skill}`),
-      ...partialItems.slice(0, 3).map((item) => item.matchClassification === 'RELATED_SKILL_EVIDENCED'
-        ? item.matchReason
-        : `Required skill only partially evidenced: ${item.skill}`),
+      ...partialItems.slice(0, 3).map((item) =>
+        item.matchClassification === 'RELATED_MATCH' || item.matchClassification === 'WEAK_EVIDENCE'
+          ? item.matchReason
+          : `Required skill only partially evidenced: ${item.skill}`,
+      ),
       ...missingResponsibilities.slice(0, 2).map((responsibility) => `Role responsibility not evidenced: ${responsibility}`),
       ...(projectRelevance < 4 && technicalRequirements.length > 0 ? ['Projects do not clearly demonstrate enough target-role requirements.'] : []),
     ].slice(0, 5),
@@ -1726,8 +1914,11 @@ export function calculateAssessmentConfidence(
   const applicableSkills = gapAnalysis.items.filter((item) => item.status !== 'NOT APPLICABLE');
   if (applicableSkills.length === 0) return 'Low';
 
-  const exactSkills = applicableSkills.filter((item) => item.matchClassification === 'EXACT_MATCH');
-  const relatedSkills = applicableSkills.filter((item) => item.matchClassification === 'RELATED_SKILL_EVIDENCED');
+  const exactSkills = applicableSkills.filter((item) =>
+    item.matchClassification === 'EXACT_MATCH' || item.matchClassification === 'EXCEEDED_REQUIREMENT' || item.matchClassification === 'EQUIVALENT_MATCH',
+  );
+  const relatedSkills = applicableSkills.filter((item) => item.matchClassification === 'RELATED_MATCH');
+  const weakEvidenceSkills = applicableSkills.filter((item) => item.matchClassification === 'WEAK_EVIDENCE');
   const missingSkills = applicableSkills.filter((item) => item.matchClassification === 'NOT_EVIDENCED');
   const exactSkillsWithValidCitation = exactSkills.filter((item) =>
     item.evidenceSpans.some((span) => span.confidence >= MIN_CITATION_CONFIDENCE),
@@ -1735,7 +1926,7 @@ export function calculateAssessmentConfidence(
   const citationCoverage = exactSkills.length === 0
     ? 0
     : exactSkillsWithValidCitation / exactSkills.length;
-  const skillEvidenceCoverage = (exactSkills.length + relatedSkills.length * 0.5) / applicableSkills.length;
+  const skillEvidenceCoverage = (exactSkills.length + relatedSkills.length * 0.5 + weakEvidenceSkills.length * 0.25) / applicableSkills.length;
 
   const responsibilities = gapAnalysis.responsibilities;
   const exactResponsibilities = responsibilities.filter((item) => item.matchClassification === 'EXACT_PRACTICAL_EVIDENCE').length;
@@ -1746,7 +1937,7 @@ export function calculateAssessmentConfidence(
     : (exactResponsibilities + impliedResponsibilities * 0.45) / responsibilities.length;
 
   const totalComparableRequirements = applicableSkills.length + responsibilities.length;
-  const ambiguousOrMissing = relatedSkills.length + missingSkills.length + impliedResponsibilities + missingResponsibilities;
+  const ambiguousOrMissing = relatedSkills.length + weakEvidenceSkills.length + missingSkills.length + impliedResponsibilities + missingResponsibilities;
   const ambiguityRate = totalComparableRequirements === 0 ? 1 : ambiguousOrMissing / totalComparableRequirements;
   const practicalEntryCount = resume.experience.length + resume.projects.length;
 
@@ -1781,17 +1972,13 @@ export function calculateAssessmentConfidence(
  * blockers. This avoids counting requirement coverage a second time.
  */
 function buildHiringManagerAssessment(
-  raw: unknown,
   resume: StructuredResume,
   job: { title?: unknown },
   gapAnalysis: JobGapAnalysis,
   atsScore: number,
   matchScore: number,
-  resumeText: string,
-  jobDescription: string,
   planned: Record<string, any>,
 ): HiringManagerAssessment {
-  const model = validateHiringManagerAssessment(raw, resumeText, jobDescription);
   const title = typeof job.title === 'string' && job.title.trim() ? job.title.trim() : 'target role';
   const applicable = gapAnalysis.items.filter((item) => item.status !== 'NOT APPLICABLE');
   const matched = applicable.filter((item) => item.status === 'MATCHED');
@@ -1799,7 +1986,7 @@ function buildHiringManagerAssessment(
   const missing = applicable.filter((item) => item.status === 'MISSING');
   const missingResponsibilities = gapAnalysis.responsibilities.filter((item) => item.matchClassification === 'NOT_EVIDENCED');
   const clarificationReasons = [
-    ...partial.map((item) => `Area to clarify: ${item.matchReason}`),
+    ...partial.map((item) => `Area to clarify: ${requirementEvidenceCitation(item)}`),
     ...gapAnalysis.responsibilities
       .filter((item) => item.matchClassification === 'IMPLIED_PRACTICAL_EVIDENCE')
       .map((item) => `Area to clarify for ${item.responsibility}: ${item.matchReason}`),
@@ -1821,27 +2008,22 @@ function buildHiringManagerAssessment(
   const confidence = calculateAssessmentConfidence(resume, gapAnalysis);
 
   const fallbackInterviewReasons = [
-    ...matched.map((item) =>
-      `${item.skill} is evidenced in ${item.evidence.slice(0, 2).join('; ')}, directly matching the ${title} requirement.`,
-    ),
-    ...partial.map((item) =>
-      `The resume shows related evidence for ${item.skill}: ${item.evidence.slice(0, 2).join('; ')}. This supports the ${title} requirement, though the exact skill is not fully confirmed.`,
-    ),
+    ...matched.map(requirementEvidenceCitation),
+    ...partial.map(requirementEvidenceCitation),
   ];
   const fallbackRejectionReasons = [
-    ...missing.map((item) => `${item.skill} is required for the ${title} role but is not evidenced in the resume.`),
-    ...missingResponsibilities.map((item) => `${item.responsibility} is required for the ${title} role but is not explicitly evidenced in the resume.`),
+    ...missing.map(requirementEvidenceCitation),
+    ...missingResponsibilities.map((item) =>
+      `Requirement: ${item.responsibility} for the ${title} role. Evidence searched: Experience and Projects; no matching practical-resume evidence was found. Classification: Missing.`,
+    ),
   ];
-  const strengths = matched.slice(0, 2).map((item) => item.skill).join(', ') || 'the documented resume experience';
-  const concern = missing[0]?.skill || partial[0]?.skill || 'the depth of role-specific evidence';
-  const fallbackSummary = [
-    `For the ${title} role, this candidate shows relevant evidence through ${strengths}.`,
-    `The strongest hiring advantage is the direct alignment between the documented resume evidence and the matched job requirements.`,
-    `The biggest hiring concern is ${concern}, which is not fully demonstrated in the submitted resume.`,
-    `Overall, the candidate is a ${overallDecision.toLowerCase()} based on the current ATS, job-match, and requirement-gap evidence.`,
-  ].join(' ');
+  const firstComparable = matched[0] || partial[0] || missing[0];
+  const strongestEvidence = firstComparable
+    ? requirementEvidenceCitation(firstComparable)
+    : `Evidence searched: ${EVIDENCE_SEARCH_SCOPE}; the supplied job contains no comparable technical requirement.`;
+  const primaryGapEvidence = missing[0] ? requirementEvidenceCitation(missing[0]) : partial[0] ? requirementEvidenceCitation(partial[0]) : strongestEvidence;
+  const fallbackSummary = `Hiring summary for ${title}: ${strongestEvidence} Primary gap: ${primaryGapEvidence} Overall decision: ${overallDecision}, based on the cited requirement evidence.`;
   const plannedImprovements = [
-    ...model.biggestImprovements,
     ...missing.map((item) => item.recommendation),
     ...partial.map((item) => item.recommendation),
     ...matched.map((item) => `Keep the documented ${item.skill} evidence prominent for the ${title} role.`),
@@ -1868,8 +2050,8 @@ function buildHiringManagerAssessment(
     .map((text, index) => ({ text, estimatedImpact: [8, 6, 5, 3, 2][index] }));
 
   const summaryWithClarifications = clarificationReasons.length
-    ? `${model.recruiterSummary || fallbackSummary} ${clarificationReasons.slice(0, 2).join(' ')}`
-    : model.recruiterSummary || fallbackSummary;
+    ? `${fallbackSummary} ${clarificationReasons.slice(0, 2).join(' ')}`
+    : fallbackSummary;
   return {
     overallDecision,
     recruiterSummary: summaryWithClarifications,
@@ -1923,11 +2105,11 @@ export function buildKeywordRecommendations(
         ? 'Projects'
         : 'Skills';
     const evidenceContext = item.status === 'PARTIALLY MATCHED'
-      ? ` The resume partially demonstrates this through ${item.evidence.slice(0, 2).join('; ')}; make that connection explicit only if accurate.`
-      : ` Do not add it unless you can support it with genuine coursework, project work, or practical exposure.`;
+      ? ` ${requirementEvidenceCitation(item)} Make that connection explicit only if accurate.`
+      : ` ${requirementEvidenceCitation(item)} Do not add it unless you can support it with genuine coursework, project work, or practical exposure.`;
     const whyItMatters = source === 'required'
       ? item.status === 'MISSING'
-        ? `${item.skill} is required for the ${title} role and is not evidenced in the resume.${evidenceContext}`
+        ? `${item.skill} is required for the ${title} role.${evidenceContext}`
         : `${item.skill} is required for the ${title} role, but the resume shows only related evidence rather than an explicit match.${evidenceContext}`
       : `${item.skill} is preferred for the ${title} role and is not strongly represented in the resume.${evidenceContext}`;
     return { keyword: item.skill, priority, whyItMatters, recommendedSection };
@@ -1953,7 +2135,7 @@ export function buildRoleStrengths(
   for (const item of gapAnalysis.items) {
     // Partial requirements are intentionally reserved for missing-keyword and
     // improvement guidance so this positive section never repeats them.
-    if (item.matchClassification !== 'EXACT_MATCH') continue;
+    if (item.matchClassification !== 'EXACT_MATCH' && item.matchClassification !== 'EXCEEDED_REQUIREMENT' && item.matchClassification !== 'EQUIVALENT_MATCH') continue;
     for (const span of item.evidenceSpans.filter((span) => span.confidence >= MIN_CITATION_CONFIDENCE)) {
       const evidence = span.context ? `${span.context}: ${span.text}` : span.text;
       strengths.push(
@@ -2534,10 +2716,14 @@ export async function analyzeResumeWithAi(
   parsedJson.resume = mergeParsedResume(parsedJson.resume, localResume);
   parsedJson.job = validateAndEnrichParsedJob(parsedJson.job, jobDescription);
   const jobProfile = buildJobProfile(parsedJson.job);
-  const gapAnalysis = buildJobGapAnalysis(parsedJson.resume, jobProfile);
+  const evidenceIndex = buildResumeEvidenceIndex(parsedJson.resume);
+  const gapAnalysis = buildJobGapAnalysis(parsedJson.resume, jobProfile, evidenceIndex);
+  if (!gapAnalysis.verificationCompleted) {
+    throw new AiPipelineError('verification', 'VERIFICATION_INCOMPLETE', 'The resume requirements could not be verified.');
+  }
   const atsBreakdown = calculateJobSpecificAtsScore(parsedJson.resume, gapAnalysis, jobProfile);
   const jobMatchBreakdown = calculateJobMatchScore(parsedJson.resume, jobProfile, gapAnalysis);
-  const keywordCompatibility = buildKeywordCompatibility(parsedJson.resume, jobProfile);
+  const keywordCompatibility = buildKeywordCompatibility(parsedJson.resume, jobProfile, evidenceIndex);
   logAiEvent(observability, 'gap_analysis_completed', {
     jobTitlePresent: Boolean(jobProfile.title),
     requiredSkillCount: jobProfile.requiredSkills.length,
@@ -2551,6 +2737,14 @@ export async function analyzeResumeWithAi(
       counts[item.matchTrigger] = (counts[item.matchTrigger] || 0) + 1;
       return counts;
     }, {}),
+    evidenceIndex: {
+      sourceCount: evidenceIndex.sources.length,
+      entryCount: evidenceIndex.entries.length,
+      sections: evidenceIndex.entries.reduce<Record<string, number>>((counts, entry) => {
+        counts[entry.section] = (counts[entry.section] || 0) + 1;
+        return counts;
+      }, {}),
+    },
   });
 
   // Step 2 & 3: Run Analyzer and Rewriter in Parallel
@@ -2615,7 +2809,9 @@ export async function analyzeResumeWithAi(
     parsedJson.resume.education.length === 0 && 'education',
   ].filter((value): value is string => Boolean(value));
   const missingGapSkills = gapAnalysis.items.filter((item) => item.status === 'MISSING').map((item) => item.skill);
-  const relatedSkillGaps = gapAnalysis.items.filter((item) => item.matchClassification === 'RELATED_SKILL_EVIDENCED');
+  const relatedSkillGaps = gapAnalysis.items.filter((item) =>
+    item.matchClassification === 'RELATED_MATCH' || item.matchClassification === 'WEAK_EVIDENCE',
+  );
   const weakExperienceSkills = gapAnalysis.items
     .filter((item) => item.matchClassification === 'NOT_EVIDENCED')
     .filter((item) => !item.evidence.some((evidence) => [
@@ -2644,6 +2840,26 @@ export async function analyzeResumeWithAi(
       `Education Alignment: ${jobMatchBreakdown.educationAlignment}/${jobMatchBreakdown.weights.educationAlignment}; Keyword Coverage: ${jobMatchBreakdown.keywordCoverage}/${jobMatchBreakdown.weights.keywordCoverage}.`,
     ],
     missingSkills: jobMatchBreakdown.topGaps,
+  };
+  // Model prose is not used for score or match conclusions. These evidence
+  // citations are the sole final explanation source for those conclusions.
+  const evidenceGroundedAtsExplanation = {
+    whatIncreasedScore: requirementEvidenceCitationList(
+      gapAnalysis.items.filter((item) => item.status === 'MATCHED'),
+      3,
+    ).map((citation) => `ATS score increased through ${citation}`),
+    whatReducedScore: [
+      ...requirementEvidenceCitationList(
+        gapAnalysis.items.filter((item) => item.status !== 'MATCHED' && item.status !== 'NOT APPLICABLE'),
+        3,
+      ).map((citation) => `ATS score was reduced through ${citation}`),
+      ...(missingStructure.length ? [`ATS structure review: parsed resume sections missing ${missingStructure.join(', ')}. Evidence: parsed section inventory.`] : []),
+    ],
+  };
+  const evidenceGroundedJobMatchExplanation = {
+    strongMatches: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'MATCHED'), 5),
+    partialMatches: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'PARTIALLY MATCHED'), 5),
+    missingSkills: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'MISSING'), 5),
   };
   // Keyword and missing-skill fields are derived from the same deterministic
   // gap analysis that drives ATS, Job Match, and recommendations. Model-sent
@@ -2676,32 +2892,25 @@ export async function analyzeResumeWithAi(
     optimizationRecommendations: analysisJson.optimizationRecommendations || [],
     atsIssues: analysisJson.atsIssues || [],
     coachingReport: analysisJson.coachingReport || [],
-    atsBreakdown: buildAtsDisplayBreakdown(atsBreakdown),
+    atsBreakdown: evidenceGroundAtsBreakdown(buildAtsDisplayBreakdown(atsBreakdown), parsedJson.resume, gapAnalysis),
     atsScoreExplanation: {
-      ...(analysisJson.atsScoreExplanation || {}),
-      whatIncreasedScore: [
-        ...deterministicAtsExplanation.whatIncreasedScore,
-        ...((analysisJson.atsScoreExplanation?.whatIncreasedScore) || []),
+      strengths: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'MATCHED'), 5),
+      missingElements: [
+        ...requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'MISSING'), 5),
+        ...(missingStructure.length ? [`Evidence: parsed section inventory shows ${missingStructure.join(', ')} ${missingStructure.length === 1 ? 'is' : 'are'} absent.`] : []),
       ],
-      whatReducedScore: [
-        ...deterministicAtsExplanation.whatReducedScore,
-        ...((analysisJson.atsScoreExplanation?.whatReducedScore) || []),
-      ],
+      formattingIssues: [`Evidence: parsed section inventory contains ${[parsedJson.resume.summary && 'Summary', parsedJson.resume.skills.length && 'Skills', parsedJson.resume.education.length && 'Education', parsedJson.resume.experience.length && 'Experience', parsedJson.resume.projects.length && 'Projects'].filter(Boolean).join(', ') || 'no populated standard section'}.`],
+      keywordIssues: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status !== 'MATCHED' && item.status !== 'NOT APPLICABLE'), 5),
+      whatIncreasedScore: evidenceGroundedAtsExplanation.whatIncreasedScore,
+      whatReducedScore: evidenceGroundedAtsExplanation.whatReducedScore,
+      topImprovements: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status !== 'MATCHED' && item.status !== 'NOT APPLICABLE'), 3),
+      estimatedScoreImprovement: 0,
+      potentialAtsScore: atsBreakdown.total,
     },
     jobMatchExplanation: {
-      ...(analysisJson.jobMatchExplanation || {}),
-      strongMatches: [
-        ...deterministicJobMatchExplanation.strongMatches,
-        ...((analysisJson.jobMatchExplanation?.strongMatches) || []),
-      ],
-      partialMatches: [
-        ...deterministicJobMatchExplanation.partialMatches,
-        ...((analysisJson.jobMatchExplanation?.partialMatches) || []),
-      ],
-      missingSkills: [
-        ...deterministicJobMatchExplanation.missingSkills,
-        ...((analysisJson.jobMatchExplanation?.missingSkills) || []),
-      ],
+      strongMatches: evidenceGroundedJobMatchExplanation.strongMatches,
+      partialMatches: evidenceGroundedJobMatchExplanation.partialMatches,
+      missingSkills: evidenceGroundedJobMatchExplanation.missingSkills,
     },
     keywordCompatibility,
     hiringManagerAssessment: analysisJson.hiringManagerAssessment,
@@ -2751,14 +2960,11 @@ export async function analyzeResumeWithAi(
   );
   planned.roleStrengths = buildRoleStrengths(parsedJson.resume, jobProfile, gapAnalysis);
   planned.hiringManagerAssessment = buildHiringManagerAssessment(
-    analysisJson.hiringManagerAssessment,
     parsedJson.resume,
     parsedJson.job,
     gapAnalysis,
     atsBreakdown.total,
     jobMatchBreakdown.total,
-    resumeText,
-    jobDescription,
     planned,
   );
 

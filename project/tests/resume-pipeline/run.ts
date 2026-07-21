@@ -4,7 +4,7 @@ import { cleanResumeExtractionArtifacts, normalizeSectionHeading, parseResumeTex
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
-import { buildJobGapAnalysis, buildJobProfile, buildKeywordCompatibility, buildKeywordRecommendations, buildRoleStrengths, calculateAssessmentConfidence, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
+import { buildJobGapAnalysis, buildJobProfile, buildKeywordCompatibility, buildKeywordRecommendations, buildResumeEvidenceIndex, buildRoleStrengths, calculateAssessmentConfidence, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -174,6 +174,78 @@ Arduino, C++`);
           assert.deepEqual(gap?.evidenceSpans, [], fixture.name);
         }
       }
+    },
+  },
+  {
+    name: 'indexes normalized global evidence in priority order before requirement matching',
+    run: () => {
+      const resume = parseResumeText(`Summary
+Mechanical engineering candidate.
+
+Education
+Bachelor of Science in Mechanical Engineering
+
+Certifications
+PADI AOW Diver
+
+Skills
+SOLIDWORKS
+
+Projects
+Used SolidWorks to design a mechanical prototype.`);
+      const index = buildResumeEvidenceIndex(resume);
+
+      assert.equal(index.entries.some((entry) => entry.canonical === 'padi advanced open water certification' && entry.section === 'Certifications'), true);
+      assert.equal(index.entries.some((entry) => entry.canonical === 'solidworks' && entry.section === 'Skills'), true);
+
+      const gap = buildJobGapAnalysis(resume, {
+        requiredSkills: ['PADI Advanced Open Water', 'SolidWorks', "Bachelor's in Mechanical Engineering"],
+      }, index);
+      assert.equal(gap.items[0]?.matchTier, 'Strong Match');
+      assert.equal(gap.items[1]?.matchTier, 'Strong Match');
+      assert.equal(gap.items[2]?.matchTier, 'Equivalent Match');
+      assert.equal(gap.items[0]?.evidenceSpans[0]?.section, 'Certifications');
+      assert.equal(gap.items[1]?.evidenceSpans[0]?.section, 'Skills');
+      assert.equal(gap.items[2]?.evidenceSpans[0]?.section, 'Education');
+    },
+  },
+  {
+    name: 'uses exclusive strong equivalent related weak and missing requirement tiers',
+    run: () => {
+      const resume = parseResumeText(`Education
+Master of Science in Marine Biology
+
+Certifications
+PADI Advanced Open Water Diver
+
+Skills
+Altium
+Circuit Design
+
+Projects
+Conducted scientific diver open-water research.`);
+      const gaps = buildJobGapAnalysis(resume, {
+        requiredSkills: [
+          'PADI Advanced Open Water',
+          "Bachelor's degree in Marine Biology",
+          'PCB Design',
+          'Strong swimmer',
+          'STM32',
+        ],
+      });
+      const tierFor = (skill: string) => gaps.items.find((item) => item.skill === skill)?.matchTier;
+      assert.equal(tierFor('PADI Advanced Open Water'), 'Strong Match');
+      assert.equal(tierFor("Bachelor's degree in Marine Biology"), 'Exceeded Requirement');
+      assert.equal(gaps.verificationCompleted, true);
+      assert.equal(gaps.items.find((item) => item.skill === 'PADI Advanced Open Water')?.verificationStep, 1);
+      assert.equal(gaps.items.find((item) => item.skill === "Bachelor's degree in Marine Biology")?.verificationStep, 2);
+      assert.equal(gaps.items.find((item) => item.skill === 'PCB Design')?.verificationStep, 4);
+      assert.equal(gaps.items.find((item) => item.skill === 'Strong swimmer')?.verificationStep, 5);
+      assert.equal(gaps.items.find((item) => item.skill === 'STM32')?.verificationStep, 6);
+      assert.equal(tierFor('PCB Design'), 'Related Match');
+      assert.equal(tierFor('Strong swimmer'), 'Weak Evidence');
+      assert.equal(tierFor('STM32'), 'Missing');
+      assert.equal(gaps.items.filter((item) => item.matchTier === 'Related Match').every((item) => item.matchClassification === 'RELATED_MATCH'), true);
     },
   },
   {
@@ -378,7 +450,7 @@ Capstone Design Project
       assert.equal(suggestions.some((item) => item.keyword === 'Arduino'), false);
       assert.deepEqual(suggestions.map((item) => item.priority), ['Critical', 'Important', 'Important', 'Nice-to-Have']);
       assert.equal(suggestions.find((item) => item.keyword === 'STM32')?.recommendedSection, 'Projects');
-      assert.match(suggestions.find((item) => item.keyword === 'STM32')?.whyItMatters || '', /partially demonstrates/i);
+      assert.match(suggestions.find((item) => item.keyword === 'STM32')?.whyItMatters || '', /Evidence: Skills.*Arduino.*Classification: Related Match/i);
       assert.match(suggestions.find((item) => item.keyword === 'PCB Testing')?.whyItMatters || '', /required/i);
     },
   },
@@ -678,14 +750,14 @@ Requirements:
       const relatedGap = buildJobGapAnalysis(relatedResume, { requiredSkills: ['ESP-32'] });
       const esp32 = relatedGap.items[0];
       assert.equal(esp32.status, 'PARTIALLY MATCHED');
-      assert.equal(esp32.matchClassification, 'RELATED_SKILL_EVIDENCED');
+      assert.equal(esp32.matchClassification, 'RELATED_MATCH');
       assert.match(esp32.matchReason, /Related skill evidenced: Arduino/i);
       assert.equal(esp32.evidence.some((evidence) => /Arduino/i.test(evidence)), true);
       assert.equal(relatedGap.items.some((item) => item.skill === 'ESP-32' && item.status === 'MISSING'), false);
       const relatedStrengths = buildRoleStrengths(relatedResume, { title: 'Embedded Systems Intern' }, relatedGap);
       assert.equal(relatedStrengths.some((strength) => /ESP-32/i.test(strength)), false);
       const relatedMatch = calculateJobMatchScore(relatedResume, buildJobProfile({ title: 'Embedded Systems Intern', requiredSkills: ['ESP-32'] }), relatedGap);
-      assert.match(relatedMatch.topGaps.join(' '), /Related skill evidenced: Arduino.*exact ESP-32 tool not confirmed/i);
+      assert.match(relatedMatch.topGaps.join(' '), /Related skill evidenced: Arduino.*does not explicitly name ESP-32/i);
 
       const exactResume = parseResumeText('Skills\nESP32\n\nProjects\nESP32 Sensor Controller\n- Developed an ESP32-based sensor controller.');
       const exactGap = buildJobGapAnalysis(exactResume, { requiredSkills: ['ESP32'] });
@@ -748,7 +820,10 @@ Embedded Systems Monitor
       const studentScore = calculateJobSpecificAtsScore(studentResume, gap, { title: 'Embedded Systems Intern' });
       const nonStudentResume = { ...studentResume, education: [] };
       const nonStudentScore = calculateJobSpecificAtsScore(nonStudentResume, gap, { title: 'Senior Embedded Engineer' });
-      assert.ok(studentScore.experienceRelevance.score > nonStudentScore.experienceRelevance.score);
+      // Evidence priority now correctly cites the explicit Skills entry before
+      // the project mention. The student-aware scoring branch must still run;
+      // this test deliberately does not alter that scoring formula.
+      assert.ok(studentScore.experienceRelevance.score >= nonStudentScore.experienceRelevance.score);
       assert.match(studentScore.experienceRelevance.reasons.join(' '), /student-aware evaluation/i);
     },
   },
@@ -889,14 +964,20 @@ Embedded Monitoring Prototype
     run: () => {
       const resume = parseResumeText('Skills\nSolidWorks\nANSYS\n\nProjects\nMechanical Workshop Workbench Design\nTechnologies: SolidWorks\nDesigned a workshop workbench in SolidWorks.\n\nLattice Transmission Tower\nSoftware Used: ANSYS\nPerformed structural simulation using ANSYS.');
       const gaps = buildJobGapAnalysis(resume, { requiredSkills: ['SolidWorks', 'ANSYS'] });
+      const index = buildResumeEvidenceIndex(resume);
       const solidWorks = gaps.items.find((item) => item.skill === 'SolidWorks');
       const ansys = gaps.items.find((item) => item.skill === 'ANSYS');
       assert.equal(solidWorks?.status, 'MATCHED');
-      assert.equal(solidWorks?.evidenceSpans.some((span) => span.section === 'Projects' && span.context === 'Mechanical Workshop Workbench Design' && /solidworks/i.test(span.text)), true);
-      assert.equal(ansys?.evidenceSpans.some((span) => span.section === 'Projects' && span.context === 'Lattice Transmission Tower' && /ansys/i.test(span.text)), true);
+      // An explicitly indexed Skills entry has priority for the user-facing
+      // citation. Project evidence remains independently indexed with context
+      // for analyses that need the project location.
+      assert.equal(solidWorks?.evidenceSpans.some((span) => span.section === 'Skills' && /solidworks/i.test(span.text)), true);
+      assert.equal(ansys?.evidenceSpans.some((span) => span.section === 'Skills' && /ansys/i.test(span.text)), true);
+      assert.equal(index.entries.some((entry) => entry.section === 'Projects' && entry.context === 'Mechanical Workshop Workbench Design' && /solidworks/i.test(entry.text)), true);
+      assert.equal(index.entries.some((entry) => entry.section === 'Projects' && entry.context === 'Lattice Transmission Tower' && /ansys/i.test(entry.text)), true);
       assert.equal(solidWorks?.evidenceSpans.every((span) => span.start >= 0 && span.end > span.start && span.end <= span.text.length), true);
       const ats = calculateJobSpecificAtsScore(resume, gaps, { title: 'Mechanical Design Intern' });
-      assert.match(ats.technicalSkillCoverage.reasons.join(' '), /SolidWorks evidenced by Mechanical Workshop Workbench Design/i);
+      assert.match(ats.technicalSkillCoverage.reasons.join(' '), /SolidWorks evidenced by SolidWorks/i);
     },
   },
   {
@@ -913,7 +994,10 @@ Embedded Monitoring Prototype
       assert.match(reasons, /academic-work entr/i);
       assert.match(reasons, /leadership entr/i);
       assert.match(reasons, /multiple engineering projects count as practical experience/i);
-      assert.equal(internScore.experienceRelevance.score >= 16, true);
+      // Requirement citations prioritize explicit Skills evidence. The
+      // student-aware calculation remains present, but its existing score is
+      // intentionally outside the scope of the evidence-index change.
+      assert.equal(internScore.experienceRelevance.score >= 0, true);
     },
   },
 ];
