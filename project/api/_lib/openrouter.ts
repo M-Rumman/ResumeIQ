@@ -131,7 +131,7 @@ export interface AiResumeAnalysisFull {
   formattingIssues: string[];
   formattingSuggestions: string[];
   weakBullets: string[];
-  improvedBulletPoints: { before: string; after: string }[];
+  improvedBulletPoints: { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' }[];
   improvementSuggestions: string[];
   optimizationRecommendations: string[];
   keywordSuggestions: string[];
@@ -530,6 +530,9 @@ Rules:
 - If the target job does not overlap with a bullet's supported evidence, improve clarity and impact only; do not force unrelated job terminology into it.
 - Every "after" bullet MUST begin with a strong, specific action verb. Prefer verbs such as Developed, Integrated, Implemented, Designed, Built, Optimized, Automated, Analyzed, Delivered, or Presented when they are truthful to the original bullet.
 - Produce a materially stronger bullet, not a light paraphrase. Improve the sentence's clarity, professional tone, technical specificity, and readable action-to-contribution structure while preserving the original meaning.
+- Reject synonym-only rewrites. A rewrite must add resume-supported technical context, purpose, outcome, or ownership clarity beyond merely replacing the opening verb. When the original bullet is weak, aim for a clearly visible quality improvement; make only minor edits when it is already strong.
+- Prefer this truthful structure when the source supports it: strong action verb + specific technical work + named technology or component + purpose or engineering objective + documented outcome. Do not fabricate a result; use "to support", "to enable", "to improve", or similar truthful purpose wording when no measured result exists.
+- Return a confidence level: High only when every material detail is directly stated in the original bullet; Medium when the rewrite is a conservative wording inference from the original; Low only when the source is too vague for a confident rewrite (and normally omit that bullet instead).
 - Surface technical contribution only when the original bullet explicitly provides the relevant technologies, tools, components, methods, or domain context. Do not add technical detail that is not in the supplied bullet.
 - Strict Grounding: Do NOT invent or exaggerate projects, technologies, tools, employers, companies, certifications, scope, seniority, ownership, outcomes, or metrics.
 - If quantification would materially improve a bullet but no supported metric exists, you MAY use one clearly marked placeholder such as [X]%, [X] users, [X] components, or [X] requests. Never fabricate a number, percentage, duration, or scale.
@@ -540,7 +543,7 @@ Required JSON Schema:
 {
   "weakBullets": ["string"],
   "improvedBulletPoints": [
-    { "before": "string", "after": "string" }
+    { "before": "string", "after": "string", "confidence": "High" | "Medium" | "Low" }
   ]
 }
 
@@ -2077,9 +2080,14 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
   };
 
   const bullets = Array.isArray(o.improvedBulletPoints)
-    ? (o.improvedBulletPoints as { before?: string; after?: string }[])
+    ? (o.improvedBulletPoints as { before?: string; after?: string; confidence?: unknown }[])
         .filter((b) => b?.before && b?.after)
-        .map((b) => ({ before: String(b.before), after: String(b.after) }))
+        .map((b) => {
+          const confidence: 'High' | 'Medium' | 'Low' = b.confidence === 'Medium' || b.confidence === 'Low'
+            ? b.confidence
+            : 'High';
+          return { before: String(b.before), after: String(b.after), confidence };
+        })
     : [];
 
   const atsScore = Math.max(0, Math.min(100, Number(o.atsScore) || 0));

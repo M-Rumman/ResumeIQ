@@ -5,7 +5,7 @@ export type ImprovementItem = {
   text: string;
 };
 
-export type BulletPair = { before: string; after: string };
+export type BulletPair = { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' };
 
 export type ResumeDisplayResults = {
   atsScore: number;
@@ -81,7 +81,13 @@ function mergeKeywords(ai: AiResumeAnalysis): string[] {
 
 /** Display only server-validated bullet rewrites. */
 function bulletsFromAi(ai: AiResumeAnalysis): BulletPair[] {
-  const fromAi = (ai.improvedBulletPoints || []).filter((b) => b?.before && b?.after);
+  const fromAi = (ai.improvedBulletPoints || [])
+    .filter((b) => b?.before && b?.after)
+    .map((b) => ({
+      before: b.before,
+      after: b.after,
+      confidence: b.confidence === 'Medium' || b.confidence === 'Low' ? b.confidence : 'High' as const,
+    }));
   return fromAi.slice(0, 6);
 }
 

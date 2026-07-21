@@ -45,7 +45,7 @@ export interface AiResumeAnalysis {
   formattingSuggestions: string[];
   formattingIssues: string[];
   weakBullets: string[];
-  improvedBulletPoints: { before: string; after: string }[];
+  improvedBulletPoints: { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' }[];
   improvementSuggestions: string[];
   optimizationRecommendations: string[];
   atsIssues: string[];

@@ -1,6 +1,6 @@
 import { containsPhoneNumber } from './resumeParser.js';
 
-type RewritePair = { before?: unknown; after?: unknown };
+type RewritePair = { before?: unknown; after?: unknown; confidence?: unknown };
 export type ValidationTelemetry = {
   acceptedRecommendations: number;
   rejectedRecommendations: number;
@@ -319,7 +319,22 @@ function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
     // by its own source bullet; evidence elsewhere in the resume is not enough.
     if (hasInventedMetric(after, before) || hasInventedNamedTerm(after, before)) continue;
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
-    accepted.push({ before, after });
+    const beforeWords = new Set((before.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4));
+    const afterWords = (after.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4);
+    const newSubstantiveWords = afterWords.filter((word) => !beforeWords.has(word));
+    const beforeWordCount = before.trim().split(/\s+/).length;
+    const afterWordCount = after.trim().split(/\s+/).length;
+    const genericOpening = /^(?:worked|helped|assisted|responsible|supported|participated)\b/i.test(before);
+    const strongerOpening = /^(?:analyzed|assembled|automated|built|configured|debugged|designed|developed|engineered|fabricated|implemented|integrated|optimized|tested|validated)\b/i.test(after);
+    // Do not surface a cosmetic verb swap as an "improvement". Strong source
+    // bullets may receive concise edits, but weak bullets need visible added value.
+    const materiallyImproved = genericOpening
+      ? strongerOpening && (newSubstantiveWords.length >= 2 || afterWordCount >= beforeWordCount + 4)
+      : newSubstantiveWords.length >= 2 || afterWordCount >= beforeWordCount + 3;
+    if (!materiallyImproved) continue;
+    const rawConfidence = typeof pair.confidence === 'string' ? pair.confidence : 'High';
+    const confidence = ['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High';
+    accepted.push({ before, after, confidence });
   }
   return accepted;
 }

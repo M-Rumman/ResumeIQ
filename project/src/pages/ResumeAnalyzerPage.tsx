@@ -152,6 +152,61 @@ function buildBulletTeachingGuide({ before, after }: AnalysisResults['bulletSugg
   return { whyWeak, missingInformation, whyStronger };
 }
 
+function technicalTermsIn(text: string) {
+  return TECHNICAL_BULLET_TERMS.filter((term) => containsTerm(text, term));
+}
+
+/** Bullet-specific coaching derived from the validated source/rewrite pair only. */
+function buildDetailedBulletTeachingGuide(
+  { before, after }: AnalysisResults['bulletSuggestions'][number],
+  targetKeywords: string[],
+) {
+  const beforeTerms = technicalTermsIn(before);
+  const afterTerms = technicalTermsIn(after);
+  const addedTerms = afterTerms.filter((term) => !beforeTerms.includes(term));
+  const targetTerms = targetKeywords.filter((term) => containsTerm(after, term) && !containsTerm(before, term));
+  const purpose = after.match(/\bto\s+([^.;]+)/i)?.[1]?.trim();
+  const genericOpening = GENERIC_BULLET_OPENERS.has(firstWord(before));
+
+  const whyWeak = [
+    genericOpening
+      ? `Opens with “${firstWord(before)},” which does not clearly show ownership of the work.`
+      : `Does not clearly connect the documented ${beforeTerms.slice(0, 2).join(' and ') || 'engineering work'} to an engineering objective.`,
+    beforeTerms.length === 0
+      ? 'Does not name the components, technology, or engineering method involved.'
+      : `Names ${beforeTerms.slice(0, 3).join(', ')} but gives limited context about how they were used.`,
+    hasQuantification(before)
+      ? 'Does not clearly explain the purpose or practical result of the work.'
+      : 'Does not include a supported outcome, scope, or measurable result.',
+  ];
+
+  const missingInformation = [
+    addedTerms.length
+      ? `The documented technical context: ${addedTerms.slice(0, 3).join(', ')}.`
+      : 'The specific components, technology, or method used in the work.',
+    purpose
+      ? `The engineering objective: ${purpose}.`
+      : 'The engineering purpose the work was intended to support or enable.',
+    hasQuantification(before)
+      ? 'A clear link between the documented work and its practical outcome.'
+      : 'A supported metric, test result, scope, or performance outcome, if available.',
+  ];
+
+  const whyStronger = [
+    `Makes ownership explicit with the action “${firstWord(after).replace(/^./, (letter) => letter.toUpperCase())}.”`,
+    addedTerms.length
+      ? `Adds resume-supported technical context: ${addedTerms.slice(0, 3).join(', ')}.`
+      : 'Makes the documented technical work easier for a recruiter to understand.',
+    purpose
+      ? `Clarifies the engineering objective: ${purpose}.`
+      : 'Uses a clearer action-to-contribution structure without adding unsupported results.',
+    targetTerms.length
+      ? `Improves ATS relevance for this role through supported terminology: ${targetTerms.slice(0, 2).join(', ')}.`
+      : 'Presents the documented work in clearer, recruiter-friendly language for this role.',
+  ];
+  return { whyWeak, missingInformation, whyStronger };
+}
+
 function BulletImprovementGuide({
   items,
   targetKeywords,
@@ -171,7 +226,7 @@ function BulletImprovementGuide({
       {items.length > 0 ? (
         <div className="space-y-6">
           {items.map((item, i) => {
-            const guide = buildBulletTeachingGuide(item);
+            const guide = buildDetailedBulletTeachingGuide(item, targetKeywords);
             const beforeQuality = scoreBulletQuality(item.before, targetKeywords);
             const afterQuality = scoreBulletQuality(item.after, targetKeywords);
             const improvements = bulletQualityImprovements(beforeQuality, afterQuality);
@@ -196,14 +251,15 @@ function BulletImprovementGuide({
                     <p className="text-sm text-emerald-950 font-medium">{item.after}</p>
                   </div>
                 </div>
-                {improvements.length > 0 && (
-                  <div className="border-y border-gray-100 bg-white p-4">
-                    <h4 className="text-sm font-bold text-gray-900 mb-2">Improvement</h4>
-                    <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-emerald-800">
-                      {improvements.map((improvement) => <li key={improvement}>+ {improvement}</li>)}
-                    </ul>
+                <div className="border-y border-gray-100 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <h4 className="text-sm font-bold text-gray-900">Improvement Score: {afterQuality.total - beforeQuality.total >= 0 ? '+' : ''}{afterQuality.total - beforeQuality.total}</h4>
+                    <span className="text-xs font-bold text-gray-700">Grounding confidence: {item.confidence}</span>
                   </div>
-                )}
+                  <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-emerald-800">
+                    {(improvements.length ? improvements : ['More complete, resume-supported explanation of the work']).map((improvement) => <li key={improvement}>+ {improvement}</li>)}
+                  </ul>
+                </div>
                 <div className="grid md:grid-cols-2 gap-px bg-gray-100">
                   <div className="bg-white p-4">
                     <h4 className="text-sm font-bold text-gray-900 mb-2">Why it is weak</h4>
@@ -564,7 +620,7 @@ function OverallAssessmentCard({ results }: { results: AnalysisResults }) {
           <span className="text-4xl font-extrabold text-emerald-700 sm:text-5xl">{readiness}%</span>{' '}
           interview potential for this role.
         </p>
-        <p className="mx-auto mt-7 max-w-3xl text-sm leading-6 text-gray-900 sm:text-base">
+        <p className="mx-auto mt-7 max-w-3xl text-sm font-medium leading-6 !text-[#111827] sm:text-base">
           {explanation} This is an AI estimate based solely on this resume analysis, not a guarantee of an interview invitation.
         </p>
       </div>
