@@ -620,7 +620,7 @@ function OverallAssessmentCard({ results }: { results: AnalysisResults }) {
           <span className="text-4xl font-extrabold text-emerald-700 sm:text-5xl">{readiness}%</span>{' '}
           interview potential for this role.
         </p>
-        <p className="mx-auto mt-7 max-w-3xl text-sm font-medium leading-6 !text-[#111827] sm:text-base">
+        <p className="mx-auto mt-7 max-w-3xl text-sm font-medium leading-6 sm:text-base" style={{ color: '#000000' }}>
           {explanation} This is an AI estimate based solely on this resume analysis, not a guarantee of an interview invitation.
         </p>
       </div>

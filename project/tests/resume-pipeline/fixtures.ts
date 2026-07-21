@@ -143,6 +143,52 @@ Projects
 Built an Arduino line follower using sensors and BLDC motors.`,
 };
 
+/** Hand-labelled matching ground truth; protects exact, related, and credential cases. */
+export const requirementMatchingFixtures = [
+  {
+    name: 'verbatim technical skill',
+    resume: 'Skills\nArduino\n\nProjects\nBuilt an Arduino sensor controller.',
+    requirement: 'Arduino',
+    tier: 'Strong',
+    section: 'Skills',
+  },
+  {
+    name: 'normalized credential abbreviation',
+    resume: 'Certifications\nPADI AOW Diver',
+    requirement: 'PADI Advanced Open Water',
+    tier: 'Strong',
+    section: 'Certifications',
+  },
+  {
+    name: 'higher education degree subsumes bachelor requirement',
+    resume: 'Education\nM.S. in Marine Biology',
+    requirement: "Bachelor's in Marine Biology or related field",
+    tier: 'Strong',
+    section: 'Education',
+  },
+  {
+    name: 'related hardware tool stays partial',
+    resume: 'Skills\nArduino\n\nProjects\nBuilt a microcontroller-based navigation prototype.',
+    requirement: 'ESP32',
+    tier: 'Partial',
+    section: 'Skills',
+  },
+  {
+    name: 'unrelated requirement is missing',
+    resume: 'Experience\nProvided Mathematics tutoring.\n\nSkills\nPython',
+    requirement: 'CAD',
+    tier: 'Missing',
+    section: null,
+  },
+  {
+    name: 'project technology direct evidence',
+    resume: 'Projects\nMechanical Workbench\n- Designed components using SolidWorks.',
+    requirement: 'SolidWorks',
+    tier: 'Strong',
+    section: 'Projects',
+  },
+] as const;
+
 /** Photo extraction is intentionally an expected unsupported capability today. */
 export const capabilityExpectations = {
   photoDetection: false,

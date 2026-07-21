@@ -667,6 +667,10 @@ const MIN_CITATION_CONFIDENCE = 0.72;
 export type JobGapItem = {
   skill: string;
   status: GapStatus;
+  /** User-facing deterministic tier; never derived from model certainty. */
+  matchTier: 'Strong' | 'Partial' | 'Missing' | 'Not Applicable';
+  /** Debuggable threshold responsible for the tier. */
+  matchTrigger: 'normalized_exact' | 'credential_subsumption' | 'related_evidence' | 'no_evidence' | 'not_applicable';
   /** Distinguishes an exact tool match from transferable parent/family evidence. */
   matchClassification: SkillMatchClassification;
   matchReason: string;
@@ -855,6 +859,7 @@ const RESPONSIBILITY_CONCEPTS: Record<string, string[]> = {
 function normalizeGapTerm(value: string): string {
   return String(value || '')
     .toLowerCase()
+    .replace(/\bpadi\s+aow\b/g, 'padi advanced open water')
     .replace(/c\+\+/g, 'cplusplus')
     .replace(/c#/g, 'csharp')
     .replace(/[^a-z0-9+\s]/g, ' ')
@@ -863,6 +868,28 @@ function normalizeGapTerm(value: string): string {
     // Job parsers and PDFs commonly separate the ESP32 model token. Keep all
     // visible forms in one canonical representation before hierarchy lookup.
     .replace(/\besp\s+32\b/g, 'esp32');
+}
+
+type DegreeRequirement = { level: number; fields: string[] };
+
+function degreeLevel(value: string): number {
+  const normalized = normalizeGapTerm(value);
+  if (/\b(?:phd|doctorate|doctoral|doctor of)\b/.test(normalized)) return 3;
+  if (/\b(?:master|msc|m sc|m s|meng|m eng|ma)\b/.test(normalized)) return 2;
+  if (/\b(?:bachelor|bsc|b sc|b s|beng|b eng|ba)\b/.test(normalized)) return 1;
+  return 0;
+}
+
+function degreeRequirement(value: string): DegreeRequirement | null {
+  const level = degreeLevel(value);
+  if (!level) return null;
+  const normalized = normalizeGapTerm(value)
+    .replace(/\b(?:bachelor(?:\s+s)?|master(?:\s+s)?|bsc|b sc|b s|beng|b eng|msc|m sc|m s|meng|m eng|ma|phd|doctorate|doctoral|doctor of|degree|science|arts|engineering)\b/g, ' ')
+    .replace(/\b(?:in|of|or related field|related field)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const fields = normalized.split(/\s+or\s+|\//).map((field) => field.trim()).filter((field) => field.length >= 3);
+  return fields.length ? { level, fields } : null;
 }
 
 /**
@@ -976,6 +1003,20 @@ function matchingEvidenceSpans(sources: ResumeEvidenceSource[], terms: string[],
       return containsNormalizedPhrase(source.text, term);
     });
     return matchedTerm ? [evidenceSpanFor(source, matchedTerm, confidence)] : [];
+  }));
+}
+
+/** A higher/equal degree in the requested or listed alternate field satisfies an education requirement. */
+function credentialSubsumptionEvidenceSpans(
+  sources: ResumeEvidenceSource[],
+  requirement: string,
+): ResumeEvidenceSpan[] {
+  const degree = degreeRequirement(requirement);
+  if (!degree) return [];
+  return uniqueEvidenceSpans(sources.flatMap((source) => {
+    if (source.section !== 'Education' || degreeLevel(source.text) < degree.level) return [];
+    const field = degree.fields.find((candidate) => containsNormalizedPhrase(source.text, candidate));
+    return field ? [evidenceSpanFor(source, field, 1)] : [];
   }));
 }
 
@@ -1153,6 +1194,8 @@ export function buildJobGapAnalysis(
         return {
           skill,
           status: 'NOT APPLICABLE' as const,
+          matchTier: 'Not Applicable' as const,
+          matchTrigger: 'not_applicable' as const,
           matchClassification: 'NOT_APPLICABLE' as const,
           matchReason: 'No comparison is required for this non-applicable requirement.',
           evidence: [],
@@ -1162,11 +1205,22 @@ export function buildJobGapAnalysis(
       }
 
       const rule = gapRuleForSkill(normalizedSkill);
-      // Direct terms are exact lexical evidence. Curated related terms may
-      // support a partial match, but remain below a direct-match confidence.
-      const directEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.direct, 1);
+      // Exact normalized phrase matching runs before hierarchy/related terms.
+      // A literal or normalized abbreviation match is a Strong Match and no
+      // later fuzzy/related stage is allowed to downgrade it.
+      const exactEvidenceSpans = matchingEvidenceSpans(evidenceSources, [skill], 1);
+      const subsumptionEvidenceSpans = exactEvidenceSpans.length === 0
+        ? credentialSubsumptionEvidenceSpans(evidenceSources, skill)
+        : [];
+      const directEvidenceSpans = exactEvidenceSpans.length || subsumptionEvidenceSpans.length
+        ? uniqueEvidenceSpans([...exactEvidenceSpans, ...subsumptionEvidenceSpans])
+        : matchingEvidenceSpans(evidenceSources, rule.direct, 1);
       const partialEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
-      const evidenceSpans = uniqueEvidenceSpans([...directEvidenceSpans, ...partialEvidenceSpans]);
+      // Citations always come from the same spans that established the tier.
+      // Do not append loosely related snippets after a direct match.
+      const evidenceSpans = directEvidenceSpans.length > 0
+        ? directEvidenceSpans
+        : partialEvidenceSpans;
       const evidence = uniqueGapEvidence(evidenceSpans.map((span) => span.text));
 
       const status: GapStatus = directEvidenceSpans.length > 0
@@ -1179,6 +1233,18 @@ export function buildJobGapAnalysis(
         : status === 'PARTIALLY MATCHED'
           ? 'RELATED_SKILL_EVIDENCED'
           : 'NOT_EVIDENCED';
+      const matchTier = status === 'MATCHED'
+        ? 'Strong' as const
+        : status === 'PARTIALLY MATCHED'
+          ? 'Partial' as const
+          : 'Missing' as const;
+      const matchTrigger = exactEvidenceSpans.length > 0
+        ? 'normalized_exact' as const
+        : subsumptionEvidenceSpans.length > 0
+          ? 'credential_subsumption' as const
+          : partialEvidenceSpans.length > 0
+            ? 'related_evidence' as const
+            : 'no_evidence' as const;
       const relatedSkillLabels = uniqueGapEvidence(partialEvidenceSpans.map((span) => span.matchedText));
       const matchReason = matchClassification === 'EXACT_MATCH'
         ? `Exact ${skill} evidence is documented in the resume.`
@@ -1191,7 +1257,7 @@ export function buildJobGapAnalysis(
           ? `Make the existing related evidence explicitly connect to ${skill}, but only if that connection is accurate.`
           : `${skill} is not explicitly evidenced in the resume. Mention coursework, project work, or practical exposure only if it genuinely applies.`;
 
-      return { skill, status, matchClassification, matchReason, evidence, evidenceSpans, recommendation };
+      return { skill, status, matchTier, matchTrigger, matchClassification, matchReason, evidence, evidenceSpans, recommendation };
     });
 
   const responsibilities = jobTextList(job.responsibilities);
@@ -2447,6 +2513,10 @@ export async function analyzeResumeWithAi(
     partiallyMatched: gapAnalysis.items.filter((item) => item.status === 'PARTIALLY MATCHED').length,
     missing: gapAnalysis.items.filter((item) => item.status === 'MISSING').length,
     notApplicable: gapAnalysis.items.filter((item) => item.status === 'NOT APPLICABLE').length,
+    matchTriggerCounts: gapAnalysis.items.reduce<Record<string, number>>((counts, item) => {
+      counts[item.matchTrigger] = (counts[item.matchTrigger] || 0) + 1;
+      return counts;
+    }, {}),
   });
 
   // Step 2 & 3: Run Analyzer and Rewriter in Parallel

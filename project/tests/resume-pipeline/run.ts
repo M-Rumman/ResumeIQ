@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { fixtures, capabilityExpectations } from './fixtures.js';
+import { fixtures, capabilityExpectations, requirementMatchingFixtures } from './fixtures.js';
 import { cleanResumeExtractionArtifacts, normalizeSectionHeading, parseResumeText } from '../../api/_lib/resumeParser.js';
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
@@ -133,6 +133,47 @@ Dean's List`);
       assert.equal(resume.skills.includes('STM32'), true);
       assert.equal(resume.projects.some((entry) => /Smart Sensor Platform/i.test(entry)), true);
       assert.equal(resume.projectDetails.some((project) => project.title === 'Smart Sensor Platform'), true);
+    },
+  },
+  {
+    name: 'threads labeled Education content into requirement evidence with an Education section tag',
+    run: () => {
+      const resume = parseResumeText(`PROFESSIONAL SUMMARY
+Early-career mechatronics student.
+
+EDUCATION
+Bachelor of Science in Mechatronics Engineering
+National University of Sciences and Technology
+
+SKILLS
+Arduino, C++`);
+      assert.equal(resume.education.some((entry) => /Bachelor of Science in Mechatronics Engineering/i.test(entry)), true);
+
+      const gaps = buildJobGapAnalysis(resume, {
+        requiredSkills: ['Bachelor of Science in Mechatronics Engineering'],
+      });
+      const degreeRequirement = gaps.items.find((item) => item.skill === 'Bachelor of Science in Mechatronics Engineering');
+      assert.equal(degreeRequirement?.status, 'MATCHED');
+      assert.equal(
+        degreeRequirement?.evidenceSpans.some((span) =>
+          span.section === 'Education' && /Bachelor of Science in Mechatronics Engineering/i.test(span.text),
+        ),
+        true,
+      );
+    },
+  },
+  {
+    name: 'matches hand-labelled requirement fixtures with grounded section citations',
+    run: () => {
+      for (const fixture of requirementMatchingFixtures) {
+        const gap = buildJobGapAnalysis(parseResumeText(fixture.resume), { requiredSkills: [fixture.requirement] }).items[0];
+        assert.equal(gap?.matchTier, fixture.tier, fixture.name);
+        if (fixture.section) {
+          assert.equal(gap?.evidenceSpans.some((span) => span.section === fixture.section), true, fixture.name);
+        } else {
+          assert.deepEqual(gap?.evidenceSpans, [], fixture.name);
+        }
+      }
     },
   },
   {
