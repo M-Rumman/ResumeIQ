@@ -63,6 +63,23 @@ export interface AiResumeAnalysis {
     partialMatches: string[];
     missingSkills: string[];
   };
+  keywordCompatibility: {
+    overallMatch: number;
+    strongMatches: string[];
+    partialMatches: string[];
+    missing: string[];
+  };
+  coachingReport: {
+    category: 'Summary' | 'Experience' | 'Projects' | 'Skills' | 'Education' | 'ATS Formatting'
+      | 'Keyword Usage' | 'Technical Depth' | 'Action Verbs' | 'Quantification' | 'Missing Evidence' | 'Job Alignment';
+    recommendations: string[];
+  }[];
+  atsBreakdown: {
+    label: 'Resume Structure' | 'Keyword Coverage' | 'Experience Relevance' | 'Formatting' | 'Readability' | 'Evidence Strength';
+    score: number;
+    maximum: number;
+    explanation: string;
+  }[];
   roleStrengths: string[];
   hiringManagerAssessment: {
     overallDecision: 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';

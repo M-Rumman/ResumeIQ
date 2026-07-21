@@ -219,6 +219,49 @@ function validateRecommendationGroups(
   }
 }
 
+const COACHING_REPORT_CATEGORIES = new Set([
+  'Summary', 'Experience', 'Projects', 'Skills', 'Education', 'ATS Formatting',
+  'Keyword Usage', 'Technical Depth', 'Action Verbs', 'Quantification',
+  'Missing Evidence', 'Job Alignment',
+]);
+
+/** Validates the categorized coaching report with the same evidence rules as all recommendations. */
+function validateCoachingReport(
+  output: Record<string, any>,
+  resumeText: string,
+  jobDescription: string,
+  telemetry?: ValidationTelemetry,
+): void {
+  const seen = new Set<string>();
+  const sections = Array.isArray(output.coachingReport) ? output.coachingReport : [];
+  output.coachingReport = sections.flatMap((section: unknown) => {
+    if (!section || typeof section !== 'object') return [];
+    const candidate = section as Record<string, unknown>;
+    const category = typeof candidate.category === 'string' ? candidate.category.trim() : '';
+    if (!COACHING_REPORT_CATEGORIES.has(category)) return [];
+    const recommendations = (Array.isArray(candidate.recommendations) ? candidate.recommendations : [])
+      .filter((value: unknown) => {
+        const text = recommendationText(value);
+        const key = normalize(text);
+        const valid = isGroundedRecommendation(text, resumeText, jobDescription)
+          && isJobSpecificFormattingRecommendation(text, resumeText, jobDescription)
+          && !seen.has(key);
+        if (!valid && telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          const reason = seen.has(key) ? 'duplicate' : recommendationRejectionReason(text, resumeText, jobDescription);
+          telemetry.rejectionReasons[reason] = (telemetry.rejectionReasons[reason] || 0) + 1;
+        }
+        if (valid) {
+          seen.add(key);
+          if (telemetry) telemetry.acceptedRecommendations += 1;
+        }
+        return valid;
+      })
+      .slice(0, 3);
+    return recommendations.length ? [{ category, recommendations }] : [];
+  });
+}
+
 /** Assessment claims may cite either resume evidence or a documented job requirement. */
 function isGroundedAssessmentStatement(value: string, resumeText: string, jobDescription: string): boolean {
   if (!value || hasSensitiveContent(value) || hasInventedMetric(value, resumeText)) return false;
@@ -307,5 +350,6 @@ export function validateAiResumeOutput(
     ? output.weakBullets.filter((value: unknown) => typeof value === 'string' && normalize(resumeText).includes(normalize(value)))
     : [];
   validateRecommendationGroups(output, resumeText, jobDescription, telemetry);
+  validateCoachingReport(output, resumeText, jobDescription, telemetry);
   return output;
 }

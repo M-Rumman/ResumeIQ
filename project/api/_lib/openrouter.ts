@@ -148,6 +148,9 @@ export interface AiResumeAnalysisFull {
     partialMatches: string[];
     missingSkills: string[];
   };
+  keywordCompatibility: KeywordCompatibility;
+  coachingReport: CoachingReportSection[];
+  atsBreakdown: AtsDisplayBreakdownItem[];
   roleStrengths: string[];
   hiringManagerAssessment: HiringManagerAssessment;
 }
@@ -435,6 +438,8 @@ TASKS TO PERFORM:
    - Resume-specific observations ONLY: Every observation must cite or clearly derive from supplied resume or job data. Do not claim a project, technology, company, certification, or metric exists unless it appears in the input.
    - When suggesting a measurable result for a bullet or recommendation, use placeholders such as "[X]%", "[X] users", or "[X] requests" unless that exact metric is in the supplied resume.
    - Global planning: Ensure no suggestion is duplicated or repeated across different categories. Each suggestion should be unique.
+   - Create "coachingReport" as the primary Resume Improvements report. Use only the listed categories. Include a category only when the resume and target job support a meaningful observation; each included category must contain 1-3 distinct recommendations. Cover Summary, Experience, Projects, Skills, Education, ATS Formatting, Keyword Usage, Technical Depth, Action Verbs, Quantification, Missing Evidence, and Job Alignment whenever each is applicable.
+   - This is coaching, not a checklist: each recommendation must explain the observed resume evidence or absence, the target-job consequence, and a specific truthful action the candidate can take. For example, a Projects observation should distinguish tasks from outcomes; a Skills observation may recommend grouping existing tools by technical domain; a Technical Depth observation should identify where engineering reasoning, method, or improvement is not visible. Never claim the candidate has an unlisted qualification or metric.
 
 Required JSON output schema:
 {
@@ -453,6 +458,12 @@ Required JSON output schema:
   "improvementSuggestions": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }],
   "optimizationRecommendations": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }],
   "atsIssues": [{ "text": "string", "confidence": "High" | "Medium" | "Low" }],
+  "coachingReport": [
+    {
+      "category": "Summary | Experience | Projects | Skills | Education | ATS Formatting | Keyword Usage | Technical Depth | Action Verbs | Quantification | Missing Evidence | Job Alignment",
+      "recommendations": [{ "text": "string", "confidence": "High" | "Medium" }]
+    }
+  ],
   "atsScoreExplanation": {
     "strengths": ["string"],
     "missingElements": ["string"],
@@ -485,7 +496,7 @@ Respond with valid JSON only.`;
 
 const REWRITER_SYSTEM_PROMPT = `You are an expert resume editor. Identify weak bullet points in the provided experience and projects list and rewrite them.
 The input contains experience and project content, a target-job context, ranked rewrite priorities, and evidence-backed job-gap focus. Identify "weakBullets" only from the supplied experience and project arrays. Target-job data is priority context only, never independent evidence for a rewrite.
-Generate "improvedBulletPoints" as before/after pairs (MINIMUM 4 pairs).
+Generate "improvedBulletPoints" as before/after pairs (MINIMUM 4 pairs). Every item listed in "weakBullets" MUST have exactly one matching pair in "improvedBulletPoints" whose "before" value is that original bullet. Do not list a weak bullet unless you can also provide its grounded improved version.
 
 Rules:
 - ONLY rewrite supplied experience or project bullets. Never add a new bullet based on information outside those arrays.
@@ -672,7 +683,16 @@ export type AtsDimensionBreakdown = {
   experienceRelevance: { score: number; reasons: string[] };
   keywordCoverage: { score: number; reasons: string[] };
   sectionQuality: { score: number; reasons: string[] };
+  readability: { score: number; reasons: string[] };
+  evidenceStrength: { score: number; reasons: string[] };
   total: number;
+};
+
+export type AtsDisplayBreakdownItem = {
+  label: 'Resume Structure' | 'Keyword Coverage' | 'Experience Relevance' | 'Formatting' | 'Readability' | 'Evidence Strength';
+  score: number;
+  maximum: number;
+  explanation: string;
 };
 
 export type JobMatchBreakdown = {
@@ -706,6 +726,26 @@ export type KeywordRecommendation = {
   recommendedSection: 'Skills' | 'Experience' | 'Projects';
 };
 
+/** ATS-facing keyword coverage, deliberately separate from ATS and Job Match scores. */
+export type KeywordCompatibility = {
+  overallMatch: number;
+  strongMatches: string[];
+  partialMatches: string[];
+  missing: string[];
+};
+
+export const COACHING_REPORT_CATEGORIES = [
+  'Summary', 'Experience', 'Projects', 'Skills', 'Education', 'ATS Formatting',
+  'Keyword Usage', 'Technical Depth', 'Action Verbs', 'Quantification',
+  'Missing Evidence', 'Job Alignment',
+] as const;
+
+export type CoachingReportCategory = typeof COACHING_REPORT_CATEGORIES[number];
+export type CoachingReportSection = {
+  category: CoachingReportCategory;
+  recommendations: string[];
+};
+
 type GapRule = { direct: string[]; partial: string[] };
 
 type SkillFamily = {
@@ -733,7 +773,9 @@ const GAP_RULES: Record<string, GapRule> = {
   'embedded programming': { direct: ['embedded programming'], partial: ['embedded systems', 'firmware', 'microcontroller', 'arduino'] },
   microcontrollers: { direct: ['microcontroller', 'arduino', 'stm32', 'esp32'], partial: ['embedded systems'] },
   'pcb testing': { direct: ['pcb testing', 'board testing', 'pcb validation'], partial: ['altium', 'pcb design'] },
+  'pcb design': { direct: ['pcb design', 'pcb layout'], partial: ['circuit design', 'circuit validation', 'altium', 'proteus'] },
   'circuit validation': { direct: ['circuit validation', 'circuit testing'], partial: ['circuit design', 'proteus', 'ltspice', 'simulation'] },
+  'mechanical design': { direct: ['mechanical design', 'solidworks', 'cad design', 'autocad'], partial: ['assembly design', '3d modeling'] },
   'technical documentation': { direct: ['technical documentation', 'test report', 'design document', 'documentation'], partial: ['report', 'presented'] },
   'sensors and actuators': { direct: ['sensor', 'actuator', 'motor'], partial: ['lidar', 'blcd', 'robotic arm'] },
   'c cplusplus': { direct: ['c++', 'c programming', 'cplusplus'], partial: [] },
@@ -1185,6 +1227,35 @@ export function buildJobGapAnalysis(
 }
 
 /**
+ * Produces a focused ATS-keyword view from the same semantic matching rules
+ * used by requirement comparison. It has no effect on either score.
+ */
+export function buildKeywordCompatibility(
+  resume: Pick<StructuredResume, 'summary' | 'experience' | 'projects' | 'skills' | 'education' | 'certifications' | 'awards'>,
+  jobProfile: Pick<JobProfile, 'requiredSkills' | 'preferredSkills'>,
+): KeywordCompatibility {
+  const requirements = uniqueGapEvidence([
+    ...jobProfile.requiredSkills,
+    ...jobProfile.preferredSkills,
+  ]);
+  const comparison = buildJobGapAnalysis(resume, { requiredSkills: requirements });
+  const items = comparison.items.filter((item) => item.status !== 'NOT APPLICABLE');
+  const strongMatches = items
+    .filter((item) => item.matchClassification === 'EXACT_MATCH')
+    .map((item) => item.skill);
+  const partialMatches = items
+    .filter((item) => item.matchClassification === 'RELATED_SKILL_EVIDENCED')
+    .map((item) => item.skill);
+  const missing = items
+    .filter((item) => item.matchClassification === 'NOT_EVIDENCED')
+    .map((item) => item.skill);
+  const overallMatch = items.length === 0 ? 0 : Math.round(
+    (strongMatches.length + partialMatches.length * 0.5) / items.length * 100,
+  );
+  return { overallMatch, strongMatches, partialMatches, missing };
+}
+
+/**
  * Deterministic, job-specific ATS calculation. The fixed weights are the
  * product contract; every earned point comes from parsed resume/job evidence.
  */
@@ -1287,6 +1358,11 @@ export function calculateJobSpecificAtsScore(
     return total;
   }, 0) / applicableGaps.length;
   const keywordCoverage = Math.round(keywordCoverageFraction * 15);
+  // These two rows partition the existing 15-point keyword-evidence component.
+  // This preserves the ATS total while making it clear whether terms are visible
+  // to an ATS and how strongly they are supported by resume evidence.
+  const readability = Math.round(keywordCoverageFraction * 10);
+  const evidenceStrength = keywordCoverage - readability;
 
   const sectionQualityChecks: [boolean, number, string][] = [
     [Boolean(resume.summary.trim()), 2, 'targetable summary'],
@@ -1332,8 +1408,28 @@ export function calculateJobSpecificAtsScore(
       score: sectionQuality,
       reasons: sectionQualityReasons,
     },
+    readability: {
+      score: readability,
+      reasons: [`${Math.round(keywordCoverageFraction * applicableGaps.length)} job requirement${Math.round(keywordCoverageFraction * applicableGaps.length) === 1 ? '' : 's'} use ATS-readable wording in the resume`],
+    },
+    evidenceStrength: {
+      score: evidenceStrength,
+      reasons: [`${matched.length} requirement${matched.length === 1 ? '' : 's'} have direct evidence and ${partial.length} have related evidence`],
+    },
     total: structure + technicalSkillCoverage + experienceRelevance + keywordCoverage + sectionQuality,
   };
+}
+
+function buildAtsDisplayBreakdown(breakdown: AtsDimensionBreakdown): AtsDisplayBreakdownItem[] {
+  const explain = (reasons: string[], fallback: string) => reasons.length ? reasons.slice(0, 2).join('; ') : fallback;
+  return [
+    { label: 'Resume Structure', score: breakdown.structure.score, maximum: 25, explanation: explain(breakdown.structure.reasons, 'Standard resume sections need more detail.') },
+    { label: 'Keyword Coverage', score: breakdown.technicalSkillCoverage.score, maximum: 30, explanation: explain(breakdown.technicalSkillCoverage.reasons, 'Required job keywords are not sufficiently represented.') },
+    { label: 'Experience Relevance', score: breakdown.experienceRelevance.score, maximum: 20, explanation: explain(breakdown.experienceRelevance.reasons, 'Practical evidence does not yet clearly map to the role.') },
+    { label: 'Formatting', score: breakdown.sectionQuality.score, maximum: 10, explanation: explain(breakdown.sectionQuality.reasons, 'Section detail and organization can be strengthened.') },
+    { label: 'Readability', score: breakdown.readability.score, maximum: 10, explanation: explain(breakdown.readability.reasons, 'Use clearer ATS-readable wording for documented skills.') },
+    { label: 'Evidence Strength', score: breakdown.evidenceStrength.score, maximum: 5, explanation: explain(breakdown.evidenceStrength.reasons, 'Add direct, resume-supported evidence for required skills.') },
+  ];
 }
 
 /** Domain classification replaces generic token overlap for role similarity. */
@@ -1634,9 +1730,14 @@ function buildHiringManagerAssessment(
           : 'Poor Match';
   const confidence = calculateAssessmentConfidence(resume, gapAnalysis);
 
-  const fallbackInterviewReasons = matched.map((item) =>
-    `${item.skill} is evidenced in ${item.evidence.slice(0, 2).join('; ')}, aligning with the ${title} requirement.`,
-  );
+  const fallbackInterviewReasons = [
+    ...matched.map((item) =>
+      `${item.skill} is evidenced in ${item.evidence.slice(0, 2).join('; ')}, directly matching the ${title} requirement.`,
+    ),
+    ...partial.map((item) =>
+      `The resume shows related evidence for ${item.skill}: ${item.evidence.slice(0, 2).join('; ')}. This supports the ${title} requirement, though the exact skill is not fully confirmed.`,
+    ),
+  ];
   const fallbackRejectionReasons = [
     ...missing.map((item) => `${item.skill} is required for the ${title} role but is not evidenced in the resume.`),
     ...missingResponsibilities.map((item) => `${item.responsibility} is required for the ${title} role but is not explicitly evidenced in the resume.`),
@@ -1682,10 +1783,13 @@ function buildHiringManagerAssessment(
   return {
     overallDecision,
     recruiterSummary: summaryWithClarifications,
-    topReasonsToInterview: uniqueAssessmentItems([...model.topReasonsToInterview, ...fallbackInterviewReasons]).slice(0, 5),
+    // These lists are intentionally deterministic. Each item names both a
+    // supplied job requirement and the resume evidence (or documented absence)
+    // behind the hiring signal; model-only wording cannot become a reason.
+    topReasonsToInterview: uniqueAssessmentItems(fallbackInterviewReasons).slice(0, 3),
     // Do not let an LLM-only absence claim become a rejection reason. This
     // list is intentionally limited to deterministic NOT_EVIDENCED gaps.
-    topReasonsForRejection: uniqueAssessmentItems(fallbackRejectionReasons).slice(0, 5),
+    topReasonsForRejection: uniqueAssessmentItems(fallbackRejectionReasons).slice(0, 3),
     estimatedInterviewProbability,
     biggestImprovements: improvements,
     confidence,
@@ -1966,6 +2070,37 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
   const missingSkills = validateAndCleanKeywords(arr(o.missingSkills));
   const keywordSuggestions = validateAndCleanKeywords(arr(o.keywordSuggestions));
   const keywordGaps = validateAndCleanKeywords(arr(o.keywordGaps));
+  const rawKeywordCompatibility = o.keywordCompatibility || {};
+  const keywordCompatibility: KeywordCompatibility = {
+    overallMatch: Math.max(0, Math.min(100, Number(rawKeywordCompatibility.overallMatch) || 0)),
+    strongMatches: validateAndCleanKeywords(arr(rawKeywordCompatibility.strongMatches)),
+    partialMatches: validateAndCleanKeywords(arr(rawKeywordCompatibility.partialMatches)),
+    missing: validateAndCleanKeywords(arr(rawKeywordCompatibility.missing)),
+  };
+  const coachingReport: CoachingReportSection[] = Array.isArray(o.coachingReport)
+    ? o.coachingReport.flatMap((section: unknown): CoachingReportSection[] => {
+      if (!section || typeof section !== 'object') return [];
+      const candidate = section as Record<string, unknown>;
+      const category = String(candidate.category || '') as CoachingReportCategory;
+      if (!COACHING_REPORT_CATEGORIES.includes(category)) return [];
+      const recommendations = mapWithConfidence(candidate.recommendations).slice(0, 3);
+      return recommendations.length ? [{ category, recommendations }] : [];
+    })
+    : [];
+  const atsBreakdown: AtsDisplayBreakdownItem[] = Array.isArray(o.atsBreakdown)
+    ? o.atsBreakdown.flatMap((item: unknown): AtsDisplayBreakdownItem[] => {
+      if (!item || typeof item !== 'object') return [];
+      const candidate = item as Record<string, unknown>;
+      const label = String(candidate.label || '') as AtsDisplayBreakdownItem['label'];
+      const maximum = Number(candidate.maximum);
+      const score = Number(candidate.score);
+      const explanation = typeof candidate.explanation === 'string' ? candidate.explanation.trim() : '';
+      const labels: AtsDisplayBreakdownItem['label'][] = ['Resume Structure', 'Keyword Coverage', 'Experience Relevance', 'Formatting', 'Readability', 'Evidence Strength'];
+      return labels.includes(label) && Number.isFinite(score) && Number.isFinite(maximum) && explanation
+        ? [{ label, score: Math.max(0, Math.min(maximum, score)), maximum, explanation }]
+        : [];
+    })
+    : [];
   const keywordRecommendations = Array.isArray(o.keywordRecommendations)
     ? o.keywordRecommendations.flatMap((item: unknown): KeywordRecommendation[] => {
         if (!item || typeof item !== 'object') return [];
@@ -2046,6 +2181,9 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
       partialMatches: arr(jobMatchExplanation.partialMatches),
       missingSkills: arr(jobMatchExplanation.missingSkills),
     },
+    keywordCompatibility,
+    coachingReport,
+    atsBreakdown,
     roleStrengths: arr(o.roleStrengths),
     hiringManagerAssessment: o.hiringManagerAssessment as HiringManagerAssessment,
   };
@@ -2270,6 +2408,7 @@ export async function analyzeResumeWithAi(
   const gapAnalysis = buildJobGapAnalysis(parsedJson.resume, jobProfile);
   const atsBreakdown = calculateJobSpecificAtsScore(parsedJson.resume, gapAnalysis, jobProfile);
   const jobMatchBreakdown = calculateJobMatchScore(parsedJson.resume, jobProfile, gapAnalysis);
+  const keywordCompatibility = buildKeywordCompatibility(parsedJson.resume, jobProfile);
   logAiEvent(observability, 'gap_analysis_completed', {
     jobTitlePresent: Boolean(jobProfile.title),
     requiredSkillCount: jobProfile.requiredSkills.length,
@@ -2404,6 +2543,8 @@ export async function analyzeResumeWithAi(
     improvementSuggestions: analysisJson.improvementSuggestions || [],
     optimizationRecommendations: analysisJson.optimizationRecommendations || [],
     atsIssues: analysisJson.atsIssues || [],
+    coachingReport: analysisJson.coachingReport || [],
+    atsBreakdown: buildAtsDisplayBreakdown(atsBreakdown),
     atsScoreExplanation: {
       ...(analysisJson.atsScoreExplanation || {}),
       whatIncreasedScore: [
@@ -2430,6 +2571,7 @@ export async function analyzeResumeWithAi(
         ...((analysisJson.jobMatchExplanation?.missingSkills) || []),
       ],
     },
+    keywordCompatibility,
     hiringManagerAssessment: analysisJson.hiringManagerAssessment,
   };
 

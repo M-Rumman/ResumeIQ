@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Sparkles,
   Zap,
+  ArrowDown,
   Download,
   Lock,
 } from 'lucide-react';
@@ -36,6 +37,259 @@ import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 
 type AnalysisResults = ResumeDisplayResults;
+
+const STRONG_BULLET_ACTION_VERBS = new Set([
+  'accelerated', 'achieved', 'analyzed', 'architected', 'assembled', 'automated', 'built',
+  'coordinated', 'created', 'delivered', 'designed', 'developed', 'engineered', 'fabricated',
+  'implemented', 'improved', 'integrated', 'led', 'managed', 'optimized', 'presented',
+  'produced', 'reduced', 'streamlined', 'tested', 'validated',
+]);
+
+function firstWord(text: string) {
+  return text.trim().match(/[A-Za-z]+/)?.[0]?.toLowerCase() || '';
+}
+
+function hasQuantification(text: string) {
+  return /(?:\b\d+(?:\.\d+)?(?:%|x)?\b|\[x\]\s*(?:%|users|components|requests))/i.test(text);
+}
+
+const GENERIC_BULLET_OPENERS = new Set([
+  'assisted', 'helped', 'participated', 'responsible', 'supported', 'worked',
+]);
+const TECHNICAL_BULLET_TERMS = [
+  'api', 'arduino', 'ansys', 'assembly', 'autocad', 'cad', 'circuit', 'c++', 'c#',
+  'data structure', 'debug', 'embedded', 'esp32', 'firmware', 'hardware', 'lidar',
+  'ltspice', 'microcontroller', 'motor', 'pcb', 'pid', 'plc', 'proteus', 'protocol',
+  'python', 'sensor', 'simulation', 'solidworks', 'stm32', 'testing', 'validation',
+];
+const ENGINEERING_DETAIL_TERMS = [
+  'analy', 'architect', 'automat', 'calibrat', 'debug', 'design', 'develop', 'integrat',
+  'implement', 'interface', 'optim', 'prototype', 'test', 'validat',
+];
+
+type BulletQuality = {
+  total: number;
+  actionVerb: number;
+  technicalSpecificity: number;
+  keywordRichness: number;
+  engineeringDetail: number;
+  measurableImpact: number;
+  sentenceClarity: number;
+};
+
+function containsTerm(text: string, term: string) {
+  const escaped = term.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?=$|[^a-z0-9])`, 'i').test(text);
+}
+
+/** Deterministic writing-quality score; it is not an LLM estimate or a random number. */
+function scoreBulletQuality(text: string, targetKeywords: string[]): BulletQuality {
+  const words = text.trim().match(/[A-Za-z0-9+#]+/g) || [];
+  const opener = firstWord(text);
+  const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 20 : GENERIC_BULLET_OPENERS.has(opener) ? 4 : 9;
+  const technicalSpecificity = Math.min(20, TECHNICAL_BULLET_TERMS.filter((term) => containsTerm(text, term)).length * 5);
+  const keywordRichness = Math.min(20, [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
+    .filter((term) => containsTerm(text, term)).length * 7);
+  const engineeringDetail = Math.min(15, ENGINEERING_DETAIL_TERMS
+    .filter((term) => text.toLowerCase().includes(term)).length * 3);
+  const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 10 : 15) : 0;
+  const sentenceClarity = words.length >= 10 && words.length <= 40 ? 10 : words.length >= 6 && words.length <= 55 ? 6 : 2;
+  const total = actionVerb + technicalSpecificity + keywordRichness + engineeringDetail + measurableImpact + sentenceClarity;
+  return { total, actionVerb, technicalSpecificity, keywordRichness, engineeringDetail, measurableImpact, sentenceClarity };
+}
+
+function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) {
+  const improvements = [
+    [after.actionVerb > before.actionVerb, 'Stronger action verb'],
+    [after.keywordRichness > before.keywordRichness, 'Better ATS keywords for this role'],
+    [after.technicalSpecificity > before.technicalSpecificity, 'More technical specificity'],
+    [after.engineeringDetail > before.engineeringDetail, 'More engineering detail'],
+    [after.measurableImpact > before.measurableImpact, 'More measurable impact'],
+    [after.sentenceClarity > before.sentenceClarity, 'Clearer sentence structure'],
+  ] as const;
+  return improvements.filter(([improved]) => improved).map(([, label]) => label);
+}
+
+/**
+ * Explanations are derived only from the original and server-validated rewrite.
+ * They identify the type of detail a candidate should add, without claiming an
+ * unsupported tool, outcome, or metric exists in the source resume.
+ */
+function buildBulletTeachingGuide({ before, after }: AnalysisResults['bulletSuggestions'][number]) {
+  const originalStartsStrong = STRONG_BULLET_ACTION_VERBS.has(firstWord(before));
+  const rewrittenVerb = firstWord(after);
+  const originalHasMetric = hasQuantification(before);
+  const rewrittenIsMoreDetailed = after.trim().split(/\s+/).length > before.trim().split(/\s+/).length + 3;
+
+  const whyWeak = [
+    originalStartsStrong
+      ? 'The contribution is not specific enough for a recruiter to quickly understand the work performed.'
+      : 'It starts with generic wording instead of a clear, specific action.',
+    originalHasMetric
+      ? 'The technical context or outcome is not explained clearly enough.'
+      : 'It does not show the scope, outcome, or measurable result of the work.',
+  ];
+
+  const missingInformation = [
+    rewrittenIsMoreDetailed
+      ? 'The specific technical contribution, components, methods, or context already supported by the resume.'
+      : 'A clearer explanation of the candidate\'s specific contribution.',
+    originalHasMetric
+      ? 'A direct connection between the work and its result or impact.'
+      : 'A supported outcome, scope, or metric, if one is available.',
+  ];
+
+  const whyStronger = [
+    rewrittenVerb
+      ? `Begins with the clear action verb “${rewrittenVerb.charAt(0).toUpperCase()}${rewrittenVerb.slice(1)}.”`
+      : 'Uses a clearer action-to-contribution structure.',
+    rewrittenIsMoreDetailed
+      ? 'Makes the documented technical contribution easier to understand while preserving the original meaning.'
+      : 'Uses more direct professional resume language while preserving the original meaning.',
+    'Gives recruiters and ATS systems clearer, resume-supported evidence of the candidate\'s work.',
+  ];
+
+  return { whyWeak, missingInformation, whyStronger };
+}
+
+function BulletImprovementGuide({
+  items,
+  targetKeywords,
+}: {
+  items: AnalysisResults['bulletSuggestions'];
+  targetKeywords: string[];
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles className="w-5 h-5 text-[#3c4a59]" />
+        <h3 className="font-bold text-gray-900">Resume Bullet Improvements</h3>
+      </div>
+      <p className="text-sm text-gray-700 mb-6">
+        Each suggestion explains the weakness and uses only resume-supported information in its improved version.
+      </p>
+      {items.length > 0 ? (
+        <div className="space-y-6">
+          {items.map((item, i) => {
+            const guide = buildBulletTeachingGuide(item);
+            const beforeQuality = scoreBulletQuality(item.before, targetKeywords);
+            const afterQuality = scoreBulletQuality(item.after, targetKeywords);
+            const improvements = bulletQualityImprovements(beforeQuality, afterQuality);
+            return (
+              <article key={`${item.before}-${i}`} className="rounded-xl border border-gray-200 overflow-hidden">
+                <div className="grid md:grid-cols-[1fr_auto_1fr] items-stretch bg-gray-100 gap-px">
+                  <div className="bg-red-50 p-4">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <span className="text-xs font-bold text-red-700 uppercase tracking-wide">Before</span>
+                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800">Score {beforeQuality.total}/100</span>
+                    </div>
+                    <p className="text-sm text-red-950">{item.before}</p>
+                  </div>
+                  <div className="bg-white flex items-center justify-center px-4 py-3">
+                    <ArrowDown className="w-5 h-5 text-[#3c4a59] md:rotate-[-90deg]" aria-label="Improved to" />
+                  </div>
+                  <div className="bg-emerald-50 p-4">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">After</span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">Score {afterQuality.total}/100</span>
+                    </div>
+                    <p className="text-sm text-emerald-950 font-medium">{item.after}</p>
+                  </div>
+                </div>
+                {improvements.length > 0 && (
+                  <div className="border-y border-gray-100 bg-white p-4">
+                    <h4 className="text-sm font-bold text-gray-900 mb-2">Improvement</h4>
+                    <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-emerald-800">
+                      {improvements.map((improvement) => <li key={improvement}>+ {improvement}</li>)}
+                    </ul>
+                  </div>
+                )}
+                <div className="grid md:grid-cols-2 gap-px bg-gray-100">
+                  <div className="bg-white p-4">
+                    <h4 className="text-sm font-bold text-gray-900 mb-2">Why it is weak</h4>
+                    <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
+                      {guide.whyWeak.map((reason) => <li key={reason}>{reason}</li>)}
+                    </ul>
+                  </div>
+                  <div className="bg-white p-4">
+                    <h4 className="text-sm font-bold text-gray-900 mb-2">What information is missing</h4>
+                    <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
+                      {guide.missingInformation.map((detail) => <li key={detail}>{detail}</li>)}
+                    </ul>
+                  </div>
+                </div>
+                <div className="bg-white p-4">
+                  <h4 className="text-sm font-bold text-gray-900 mb-2">Why this is stronger</h4>
+                  <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
+                    {guide.whyStronger.map((reason) => <li key={reason}>{reason}</li>)}
+                  </ul>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-700">
+          Paste experience or project bullets in your resume to receive grounded improvement guidance.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ResumeCoachingReport({ results }: { results: AnalysisResults }) {
+  const fallbackReport: AnalysisResults['engine']['coachingReport'] = [
+    {
+      category: 'Job Alignment',
+      recommendations: results.jobSpecificImprovements.map((item) => item.text).slice(0, 3),
+    },
+    {
+      category: 'ATS Formatting',
+      recommendations: results.generalResumeImprovements.map((item) => item.text).slice(0, 3),
+    },
+  ].filter((section) => section.recommendations.length > 0);
+  const sections = results.engine.coachingReport.length > 0
+    ? results.engine.coachingReport
+    : fallbackReport;
+
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-start gap-3 mb-2">
+        <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+          <Lightbulb className="w-5 h-5 text-amber-600" />
+        </div>
+        <div>
+          <h3 className="font-bold text-gray-900">Resume Improvements</h3>
+          <p className="text-sm text-gray-700 mt-1">
+            Recruiter-style coaching grounded in your resume and this specific job description.
+          </p>
+        </div>
+      </div>
+
+      {sections.length > 0 ? (
+        <div className="grid gap-4 mt-6 lg:grid-cols-2">
+          {sections.map((section) => (
+            <article key={section.category} className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+              <h4 className="font-bold text-gray-900 mb-3">{section.category}</h4>
+              <ul className="space-y-3">
+                {section.recommendations.map((recommendation) => (
+                  <li key={recommendation} className="flex items-start gap-2.5 text-sm leading-6 text-gray-800">
+                    <ArrowRight className="w-4 h-4 text-[#3c4a59] mt-1 flex-shrink-0" />
+                    <span>{recommendation}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-5 text-sm text-gray-700">
+          Add more project or experience detail to receive role-specific coaching.
+        </p>
+      )}
+    </section>
+  );
+}
 
 function AtsScoreExplanation({ explanation }: { explanation: AnalysisResults['engine']['atsScoreExplanation'] }) {
   const hasDetails = explanation.whatIncreasedScore.length
@@ -72,6 +326,37 @@ function AtsScoreExplanation({ explanation }: { explanation: AnalysisResults['en
   );
 }
 
+function AtsBreakdown({
+  breakdown,
+  overallScore,
+}: {
+  breakdown: AnalysisResults['engine']['atsBreakdown'];
+  overallScore: number;
+}) {
+  if (breakdown.length === 0) return null;
+
+  return (
+    <section className="mt-5 pt-5 border-t border-gray-100">
+      <h4 className="text-sm font-bold text-gray-900 mb-3">ATS Breakdown</h4>
+      <div className="space-y-3">
+        {breakdown.map((item) => (
+          <div key={item.label} className="rounded-lg bg-gray-50 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-bold text-gray-900">{item.label}</p>
+              <span className="text-xs font-extrabold text-[#3c4a59]">{item.score} / {item.maximum}</span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-gray-700">{item.explanation}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-3">
+        <span className="text-sm font-bold text-gray-900">Overall ATS</span>
+        <span className="text-lg font-extrabold text-[#3c4a59]">{overallScore}%</span>
+      </div>
+    </section>
+  );
+}
+
 function JobMatchExplanation({ explanation }: { explanation: AnalysisResults['engine']['jobMatchExplanation'] }) {
   const hasDetails = explanation.strongMatches.length || explanation.partialMatches.length || explanation.missingSkills.length;
   if (!hasDetails) return null;
@@ -97,6 +382,53 @@ function JobMatchExplanation({ explanation }: { explanation: AnalysisResults['en
         </div>
       )}
     </div>
+  );
+}
+
+function KeywordCompatibilityCard({ compatibility }: { compatibility: AnalysisResults['engine']['keywordCompatibility'] }) {
+  const groups = [
+    { title: 'Strong Match', icon: '✓', items: compatibility.strongMatches, className: 'border-emerald-100 bg-emerald-50 text-emerald-900', iconClassName: 'text-emerald-700' },
+    { title: 'Partial Match', icon: '~', items: compatibility.partialMatches, className: 'border-amber-100 bg-amber-50 text-amber-900', iconClassName: 'text-amber-700' },
+    { title: 'Missing', icon: '✗', items: compatibility.missing, className: 'border-red-100 bg-red-50 text-red-900', iconClassName: 'text-red-700' },
+  ];
+
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="flex items-center gap-2">
+          <Target className="w-5 h-5 text-[#3c4a59]" />
+          <h3 className="font-bold text-gray-900">Keyword Compatibility</h3>
+        </div>
+        <span className="text-sm font-bold text-[#3c4a59]">Overall Keyword Match: {compatibility.overallMatch}%</span>
+      </div>
+      <ProgressBar value={compatibility.overallMatch} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
+
+      <div className="grid gap-4 mt-5 lg:grid-cols-3">
+        {groups.map((group) => (
+          <div key={group.title} className={`rounded-xl border p-4 ${group.className}`}>
+            <p className="text-sm font-bold mb-3">{group.title} ({group.items.length})</p>
+            {group.items.length > 0 ? (
+              <ul className="space-y-2">
+                {group.items.map((keyword) => (
+                  <li key={keyword} className="flex items-start gap-2 text-sm font-medium">
+                    <span aria-hidden className={`font-extrabold ${group.iconClassName}`}>{group.icon}</span>
+                    <span>{keyword}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm opacity-75">None identified</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-gray-100 pt-4 text-sm text-gray-800">
+        <span><strong>Matched:</strong> {compatibility.strongMatches.length}</span>
+        <span><strong>Partial:</strong> {compatibility.partialMatches.length}</span>
+        <span><strong>Missing:</strong> {compatibility.missing.length}</span>
+      </div>
+    </section>
   );
 }
 
@@ -153,45 +485,37 @@ function HiringManagerAssessmentCard({ assessment }: { assessment: AnalysisResul
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div className="flex items-center gap-2">
           <Target className="w-5 h-5 text-[#3c4a59]" />
-          <h3 className="font-bold text-gray-900">Hiring Manager&apos;s Assessment</h3>
+          <h3 className="font-bold text-gray-900">Evidence-Based Hiring Summary</h3>
         </div>
         <span className={`text-sm font-bold px-3 py-1.5 rounded-full ${decisionStyle[assessment.overallDecision]}`}>
           {assessment.overallDecision}
         </span>
       </div>
 
-      <p className="text-sm leading-6 text-gray-700">{assessment.recruiterSummary}</p>
       <div className="grid lg:grid-cols-2 gap-5 mt-5">
-        <div>
-          <p className="text-sm font-bold text-emerald-800 mb-2">Top Reasons to Interview</p>
-          <ul className="space-y-2">
-            {assessment.topReasonsToInterview.map((reason) => (
-              <li key={reason} className="flex gap-2 text-sm text-gray-700"><CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />{reason}</li>
-            ))}
-          </ul>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+          <p className="text-sm font-bold text-emerald-900 mb-3">Why You Are Likely To Be Interviewed</p>
+          {assessment.topReasonsToInterview.length > 0 ? (
+            <ul className="space-y-3">
+              {assessment.topReasonsToInterview.map((reason) => (
+                <li key={reason} className="flex gap-2 text-sm leading-6 text-emerald-950"><CheckCircle2 className="w-4 h-4 mt-1 shrink-0 text-emerald-700" />{reason}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm leading-6 text-emerald-950">No direct resume-to-job requirement matches were identified yet.</p>
+          )}
         </div>
-        <div>
-          <p className="text-sm font-bold text-red-800 mb-2">Top Reasons for Rejection</p>
-          <ul className="space-y-2">
-            {assessment.topReasonsForRejection.map((reason) => (
-              <li key={reason} className="flex gap-2 text-sm text-gray-700"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />{reason}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
-      <div className="grid sm:grid-cols-2 gap-4 mt-6 pt-5 border-t border-gray-100">
-        <div className="rounded-xl bg-[#f4f7f9] p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-600">Estimated Interview Probability</p>
-          <p className="mt-1 text-3xl font-extrabold text-[#3c4a59]">{assessment.estimatedInterviewProbability}%</p>
-          <p className="mt-1 text-xs text-gray-600">Confidence: {assessment.confidence}</p>
-        </div>
-        <div>
-          <p className="text-sm font-bold text-gray-900 mb-2">Biggest Improvements</p>
-          <ul className="space-y-1.5">
-            {assessment.biggestImprovements.map((improvement) => (
-              <li key={improvement.text} className="text-sm text-gray-700">{improvement.text} <span className="font-semibold text-emerald-700">(+{improvement.estimatedImpact}%)</span></li>
-            ))}
-          </ul>
+        <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+          <p className="text-sm font-bold text-red-900 mb-3">Why You Might Be Rejected</p>
+          {assessment.topReasonsForRejection.length > 0 ? (
+            <ul className="space-y-3">
+              {assessment.topReasonsForRejection.map((reason) => (
+                <li key={reason} className="flex gap-2 text-sm leading-6 text-red-950"><AlertCircle className="w-4 h-4 mt-1 shrink-0 text-red-600" />{reason}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm leading-6 text-red-950">No material job requirement is currently marked as not evidenced in the resume.</p>
+          )}
         </div>
       </div>
     </div>
@@ -240,7 +564,7 @@ function OverallAssessmentCard({ results }: { results: AnalysisResults }) {
           <span className="text-4xl font-extrabold text-emerald-700 sm:text-5xl">{readiness}%</span>{' '}
           interview potential for this role.
         </p>
-        <p className="mx-auto mt-7 max-w-3xl text-sm leading-6 text-gray-700 sm:text-base">
+        <p className="mx-auto mt-7 max-w-3xl text-sm leading-6 text-gray-900 sm:text-base">
           {explanation} This is an AI estimate based solely on this resume analysis, not a guarantee of an interview invitation.
         </p>
       </div>
@@ -668,10 +992,7 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
                   <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
                 </div>
                 <ProgressBar value={results.atsScore} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
-                <AtsScoreExplanation explanation={results.engine.atsScoreExplanation} />
-                <p className="text-xs text-gray-700 mt-2">
-                  {results.atsScore >= 80 ? 'Good ATS compatibility — a few improvements needed.' : 'Needs significant optimization for ATS systems.'}
-                </p>
+                <AtsBreakdown breakdown={results.engine.atsBreakdown} overallScore={results.atsScore} />
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
@@ -690,6 +1011,7 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
               </div>
             </div>
 
+            <KeywordCompatibilityCard compatibility={results.engine.keywordCompatibility} />
             <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
             <StrengthsMatchingRoleCard strengths={results.engine.roleStrengths} />
 
@@ -738,80 +1060,16 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
 
             <KeywordRecommendations recommendations={results.keywordRecommendations} />
 
-            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-5">
-                <Lightbulb className="w-5 h-5 text-amber-500" />
-                <h3 className="font-bold text-gray-900">Job-Specific Improvements</h3>
-              </div>
-              <div className="space-y-3">
-                {results.jobSpecificImprovements.map((item, i) => {
-                  const styleMap = {
-                    warning: { bg: 'bg-amber-50 border-amber-100', icon: 'text-amber-600', text: 'text-amber-900' },
-                    error: { bg: 'bg-red-50 border-red-100', icon: 'text-red-600', text: 'text-red-900' },
-                    info: { bg: 'bg-gray-50 border-gray-200', icon: 'text-[#3c4a59]', text: 'text-gray-900' },
-                    success: { bg: 'bg-green-50 border-green-100', icon: 'text-green-600', text: 'text-green-900' },
-                  } as const;
-                  const styles = styleMap[item.type];
-                  const Icon = item.type === 'success' ? CheckCircle2 : AlertCircle;
-                  return (
-                    <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${styles.bg}`}>
-                      <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${styles.icon}`} />
-                      <p className={`text-sm font-medium ${styles.text}`}>{item.text}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <ResumeCoachingReport results={results} />
 
-            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-5">
-                <FileText className="w-5 h-5 text-[#3c4a59]" />
-                <h3 className="font-bold text-gray-900">General Resume Improvements</h3>
-              </div>
-              {results.generalResumeImprovements.length > 0 ? (
-                <ul className="space-y-2.5">
-                  {results.generalResumeImprovements.map((s, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-900">
-                      <div className="w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <span className="text-[10px] font-bold text-gray-700">{i + 1}</span>
-                      </div>
-                      {s.text}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-700">
-                  Add more experience or project bullets to your resume for personalized rewrites.
-                </p>
-              )}
-            </div>
-
-            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-6">
-                <Sparkles className="w-5 h-5 text-[#3c4a59]" />
-                <h3 className="font-bold text-gray-900">Stronger Bullet Point Suggestions</h3>
-              </div>
-              {results.bulletSuggestions.length > 0 ? (
-                <div className="space-y-5">
-                  {results.bulletSuggestions.map((item, i) => (
-                    <div key={i} className="grid sm:grid-cols-2 gap-3">
-                      <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-                        <span className="text-xs font-bold text-red-600 uppercase tracking-wide block mb-2">Before</span>
-                        <p className="text-sm text-red-900">{item.before}</p>
-                      </div>
-                      <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-                        <span className="text-xs font-bold text-green-700 uppercase tracking-wide block mb-2">After</span>
-                        <p className="text-sm text-green-900 font-medium">{item.after}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-700">
-                  Paste experience bullets in your resume to see before/after rewrites here.
-                </p>
-              )}
-            </div>
+            <BulletImprovementGuide
+              items={results.bulletSuggestions}
+              targetKeywords={[
+                ...results.engine.keywordCompatibility.strongMatches,
+                ...results.engine.keywordCompatibility.partialMatches,
+                ...results.engine.keywordCompatibility.missing,
+              ]}
+            />
     </>
   );
 }
@@ -829,7 +1087,7 @@ function ResumeResultsPreview({ results }: { results: AnalysisResults }) {
             <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
           </div>
           <ProgressBar value={results.atsScore} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
-          <AtsScoreExplanation explanation={results.engine.atsScoreExplanation} />
+          <AtsBreakdown breakdown={results.engine.atsBreakdown} overallScore={results.atsScore} />
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
@@ -843,6 +1101,7 @@ function ResumeResultsPreview({ results }: { results: AnalysisResults }) {
           <JobMatchExplanation explanation={results.engine.jobMatchExplanation} />
         </div>
       </div>
+      <KeywordCompatibilityCard compatibility={results.engine.keywordCompatibility} />
       <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
       <StrengthsMatchingRoleCard strengths={results.engine.roleStrengths} />
     </>
@@ -854,76 +1113,16 @@ function ResumeResultsPremium({ results }: { results: AnalysisResults }) {
     <>
       <KeywordRecommendations recommendations={results.keywordRecommendations} />
 
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-5">
-          <Lightbulb className="w-5 h-5 text-amber-500" />
-          <h3 className="font-bold text-gray-900">Job-Specific Improvements</h3>
-        </div>
-        <div className="space-y-3">
-          {results.jobSpecificImprovements.map((item, i) => {
-            const styleMap = {
-              warning: { bg: 'bg-amber-50 border-amber-100', icon: 'text-amber-600', text: 'text-amber-900' },
-              error: { bg: 'bg-red-50 border-red-100', icon: 'text-red-600', text: 'text-red-900' },
-              info: { bg: 'bg-gray-50 border-gray-200', icon: 'text-[#3c4a59]', text: 'text-gray-900' },
-              success: { bg: 'bg-green-50 border-green-100', icon: 'text-green-600', text: 'text-green-900' },
-            } as const;
-            const styles = styleMap[item.type];
-            const Icon = item.type === 'success' ? CheckCircle2 : AlertCircle;
-            return (
-              <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${styles.bg}`}>
-                <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${styles.icon}`} />
-                <p className={`text-sm font-medium ${styles.text}`}>{item.text}</p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <ResumeCoachingReport results={results} />
 
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-5">
-          <FileText className="w-5 h-5 text-[#3c4a59]" />
-          <h3 className="font-bold text-gray-900">General Resume Improvements</h3>
-        </div>
-        {results.generalResumeImprovements.length > 0 ? (
-          <ul className="space-y-2.5">
-            {results.generalResumeImprovements.map((s, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-gray-900">
-                <div className="w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-[10px] font-bold text-gray-700">{i + 1}</span>
-                </div>
-                {s.text}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-700">No formatting suggestions available.</p>
-        )}
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-6">
-          <Sparkles className="w-5 h-5 text-[#3c4a59]" />
-          <h3 className="font-bold text-gray-900">Stronger Bullet Point Suggestions</h3>
-        </div>
-        {results.bulletSuggestions.length > 0 ? (
-          <div className="space-y-5">
-            {results.bulletSuggestions.map((item, i) => (
-              <div key={i} className="grid sm:grid-cols-2 gap-3">
-                <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-                  <span className="text-xs font-bold text-red-600 uppercase tracking-wide block mb-2">Before</span>
-                  <p className="text-sm text-red-900">{item.before}</p>
-                </div>
-                <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-                  <span className="text-xs font-bold text-green-700 uppercase tracking-wide block mb-2">After</span>
-                  <p className="text-sm text-green-900 font-medium">{item.after}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-700">No bullet rewrites available.</p>
-        )}
-      </div>
+      <BulletImprovementGuide
+        items={results.bulletSuggestions}
+        targetKeywords={[
+          ...results.engine.keywordCompatibility.strongMatches,
+          ...results.engine.keywordCompatibility.partialMatches,
+          ...results.engine.keywordCompatibility.missing,
+        ]}
+      />
     </>
   );
 }

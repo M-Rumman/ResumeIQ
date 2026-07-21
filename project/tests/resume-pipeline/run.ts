@@ -4,7 +4,7 @@ import { cleanResumeExtractionArtifacts, normalizeSectionHeading, parseResumeTex
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
-import { buildJobGapAnalysis, buildJobProfile, buildKeywordRecommendations, buildRoleStrengths, calculateAssessmentConfidence, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
+import { buildJobGapAnalysis, buildJobProfile, buildKeywordCompatibility, buildKeywordRecommendations, buildRoleStrengths, calculateAssessmentConfidence, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -651,6 +651,25 @@ Requirements:
       assert.equal(exactGap.items[0]?.status, 'MATCHED');
       assert.equal(exactGap.items[0]?.matchClassification, 'EXACT_MATCH');
       assert.equal(buildRoleStrengths(exactResume, { title: 'Embedded Systems Intern' }, exactGap).some((strength) => /ESP32/i.test(strength)), true);
+    },
+  },
+  {
+    name: 'builds keyword compatibility from semantic requirement evidence without changing ATS scoring',
+    run: () => {
+      const resume = parseResumeText(`Skills
+Arduino, SolidWorks CAD
+
+Projects
+Embedded Systems Monitor
+- Designed circuit design documentation and an embedded monitoring prototype.`);
+      const compatibility = buildKeywordCompatibility(resume, {
+        requiredSkills: ['Arduino', 'Mechanical Design', 'PCB Design', 'Firmware Development', 'STM32'],
+        preferredSkills: [],
+      });
+      assert.deepEqual(compatibility.strongMatches, ['Arduino', 'Mechanical Design']);
+      assert.deepEqual(compatibility.partialMatches, ['PCB Design', 'Firmware Development', 'STM32']);
+      assert.deepEqual(compatibility.missing, []);
+      assert.equal(compatibility.overallMatch, 70);
     },
   },
   {

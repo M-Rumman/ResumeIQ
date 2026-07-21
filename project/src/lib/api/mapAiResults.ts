@@ -61,9 +61,6 @@ function buildGeneralResumeImprovements(ai: AiResumeAnalysis): ImprovementItem[]
   for (const text of ai.formattingSuggestions || []) {
     items.push({ type: 'info', text });
   }
-  for (const text of ai.weakBullets || []) {
-    items.push({ type: 'warning', text: `Weak bullet: ${text}` });
-  }
   return items;
 }
 
