@@ -25,6 +25,8 @@ import ResumeKeywordOptimizerLandingPage from './pages/ResumeKeywordOptimizerLan
 import ResumeScoreCheckerLandingPage from './pages/ResumeScoreCheckerLandingPage';
 import ResumeFeedbackLandingPage from './pages/ResumeFeedbackLandingPage';
 import InterviewPrepLandingPage from './pages/InterviewPrepLandingPage';
+import BlogPage from './pages/BlogPage';
+import BlogArticlePage from './pages/BlogArticlePage';
 import CheckoutResume from './components/CheckoutResume';
 import { supabase } from './lib/supabase.js';
 import { handleSupabaseAuthCallback } from './lib/authCallback.js';
@@ -55,12 +57,18 @@ function resolveInitialPage(): Page {
   return 'home';
 }
 
+function blogSlugFromPath(pathname: string): string | null {
+  const match = pathname.replace(/\/+$/, '').match(/^\/blog\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>(resolveInitialPage);
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authRedirect, setAuthRedirect] = useState<Page | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [blogSlug, setBlogSlug] = useState<string | null>(() => blogSlugFromPath(window.location.pathname));
 
   useScrollReveal([currentPage]);
   usePageSeo(currentPage);
@@ -175,7 +183,10 @@ export default function App() {
   useEffect(() => {
     function onPopState() {
       const page = pathToPage(window.location.pathname);
-      if (page) setCurrentPage(page);
+      if (page) {
+        setCurrentPage(page);
+        setBlogSlug(page === 'blog' ? blogSlugFromPath(window.location.pathname) : null);
+      }
     }
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -193,6 +204,16 @@ export default function App() {
   }
 
   function navigate(page: string) {
+    if (page === 'blog' || page.startsWith('blog/')) {
+      const slug = page.startsWith('blog/') ? page.slice('blog/'.length) : null;
+      setAuthRedirect(null);
+      setBlogSlug(slug);
+      setCurrentPage('blog');
+      const path = slug ? `/blog/${encodeURIComponent(slug)}` : '/blog';
+      if (window.location.pathname !== path) window.history.pushState({}, '', path);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     const target = page as Page;
 
     if (isProtectedPage(target) && !verifiedSession) {
@@ -282,6 +303,10 @@ export default function App() {
         )}
         {currentPage === 'ai-interview-preparation' && (
           <InterviewPrepLandingPage onNavigate={navigate} />
+        )}
+        {currentPage === 'blog' && (blogSlug
+          ? <BlogArticlePage slug={blogSlug} onBack={() => navigate('blog')} />
+          : <BlogPage onOpenArticle={(slug) => navigate(`blog/${slug}`)} />
         )}
         {currentPage === 'about' && <AboutPage />}
         {currentPage === 'contact' && <ContactPage />}

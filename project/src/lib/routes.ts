@@ -7,6 +7,7 @@ export const PUBLIC_PATHS = {
   'refund-policy': '/refund-policy',
   contact: '/contact',
   about: '/about',
+  blog: '/blog',
   pricing: '/pricing',
   login: '/login',
   signup: '/signup',
@@ -37,6 +38,7 @@ const sortedPaths = Object.entries(PUBLIC_PATHS).sort(
 
 export function pathToPage(pathname: string): RoutablePage | null {
   const normalized = pathname.replace(/\/+$/, '') || '/';
+  if (normalized === '/blog' || normalized.startsWith('/blog/')) return 'blog';
   if (pathToPageMap[normalized]) return pathToPageMap[normalized];
 
   for (const [page, path] of sortedPaths) {
