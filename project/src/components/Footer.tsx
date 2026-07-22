@@ -45,6 +45,7 @@ export default function Footer({ onNavigate }: FooterProps) {
             <div className="flex flex-col gap-3">
               <span className="text-primary text-sm font-display tracking-[0.03em]">Company</span>
               <FooterLink label="About" page="about" onNavigate={onNavigate} />
+              <FooterLink label="Career Resources" page="blog" onNavigate={onNavigate} />
             </div>
             <div className="flex flex-col gap-3">
               <span className="text-primary text-sm font-display tracking-[0.03em]">Legal</span>
