@@ -31,12 +31,12 @@ export default function BlogArticleCard({ article, onOpen, featured = false, cla
             </div>
           </div>
           <div className="order-1 min-h-[270px] overflow-hidden lg:order-2 lg:col-span-3">
-            <img src={article.coverImage} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+            <img src={article.coverImage} alt={article.title} decoding="async" fetchPriority="high" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
           </div>
         </div>
       ) : (
         <div className="flex h-full flex-col">
-          <div className="aspect-[16/10] overflow-hidden"><img src={article.coverImage} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /></div>
+          <div className="aspect-[16/10] overflow-hidden"><img src={article.coverImage} alt={article.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" /></div>
           <div className="flex flex-1 flex-col p-6">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-bold uppercase tracking-[0.08em] text-ink-muted"><span className="text-[#65789c]">{article.category}</span><span>•</span><span>{article.readingTime}</span><span>•</span><span>{article.publishDate}</span></div>
             <h2 className="mt-4 font-display text-xl font-extrabold leading-snug text-ink">{article.title}</h2>

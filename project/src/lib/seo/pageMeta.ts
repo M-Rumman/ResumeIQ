@@ -36,6 +36,7 @@ export type PageSeoMeta = {
   description: string;
   canonicalPath: string;
   noindex: boolean;
+  image?: string;
 };
 
 const PAGE_SEO: Record<SeoPageKey, PageSeoMeta> = {
@@ -209,7 +210,7 @@ export function getOpenGraphPayload(meta: PageSeoMeta) {
     title: meta.title,
     description: meta.description,
     url,
-    image: SEO_OG_IMAGE_URL,
+    image: meta.image || SEO_OG_IMAGE_URL,
     siteName: SEO_SITE_NAME,
     type: 'website',
   };

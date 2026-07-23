@@ -7,6 +7,7 @@ import {
   seoCanonicalUrl,
 } from './config.js';
 import { SUPPORT_EMAIL } from '../supportEmail.js';
+import { BLOG_ARTICLES, type BlogArticle } from '../blogData.js';
 import type { PageSeoMeta, SeoPageKey } from './pageMeta.js';
 
 export const ORGANIZATION_ID = `${SEO_SITE_URL}/#organization`;
@@ -287,6 +288,62 @@ function buildWebPageSchema(meta: PageSeoMeta): Record<string, unknown> {
   };
 }
 
+function articleDate(value: string): string {
+  const parsed = new Date(`${value.replace(/^(\w+)\s+(\d{4})$/, '$1 1, $2')}`);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString().slice(0, 10) : parsed.toISOString().slice(0, 10);
+}
+
+function buildBlogIndexSchema(meta: PageSeoMeta): Record<string, unknown> {
+  const url = seoCanonicalUrl('/blog');
+  return {
+    '@type': 'Blog',
+    '@id': `${url}#blog`,
+    name: 'ResuV Career Resources',
+    url,
+    description: meta.description,
+    publisher: { '@id': ORGANIZATION_ID },
+    blogPost: BLOG_ARTICLES.map((article) => ({
+      '@type': 'BlogPosting',
+      headline: article.title,
+      url: seoCanonicalUrl(`/blog/${article.slug}`),
+      datePublished: articleDate(article.publishDate),
+    })),
+  };
+}
+
+function buildBlogBreadcrumbSchema(article: BlogArticle): Record<string, unknown> {
+  const url = seoCanonicalUrl(`/blog/${article.slug}`);
+  return {
+    '@type': 'BreadcrumbList',
+    '@id': `${url}#breadcrumb`,
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: seoCanonicalUrl('/') },
+      { '@type': 'ListItem', position: 2, name: 'Career Resources', item: seoCanonicalUrl('/blog') },
+      { '@type': 'ListItem', position: 3, name: article.title, item: url },
+    ],
+  };
+}
+
+/** Full BlogPosting + Breadcrumb graph, reused by every current and future article. */
+export function buildBlogArticleStructuredDataGraph(article: BlogArticle): Record<string, unknown>[] {
+  const url = seoCanonicalUrl(`/blog/${article.slug}`);
+  const published = articleDate(article.publishDate);
+  return [{
+    '@type': 'BlogPosting',
+    '@id': `${url}#article`,
+    headline: article.title,
+    description: article.metaDescription,
+    image: [article.coverImage],
+    author: { '@type': 'Person', name: article.author.name },
+    publisher: { '@id': ORGANIZATION_ID },
+    datePublished: published,
+    dateModified: published,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+    url,
+    keywords: article.tags.join(', '),
+  }, buildBlogBreadcrumbSchema(article)];
+}
+
 function buildFaqPageSchema(): Record<string, unknown> {
   return {
     '@type': 'FAQPage',
@@ -512,6 +569,10 @@ export function buildPageStructuredDataGraph(
 
   if (pageKey === 'pricing') {
     graph.push(buildFaqPageSchema());
+  }
+
+  if (pageKey === 'blog') {
+    graph.push(buildBlogIndexSchema(meta));
   }
 
   if (pageKey === 'resume-analyzer') {

@@ -305,7 +305,7 @@ export default function App() {
           <InterviewPrepLandingPage onNavigate={navigate} />
         )}
         {currentPage === 'blog' && (blogSlug
-          ? <BlogArticlePage slug={blogSlug} onBack={() => navigate('blog')} />
+          ? <BlogArticlePage slug={blogSlug} onBack={() => navigate('blog')} onNavigate={navigate} />
           : <BlogPage onOpenArticle={(slug) => navigate(`blog/${slug}`)} />
         )}
         {currentPage === 'about' && <AboutPage />}

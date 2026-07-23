@@ -3,7 +3,8 @@ export const SEO_SITE_URL = 'https://resuv.app';
 
 export const SEO_SITE_NAME = 'ResuV';
 
-export const SEO_OG_IMAGE_PATH = '/og-image.png';
+/** Existing branded fallback image for pages without a dedicated social image. */
+export const SEO_OG_IMAGE_PATH = '/why-resuv-resume.png';
 
 export const SEO_OG_IMAGE_URL = `${SEO_SITE_URL}${SEO_OG_IMAGE_PATH}`;
 
@@ -27,6 +28,9 @@ export const SITEMAP_PATHS = [
   '/resume-score-checker',
   '/resume-feedback',
   '/ai-interview-preparation',
+  '/about',
+  '/refund-policy',
+  '/blog',
 ] as const;
 
 /** Paths that must not be indexed (robots meta + robots.txt disallow where applicable). */

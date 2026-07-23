@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import BlogArticleCard from '../components/BlogArticleCard';
 import { BLOG_ARTICLES, BLOG_CATEGORIES, type BlogCategory } from '../lib/blogData';
+import { applyPageSeo } from '../lib/seo/applyPageSeo';
+import { getPageSeo } from '../lib/seo/pageMeta';
 
 interface BlogPageProps { onOpenArticle: (slug: string) => void; }
 
@@ -9,6 +11,9 @@ export default function BlogPage({ onOpenArticle }: BlogPageProps) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<'All Articles' | BlogCategory>('All Articles');
   const featured = BLOG_ARTICLES.find((article) => article.featured) ?? BLOG_ARTICLES[0];
+  useEffect(() => {
+    applyPageSeo('blog', getPageSeo('blog'));
+  }, []);
   const visible = useMemo(() => BLOG_ARTICLES.filter((article) => {
     const terms = `${article.title} ${article.excerpt} ${article.category} ${article.tags.join(' ')}`.toLowerCase();
     return (category === 'All Articles' || article.category === category) && terms.includes(query.trim().toLowerCase());

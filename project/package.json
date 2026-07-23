@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite",
     "dev:vercel": "npx vercel dev",
-    "build": "tsx scripts/sync-global-jsonld.ts && vite build && tsx scripts/generate-seo-files.ts",
+    "build": "tsx scripts/sync-global-jsonld.ts && vite build && tsx scripts/prerender-blog-seo.ts && tsx scripts/generate-seo-files.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.api.json",
-    "test:resume-pipeline": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/run.ts"
+    "test:resume-pipeline": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/run.ts",
+    "audit:seo": "tsx scripts/audit-seo.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
