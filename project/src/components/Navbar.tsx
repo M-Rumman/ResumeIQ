@@ -24,10 +24,11 @@ export default function Navbar({ currentPage, onNavigate, session, onLogout }: N
     { label: 'Interview Prep', page: 'interview' },
     { label: 'Dashboard', page: 'dashboard' },
     { label: 'Pricing', page: 'pricing' },
+    { label: 'Blog', page: 'blog' },
   ];
 
   const navLinkClass = (page: string) =>
-    `nav-link whitespace-nowrap ${currentPage === page ? 'nav-link-active' : ''}`;
+    `nav-link whitespace-nowrap ${currentPage === page || (page === 'blog' && currentPage.startsWith('blog/')) ? 'nav-link-active' : ''}`;
 
   return (
     <nav className="glass-nav sticky top-0 z-50">
