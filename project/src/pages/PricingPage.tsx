@@ -66,7 +66,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
           <p className="section-label mb-3">Pricing</p>
           <h1 className="text-5xl lg:text-6xl text-primary">Simple, Transparent Pricing</h1>
           <p className="mt-4 text-lg text-body max-w-xl mx-auto">
-            Start for free with daily limits. Upgrade to Pro for unlimited usage, PDF exports, advanced insights, and full history.
+            Compare the value of ResuV Pro and report unlocks. During the launch offer, every feature is included free.
           </p>
           {!PAYMENTS_ENABLED && (
             <div className="mt-8 max-w-2xl mx-auto beta-banner text-left sm:text-center" role="note">
@@ -147,7 +147,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
 
                   let buttonLabel = plan.cta;
                   if (!PAYMENTS_ENABLED && plan.id !== 'free') {
-                    buttonLabel = 'Launching Soon';
+                    buttonLabel = 'Currently Free';
                   } else if (proActive) {
                     buttonLabel = '✓ Pro Plan Active';
                   } else if (isProCard) {

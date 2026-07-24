@@ -26,7 +26,6 @@ import UpgradePrompt from '../components/UpgradePrompt';
 import UsageLimitBanner from '../components/UsageLimitBanner';
 import ResumeFileUpload from '../components/ResumeFileUpload';
 import PaywallBlurGate from '../components/PaywallBlurGate';
-import BetaBanner from '../components/BetaBanner';
 import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 import { canExportPdf } from '../lib/planAccess.js';
@@ -946,9 +945,6 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
 
         {results && (
           <div id="results-section" className="mt-14 space-y-8">
-            {!PAYMENTS_ENABLED && (
-              <BetaBanner onPricingSoon={() => onNavigate('pricing')} />
-            )}
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="flex items-center gap-2 flex-1">
                 <div className="h-px flex-1 bg-gray-200" />

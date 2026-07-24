@@ -8,7 +8,6 @@ import {
 import UpgradePrompt from '../components/UpgradePrompt';
 import UsageLimitBanner from '../components/UsageLimitBanner';
 import PaywallBlurGate from '../components/PaywallBlurGate';
-import BetaBanner from '../components/BetaBanner';
 import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 import { FREE_DAILY_INTERVIEW_LIMIT } from '../lib/planConfig.js';
@@ -416,9 +415,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
         {/* Results */}
         {results && (
           <div id="interview-results" className="mt-10 space-y-8">
-            {!PAYMENTS_ENABLED && (
-              <BetaBanner onPricingSoon={() => onNavigate('pricing')} />
-            )}
             <div className="flex items-center gap-2">
               <div className="h-px flex-1 bg-gray-200" />
               <h2 className="font-extrabold text-gray-900 text-xl px-4">

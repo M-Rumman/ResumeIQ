@@ -28,6 +28,7 @@ import InterviewPrepLandingPage from './pages/InterviewPrepLandingPage';
 import BlogPage from './pages/BlogPage';
 import BlogArticlePage from './pages/BlogArticlePage';
 import CheckoutResume from './components/CheckoutResume';
+import LaunchOfferBanner from './components/LaunchOfferBanner';
 import { supabase } from './lib/supabase.js';
 import { handleSupabaseAuthCallback } from './lib/authCallback.js';
 import { isEmailVerified } from './lib/emailVerification.js';
@@ -37,6 +38,7 @@ import { useScrollReveal } from './hooks/useScrollReveal';
 import { pathToPage, pageToPath, type RoutablePage } from './lib/routes';
 import { BillingProvider } from './context/BillingContext';
 import { usePageSeo } from './hooks/usePageSeo';
+import { FREE_LAUNCH_MODE } from './lib/launchConfig.js';
 
 type Page = RoutablePage | 'payment-success';
 
@@ -265,6 +267,11 @@ export default function App() {
         onLogout={handleLogout}
       />
       <main className="flex-1">
+        {FREE_LAUNCH_MODE && ['home', 'analyzer', 'interview', 'interview-prep', 'pricing'].includes(currentPage) && (
+          <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+            <LaunchOfferBanner onViewPricing={() => navigate('pricing')} />
+          </div>
+        )}
         {authNotice && (
           <div className="max-w-3xl mx-auto px-4 pt-4">
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
