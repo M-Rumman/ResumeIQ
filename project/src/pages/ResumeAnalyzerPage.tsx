@@ -20,10 +20,8 @@ import { mapAiResumeToDisplay, type ResumeDisplayResults } from '../lib/api/mapA
 import {
   checkFeatureAccess,
   FEATURE_TYPES,
-  getFeatureLabel,
 } from '../lib/usageLimits.js';
 import UpgradePrompt from '../components/UpgradePrompt';
-import UsageLimitBanner from '../components/UsageLimitBanner';
 import ResumeFileUpload from '../components/ResumeFileUpload';
 import PaywallBlurGate from '../components/PaywallBlurGate';
 import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
@@ -712,7 +710,6 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     reportId,
   });
 
-  const featureLabel = getFeatureLabel(FEATURE_TYPES.RESUME_ANALYSIS);
   const hasFullAccess = !PAYMENTS_ENABLED || reportUnlocked;
   const canExport = canExportPdf(isPro || usageInfo.isPro);
 
@@ -912,17 +909,6 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
             )}
           </button>
         </div>
-
-        {!usageInfo.loading && (
-          <div className="mt-4">
-            <UsageLimitBanner
-              used={usageInfo.used}
-              limit={usageInfo.limit}
-              featureLabel={featureLabel}
-              isPro={usageInfo.isPro}
-            />
-          </div>
-        )}
 
         {!canAnalyze && !results && (
           <p className="text-center text-xs text-primary mt-3">

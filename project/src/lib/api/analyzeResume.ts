@@ -2,9 +2,11 @@ import { apiPost } from './client.js';
 
 // Resume analysis is a three-stage AI pipeline. Keep the browser alive long
 // enough for a paid provider to complete it, while retaining a finite cap.
-const DEFAULT_ANALYSIS_TIMEOUT_MS = 240_000;
-const MIN_ANALYSIS_TIMEOUT_MS = 180_000;
-const MAX_ANALYSIS_TIMEOUT_MS = 300_000;
+// Vercel allows this route to run for 300 seconds. Leave a small transport
+// margin, but do not abort a valid multi-stage model response at 240 seconds.
+const DEFAULT_ANALYSIS_TIMEOUT_MS = 290_000;
+const MIN_ANALYSIS_TIMEOUT_MS = 240_000;
+const MAX_ANALYSIS_TIMEOUT_MS = 295_000;
 
 function analysisTimeoutMs(): number {
   const configured = Number(import.meta.env.VITE_AI_ANALYSIS_TIMEOUT_MS);

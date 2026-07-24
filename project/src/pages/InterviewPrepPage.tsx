@@ -3,10 +3,8 @@ import { supabase } from '../lib/supabase.js';
 import {
   checkFeatureAccess,
   FEATURE_TYPES,
-  getFeatureLabel,
 } from '../lib/usageLimits.js';
 import UpgradePrompt from '../components/UpgradePrompt';
-import UsageLimitBanner from '../components/UsageLimitBanner';
 import PaywallBlurGate from '../components/PaywallBlurGate';
 import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
@@ -147,7 +145,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     reportId,
   });
 
-  const featureLabel = getFeatureLabel(FEATURE_TYPES.INTERVIEW_PREP);
   const hasFullAccess = !PAYMENTS_ENABLED || reportUnlocked;
 
   async function refreshUsageStatus() {
@@ -389,16 +386,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
           <p className="text-xs text-primary mt-3">
             Role-specific HR, technical, and behavioral questions plus communication and prep tips.
           </p>
-          {!usageInfo.loading && (
-            <div className="mt-4">
-              <UsageLimitBanner
-                used={usageInfo.used}
-                limit={usageInfo.limit}
-                featureLabel={featureLabel}
-                isPro={usageInfo.isPro}
-              />
-            </div>
-          )}
           {upgradeMessage && (
             <div className="mt-6">
               <UpgradePrompt
