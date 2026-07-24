@@ -280,7 +280,7 @@ Used SolidWorks to design a mechanical prototype.`);
       }, index);
       assert.equal(gap.items[0]?.matchTier, 'Strong Match');
       assert.equal(gap.items[1]?.matchTier, 'Strong Match');
-      assert.equal(gap.items[2]?.matchTier, 'Equivalent Match');
+      assert.equal(gap.items[2]?.matchTier, 'Strong Match');
       assert.equal(gap.items[0]?.evidenceSpans[0]?.section, 'Certifications');
       assert.equal(gap.items[1]?.evidenceSpans[0]?.section, 'Skills');
       assert.equal(gap.items[2]?.evidenceSpans[0]?.section, 'Education');
@@ -818,6 +818,59 @@ Requirements:
       assert.deepEqual(cad?.evidenceSpans, []);
       assert.match(cad?.recommendation || '', /not explicitly evidenced/i);
       assert.equal(strengths.some((strength) => /academic tutoring|Mathematics and Science/i.test(strength)), false);
+    },
+  },
+  {
+    name: 'does not infer ROS or technical software from conference attendance',
+    run: () => {
+      const resume = parseResumeText(`Certifications
+International Conference on Robotics and Automation Industry (ICRAI) attendance certificate
+
+Awards
+Robotics competition participant`);
+      const gaps = buildJobGapAnalysis(resume, { requiredSkills: ['ROS', 'MATLAB', 'Embedded Systems'] });
+      for (const gap of gaps.items) {
+        assert.equal(gap.status, 'MISSING');
+        assert.equal(gap.evidenceLevel, 'Missing');
+        assert.equal(gap.evidenceQuality, 'None');
+        assert.deepEqual(gap.evidenceSpans, []);
+      }
+    },
+  },
+  {
+    name: 'prioritizes explicit Skills and Languages evidence over nearby domain text',
+    run: () => {
+      const resume = parseResumeText(`Education
+Bachelor of Engineering in Mechatronics Engineering
+
+Languages
+Python
+C++
+
+Skills
+SolidWorks
+AutoCAD
+
+Experience
+Worked on BLDC motors.`);
+      const gaps = buildJobGapAnalysis(resume, {
+        requiredSkills: [
+          "Bachelor's degree in Mechatronics Engineering",
+          'Programming Languages (C++, Python)',
+          '3D CAD software (SolidWorks, AutoCAD)',
+          'Mechanical Components',
+        ],
+      });
+      assert.equal(gaps.items[0]?.status, 'MATCHED');
+      assert.equal(gaps.items[0]?.matchClassification, 'EXACT_MATCH');
+      assert.equal(gaps.items[0]?.evidenceSpans[0]?.section, 'Education');
+      assert.equal(gaps.items[1]?.status, 'MATCHED');
+      assert.equal(['Skills', 'Languages'].includes(gaps.items[1]?.evidenceSpans[0]?.section || ''), true);
+      assert.equal(gaps.items[2]?.status, 'MATCHED');
+      assert.equal(gaps.items[2]?.evidenceSpans[0]?.section, 'Skills');
+      assert.equal(gaps.items[3]?.status, 'PARTIALLY MATCHED');
+      assert.equal(gaps.items[3]?.evidenceLevel, 'Related Match');
+      assert.match(gaps.items[3]?.evidenceSpans[0]?.text || '', /BLDC motors/i);
     },
   },
   {

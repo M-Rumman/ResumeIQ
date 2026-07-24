@@ -820,6 +820,7 @@ const GAP_RULES: Record<string, GapRule> = {
   'pcb design': { direct: ['pcb design', 'pcb layout'], partial: ['circuit design', 'circuit validation', 'altium', 'proteus'] },
   'circuit validation': { direct: ['circuit validation', 'circuit testing'], partial: ['circuit design', 'proteus', 'ltspice', 'simulation'] },
   'mechanical design': { direct: ['mechanical design', 'solidworks', 'cad design', 'autocad'], partial: ['assembly design', '3d modeling'] },
+  'mechanical components': { direct: ['mechanical components', 'motors and actuators', 'motor and actuator'], partial: ['bldc motor', 'motor', 'actuator', 'gearbox'] },
   'technical documentation': { direct: ['technical documentation', 'test report', 'design document', 'documentation'], partial: ['report', 'presented'] },
   'sensors and actuators': { direct: ['sensor', 'actuator', 'motor'], partial: ['lidar', 'blcd', 'robotic arm'] },
   'c cplusplus': { direct: ['c++', 'c programming', 'cplusplus'], partial: [] },
@@ -849,7 +850,9 @@ const GAP_RULES: Record<string, GapRule> = {
   siem: { direct: ['siem'], partial: ['splunk', 'wazuh', 'security monitoring'] },
   'incident response': { direct: ['incident response'], partial: ['security incident', 'threat investigation', 'forensics'] },
   'penetration testing': { direct: ['penetration testing', 'pen testing'], partial: ['vulnerability assessment', 'ethical hacking'] },
-  ros: { direct: ['ros', 'ros2'], partial: ['robot operating system', 'robotics'] },
+  // Robotics is an industry/domain label, not evidence of Robot Operating
+  // System proficiency. Only ROS/ROS2 wording can satisfy this requirement.
+  ros: { direct: ['ros', 'ros2', 'robot operating system'], partial: [] },
 };
 
 /**
@@ -1057,8 +1060,33 @@ function evidenceSpanFor(source: ResumeEvidenceSource, term: string, confidence:
   };
 }
 
-function matchingEvidenceSpans(sources: ResumeEvidenceSource[], terms: string[], confidence: number): ResumeEvidenceSpan[] {
+const NON_DEMONSTRATIVE_EVIDENCE = /\b(?:conference|attendance|attended|seminar|workshop|competition|volunteer|organization|society|university|college|institution|certificat(?:e|ion)\s+of\s+attendance)\b/i;
+const PRACTICAL_EVIDENCE_ACTION = /\b(?:built|conducted|designed|developed|implemented|integrated|interfac(?:e|ed|ing)|programmed|researched|tested|validated|debugged|configured|created|used|worked\s+on|operated)\b/i;
+
+/**
+ * Prevent domain proximity from becoming a technical match. A conference or
+ * institution can mention robotics, but it does not demonstrate ROS, MATLAB,
+ * embedded systems, or another tool. Skills/Languages remain highest-priority
+ * explicit evidence; degrees are evaluated only from Education.
+ */
+function isCredibleSkillEvidence(source: ResumeEvidenceSource, requirement: string): boolean {
+  if (NON_DEMONSTRATIVE_EVIDENCE.test(source.text)) return false;
+  if (degreeRequirement(requirement)) return source.section === 'Education';
+  if (source.section === 'Skills' || source.section === 'Languages') return true;
+  if (source.section === 'Certifications') return !/\b(?:conference|seminar|workshop|competition|attendance)\b/i.test(source.text);
+  if (source.section === 'Education' || source.section === 'Awards') return false;
+  if (source.section === 'Experience' || source.section === 'Projects') return PRACTICAL_EVIDENCE_ACTION.test(source.text);
+  return source.section === 'Summary' && /\b(?:experience|experienced|proficient|developed|implemented|using)\b/i.test(source.text);
+}
+
+function matchingEvidenceSpans(
+  sources: ResumeEvidenceSource[],
+  terms: string[],
+  confidence: number,
+  requirement = '',
+): ResumeEvidenceSpan[] {
   return uniqueEvidenceSpans(sources.flatMap((source) => {
+    if (requirement && !isCredibleSkillEvidence(source, requirement)) return [];
     const matchedTerm = terms.find((term) => {
       return containsNormalizedPhrase(source.text, term);
     });
@@ -1077,6 +1105,7 @@ function recognizedDirectEvidenceSpans(
 ): ResumeEvidenceSpan[] {
   if (normalizedSkill !== 'sensor integration') return [];
   return uniqueEvidenceSpans(sources.flatMap((source) => {
+    if (!isCredibleSkillEvidence(source, normalizedSkill)) return [];
     const text = normalizeGapTerm(source.text);
     const hasSensor = /\b(?:sensor|sensors|lidar)\b/.test(text);
     const hasIntegrationAction = /\b(?:interface|interfacing|integration|integrated|plc|bldc|motor)\b/.test(text);
@@ -1176,8 +1205,13 @@ export function buildResumeEvidenceIndex(
 }
 
 /** Finds the first highest-priority source that explicitly supports a term. */
-function indexedExactEvidenceSpans(index: ResumeEvidenceIndex, terms: string[]): ResumeEvidenceSpan[] {
+function indexedExactEvidenceSpans(
+  index: ResumeEvidenceIndex,
+  terms: string[],
+  requirement = '',
+): ResumeEvidenceSpan[] {
   for (const source of index.sources) {
+    if (requirement && !isCredibleSkillEvidence(source, requirement)) continue;
     const term = terms.find((candidate) => containsNormalizedPhrase(source.text, candidate));
     if (term) return [evidenceSpanFor(source, term, 1)];
   }
@@ -1211,7 +1245,9 @@ const RAW_JOB_TECHNICAL_TERMS = [
 /** Splits an explicit JD alternative ("Python, C++, or MATLAB") into choices. */
 function requirementAlternatives(requirement: string): string[] {
   const normalized = normalizeGapTerm(requirement);
-  if (!/\b(?:or|such as|either)\b/.test(normalized)) return [requirement];
+  const isGroupedTechnicalRequirement = /\b(?:programming languages?|software|tools?|cad)\b/.test(normalized)
+    && /[(),/]/.test(requirement);
+  if (!/\b(?:or|such as|either)\b/.test(normalized) && !isGroupedTechnicalRequirement) return [requirement];
   const candidates = RAW_JOB_TECHNICAL_TERMS
     .filter((term) => containsNormalizedPhrase(requirement, term));
   return candidates.length >= 2 ? uniqueGapEvidence(candidates) : [requirement];
@@ -1378,8 +1414,8 @@ export function buildJobGapAnalysis(
       // checklist. Select the first directly evidenced option for comparison.
       const comparisonSkill = alternatives.find((alternative) => {
         const alternativeRule = gapRuleForSkill(normalizeGapTerm(alternative));
-        return indexedExactEvidenceSpans(evidenceIndex, [alternative]).length > 0
-          || indexedExactEvidenceSpans(evidenceIndex, alternativeRule.direct).length > 0
+        return indexedExactEvidenceSpans(evidenceIndex, [alternative], alternative).length > 0
+          || indexedExactEvidenceSpans(evidenceIndex, alternativeRule.direct, alternative).length > 0
           || recognizedDirectEvidenceSpans(evidenceSources, normalizeGapTerm(alternative)).length > 0;
       }) || alternatives[0] || skill;
       const comparisonNormalizedSkill = normalizeGapTerm(comparisonSkill);
@@ -1387,7 +1423,7 @@ export function buildJobGapAnalysis(
       // Exact normalized phrase matching runs before hierarchy/related terms.
       // A literal or normalized abbreviation match is a Strong Match and no
       // later fuzzy/related stage is allowed to downgrade it.
-      const exactEvidenceSpans = indexedExactEvidenceSpans(evidenceIndex, [comparisonSkill]);
+      const exactEvidenceSpans = indexedExactEvidenceSpans(evidenceIndex, [comparisonSkill], comparisonSkill);
       const subsumptionEvidenceSpans = exactEvidenceSpans.length === 0
         ? credentialSubsumptionEvidenceSpans(evidenceSources, comparisonSkill)
         : [];
@@ -1399,12 +1435,12 @@ export function buildJobGapAnalysis(
       const directEvidenceSpans = exactEvidenceSpans.length || subsumptionEvidenceSpans.length
         ? uniqueEvidenceSpans([...exactEvidenceSpans, ...subsumptionEvidenceSpans])
         : uniqueEvidenceSpans([
-          ...indexedExactEvidenceSpans(evidenceIndex, rule.direct),
+          ...indexedExactEvidenceSpans(evidenceIndex, rule.direct, comparisonSkill),
           ...recognizedDirectSpans,
         ]);
-      const relatedEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
+      const relatedEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75, comparisonSkill);
       const weakEvidenceSpans = relatedEvidenceSpans.length === 0
-        ? matchingEvidenceSpans(evidenceSources, weakEvidenceTermsForSkill(comparisonNormalizedSkill), 0.4)
+        ? matchingEvidenceSpans(evidenceSources, weakEvidenceTermsForSkill(comparisonNormalizedSkill), 0.4, comparisonSkill)
         : [];
       // Citations always come from the same spans that established the tier.
       // Do not append loosely related snippets after a direct match.
@@ -1429,7 +1465,7 @@ export function buildJobGapAnalysis(
           : relatedEvidenceSpans.length > 0 || weakEvidenceSpans.length > 0
             ? 'Related Match'
             : 'Missing';
-      const matchClassification: SkillMatchClassification = exactEvidenceSpans.length || hasRecognizedSynonym
+      const matchClassification: SkillMatchClassification = exactEvidenceSpans.length || exactDegreeEvidence || hasRecognizedSynonym
         ? 'EXACT_MATCH'
         : exceedsQualification
           ? 'EXCEEDED_REQUIREMENT'
