@@ -670,6 +670,9 @@ export type JobGapItem = {
   status: GapStatus;
   /** Four-level evidence decision used by all new matching conclusions. */
   evidenceLevel: EvidenceLevel;
+  /** Deterministic confidence from explicitness and evidence source quality. */
+  evidenceConfidence: number;
+  evidenceQuality: 'High' | 'Medium' | 'Low' | 'None';
   /** Exclusive deterministic tier; never derived from model certainty. */
   matchTier: 'Strong Match' | 'Exceeded Requirement' | 'Equivalent Match' | 'Related Match' | 'Weak Evidence' | 'Missing' | 'Not Applicable';
   /** Debuggable threshold responsible for the tier. */
@@ -807,6 +810,11 @@ const GAP_RULES: Record<string, GapRule> = {
   'sensor integration': { direct: ['sensor integration', 'sensor interfacing', 'interfacing sensors', 'sensor interface'], partial: ['sensor', 'lidar', 'plc', 'bldc', 'motor'] },
   'firmware development': { direct: ['firmware', 'firmware development'], partial: ['embedded programming', 'embedded systems', 'microcontroller'] },
   'embedded programming': { direct: ['embedded programming'], partial: ['embedded systems', 'firmware', 'microcontroller', 'arduino'] },
+  'embedded systems': { direct: ['embedded systems', 'arduino', 'esp32', 'stm32', 'microcontroller interfacing'], partial: ['firmware', 'embedded programming', 'microcontroller'] },
+  'c programming': { direct: ['c programming', 'embedded c'], partial: ['c++'] },
+  'finite element analysis': { direct: ['finite element analysis', 'ansys', 'structural analysis'], partial: ['simulation'] },
+  '3d cad modeling': { direct: ['3d cad modeling', 'solidworks', 'autocad', 'cad design'], partial: ['mechanical design'] },
+  'cad design': { direct: ['cad design', 'autocad', 'solidworks'], partial: ['mechanical design', '3d modeling'] },
   microcontrollers: { direct: ['microcontroller', 'arduino', 'stm32', 'esp32'], partial: ['embedded systems'] },
   'pcb testing': { direct: ['pcb testing', 'board testing', 'pcb validation'], partial: ['altium', 'pcb design'] },
   'pcb design': { direct: ['pcb design', 'pcb layout'], partial: ['circuit design', 'circuit validation', 'altium', 'proteus'] },
@@ -1196,7 +1204,33 @@ const RAW_JOB_TECHNICAL_TERMS = [
   'Embedded Programming', 'Arduino', 'STM32', 'ESP32', 'PCB Testing', 'Circuit Validation',
   'Proteus', 'LTSpice', 'ROS', 'ROS2', 'Sensor Integration', 'Splunk', 'Wazuh', 'SIEM',
   'SOC', 'Network Security', 'Incident Response', 'Penetration Testing', 'Linux', 'Git',
+  'MATLAB', 'SolidWorks', 'AutoCAD', 'ANSYS', 'Finite Element Analysis', 'Control Systems',
+  'CAD Design', '3D CAD Modeling', 'Embedded C', 'C Programming',
 ] as const;
+
+/** Splits an explicit JD alternative ("Python, C++, or MATLAB") into choices. */
+function requirementAlternatives(requirement: string): string[] {
+  const normalized = normalizeGapTerm(requirement);
+  if (!/\b(?:or|such as|either)\b/.test(normalized)) return [requirement];
+  const candidates = RAW_JOB_TECHNICAL_TERMS
+    .filter((term) => containsNormalizedPhrase(requirement, term));
+  return candidates.length >= 2 ? uniqueGapEvidence(candidates) : [requirement];
+}
+
+function evidenceConfidenceFor(level: EvidenceLevel, spans: ResumeEvidenceSpan[]): number {
+  const section = spans[0]?.section;
+  if (level === 'Exact Match') return section === 'Education' || section === 'Certifications' ? 98 : 96;
+  if (level === 'Strong Match') return 85;
+  if (level === 'Related Match') return 68;
+  return 0;
+}
+
+function evidenceQualityFor(level: EvidenceLevel): JobGapItem['evidenceQuality'] {
+  if (level === 'Exact Match') return 'High';
+  if (level === 'Strong Match') return 'Medium';
+  if (level === 'Related Match') return 'Low';
+  return 'None';
+}
 
 function jobTermAppearsInSource(term: string, jobDescription: string): boolean {
   const normalizedTerm = normalizeGapTerm(term);
@@ -1329,6 +1363,8 @@ export function buildJobGapAnalysis(
           matchTrigger: 'not_applicable' as const,
           matchClassification: 'NOT_APPLICABLE' as const,
           evidenceLevel: 'Missing' as const,
+          evidenceConfidence: 0,
+          evidenceQuality: 'None' as const,
           matchReason: 'No comparison is required for this non-applicable requirement.',
           evidence: [],
           evidenceSpans: [],
@@ -1337,19 +1373,29 @@ export function buildJobGapAnalysis(
         };
       }
 
-      const rule = gapRuleForSkill(normalizedSkill);
+      const alternatives = requirementAlternatives(skill);
+      // A JD phrase joined with "or" is one alternative requirement, not a
+      // checklist. Select the first directly evidenced option for comparison.
+      const comparisonSkill = alternatives.find((alternative) => {
+        const alternativeRule = gapRuleForSkill(normalizeGapTerm(alternative));
+        return indexedExactEvidenceSpans(evidenceIndex, [alternative]).length > 0
+          || indexedExactEvidenceSpans(evidenceIndex, alternativeRule.direct).length > 0
+          || recognizedDirectEvidenceSpans(evidenceSources, normalizeGapTerm(alternative)).length > 0;
+      }) || alternatives[0] || skill;
+      const comparisonNormalizedSkill = normalizeGapTerm(comparisonSkill);
+      const rule = gapRuleForSkill(comparisonNormalizedSkill);
       // Exact normalized phrase matching runs before hierarchy/related terms.
       // A literal or normalized abbreviation match is a Strong Match and no
       // later fuzzy/related stage is allowed to downgrade it.
-      const exactEvidenceSpans = indexedExactEvidenceSpans(evidenceIndex, [skill]);
+      const exactEvidenceSpans = indexedExactEvidenceSpans(evidenceIndex, [comparisonSkill]);
       const subsumptionEvidenceSpans = exactEvidenceSpans.length === 0
-        ? credentialSubsumptionEvidenceSpans(evidenceSources, skill)
+        ? credentialSubsumptionEvidenceSpans(evidenceSources, comparisonSkill)
         : [];
       const exceedsQualification = subsumptionEvidenceSpans.length > 0
-        && qualificationExceedsRequirement(evidenceSources, skill);
+        && qualificationExceedsRequirement(evidenceSources, comparisonSkill);
       const recognizedDirectSpans = exactEvidenceSpans.length || subsumptionEvidenceSpans.length
         ? []
-        : recognizedDirectEvidenceSpans(evidenceSources, normalizedSkill);
+        : recognizedDirectEvidenceSpans(evidenceSources, comparisonNormalizedSkill);
       const directEvidenceSpans = exactEvidenceSpans.length || subsumptionEvidenceSpans.length
         ? uniqueEvidenceSpans([...exactEvidenceSpans, ...subsumptionEvidenceSpans])
         : uniqueEvidenceSpans([
@@ -1358,7 +1404,7 @@ export function buildJobGapAnalysis(
         ]);
       const relatedEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
       const weakEvidenceSpans = relatedEvidenceSpans.length === 0
-        ? matchingEvidenceSpans(evidenceSources, weakEvidenceTermsForSkill(normalizedSkill), 0.4)
+        ? matchingEvidenceSpans(evidenceSources, weakEvidenceTermsForSkill(comparisonNormalizedSkill), 0.4)
         : [];
       // Citations always come from the same spans that established the tier.
       // Do not append loosely related snippets after a direct match.
@@ -1451,7 +1497,23 @@ export function buildJobGapAnalysis(
           ? 5 as const
           : 6 as const;
 
-      return { skill, status, evidenceLevel, matchTier, matchTrigger, matchClassification, matchReason, evidence, evidenceSpans, verificationStep, recommendation };
+      return {
+        skill,
+        status,
+        evidenceLevel,
+        evidenceConfidence: evidenceConfidenceFor(evidenceLevel, evidenceSpans),
+        evidenceQuality: evidenceQualityFor(evidenceLevel),
+        matchTier,
+        matchTrigger,
+        matchClassification,
+        matchReason: alternatives.length > 1 && status === 'MATCHED'
+          ? `The job accepts one of ${alternatives.join(', ')}. The resume directly demonstrates ${comparisonSkill}.`
+          : matchReason,
+        evidence,
+        evidenceSpans,
+        verificationStep,
+        recommendation,
+      };
     });
 
   const responsibilities = jobTextList(job.responsibilities);
@@ -2123,6 +2185,13 @@ export function buildKeywordRecommendations(
   const experienceEvidence = new Set(resume.experience.map((item) => normalizeGapTerm(item)));
   const projectEvidence = new Set(resume.projects.map((item) => normalizeGapTerm(item)));
   const seen = new Set<string>();
+  const naturalSectionFor = (skill: string): KeywordRecommendation['recommendedSection'] => {
+    const normalized = normalizeGapTerm(skill);
+    if (/\b(?:sensor integration|microcontroller interfacing)\b/.test(normalized)) return 'Experience';
+    if (/\b(?:ros|control systems|pid|pcb design|mechanical design|cad)\b/.test(normalized)) return 'Projects';
+    if (/\b(?:communication|leadership)\b/.test(normalized)) return 'Experience';
+    return 'Skills';
+  };
 
   const toRecommendation = (
     item: JobGapItem,
@@ -2143,7 +2212,7 @@ export function buildKeywordRecommendations(
       ? 'Experience'
       : item.evidence.some((evidence) => projectEvidence.has(normalizeGapTerm(evidence)))
         ? 'Projects'
-        : 'Skills';
+        : naturalSectionFor(item.skill);
     const evidenceContext = item.status === 'PARTIALLY MATCHED'
       ? ` ${requirementEvidenceCitation(item)} Make that connection explicit only if accurate.`
       : ` ${requirementEvidenceCitation(item)} Do not add it unless you can support it with genuine coursework, project work, or practical exposure.`;

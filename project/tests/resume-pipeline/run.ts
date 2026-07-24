@@ -210,6 +210,36 @@ Responsibilities
     },
   },
   {
+    name: 'treats OR requirements and engineering equivalence as recruiter-level evidence',
+    run: () => {
+      const resume = parseResumeText(`Skills
+Python
+SolidWorks
+ANSYS
+Embedded C
+
+Projects
+Built an Arduino-based embedded controller.`);
+      const gaps = buildJobGapAnalysis(resume, {
+        requiredSkills: [
+          'Programming languages such as Python, C++, or MATLAB',
+          'SolidWorks OR AutoCAD',
+          'Finite Element Analysis',
+          'C Programming',
+          'Embedded Systems',
+        ],
+      });
+      assert.equal(gaps.items[0]?.status, 'MATCHED');
+      assert.equal(gaps.items[0]?.evidenceLevel, 'Exact Match');
+      assert.match(gaps.items[0]?.matchReason || '', /accepts one of/i);
+      assert.equal(gaps.items[1]?.status, 'MATCHED');
+      assert.equal(gaps.items[2]?.evidenceLevel, 'Strong Match');
+      assert.equal(gaps.items[3]?.evidenceLevel, 'Strong Match');
+      assert.equal(gaps.items[4]?.evidenceLevel, 'Strong Match');
+      assert.equal(gaps.items.every((item) => item.evidenceConfidence > 0 && item.evidenceQuality !== 'None'), true);
+    },
+  },
+  {
     name: 'matches hand-labelled requirement fixtures with grounded section citations',
     run: () => {
       for (const fixture of requirementMatchingFixtures) {
