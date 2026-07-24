@@ -72,6 +72,7 @@ type BulletQuality = {
   engineeringDetail: number;
   measurableImpact: number;
   sentenceClarity: number;
+  ownershipStructure: number;
 };
 
 function containsTerm(text: string, term: string) {
@@ -80,19 +81,33 @@ function containsTerm(text: string, term: string) {
 }
 
 /** Deterministic writing-quality score; it is not an LLM estimate or a random number. */
+function supportsTargetKeyword(text: string, keyword: string): boolean {
+  if (containsTerm(text, keyword)) return true;
+  const normalized = text.toLowerCase();
+  const target = keyword.toLowerCase();
+  if (target === 'control systems') return /\bpid\b|\bcontrol(?:ler)?\b/.test(normalized);
+  if (target === 'sensor integration') return /\bsensor|lidar\b/.test(normalized) && /\binterface|interfacing|integrat/.test(normalized);
+  return false;
+}
+
 function scoreBulletQuality(text: string, targetKeywords: string[]): BulletQuality {
   const words = text.trim().match(/[A-Za-z0-9+#]+/g) || [];
   const opener = firstWord(text);
-  const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 20 : GENERIC_BULLET_OPENERS.has(opener) ? 4 : 9;
-  const technicalSpecificity = Math.min(20, TECHNICAL_BULLET_TERMS.filter((term) => containsTerm(text, term)).length * 5);
-  const keywordRichness = Math.min(20, [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
-    .filter((term) => containsTerm(text, term)).length * 7);
+  const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 24 : GENERIC_BULLET_OPENERS.has(opener) ? 2 : 8;
+  const technicalSpecificity = Math.min(18, TECHNICAL_BULLET_TERMS.filter((term) => containsTerm(text, term)).length * 4.5);
+  const keywordRichness = Math.min(13, [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
+    .filter((term) => supportsTargetKeyword(text, term)).length * 6.5);
   const engineeringDetail = Math.min(15, ENGINEERING_DETAIL_TERMS
     .filter((term) => text.toLowerCase().includes(term)).length * 3);
-  const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 10 : 15) : 0;
-  const sentenceClarity = words.length >= 10 && words.length <= 40 ? 10 : words.length >= 6 && words.length <= 55 ? 6 : 2;
-  const total = actionVerb + technicalSpecificity + keywordRichness + engineeringDetail + measurableImpact + sentenceClarity;
-  return { total, actionVerb, technicalSpecificity, keywordRichness, engineeringDetail, measurableImpact, sentenceClarity };
+  const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 7 : 10) : 0;
+  const sentenceClarity = words.length >= 12 && words.length <= 42 ? 10 : words.length >= 7 && words.length <= 55 ? 6 : 2;
+  const ownershipStructure = STRONG_BULLET_ACTION_VERBS.has(opener)
+    && (technicalSpecificity >= 4.5 || engineeringDetail >= 3)
+    && words.length >= 10
+    ? 10
+    : 0;
+  const total = Math.round(actionVerb + technicalSpecificity + keywordRichness + engineeringDetail + measurableImpact + sentenceClarity + ownershipStructure);
+  return { total, actionVerb, technicalSpecificity, keywordRichness, engineeringDetail, measurableImpact, sentenceClarity, ownershipStructure };
 }
 
 function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) {
@@ -103,6 +118,7 @@ function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) 
     [after.engineeringDetail > before.engineeringDetail, 'More engineering detail'],
     [after.measurableImpact > before.measurableImpact, 'More measurable impact'],
     [after.sentenceClarity > before.sentenceClarity, 'Clearer sentence structure'],
+    [after.ownershipStructure > before.ownershipStructure, 'Clearer ownership and contribution structure'],
   ] as const;
   return improvements.filter(([improved]) => improved).map(([, label]) => label);
 }
@@ -170,23 +186,23 @@ function buildDetailedBulletTeachingGuide(
       ? `Opens with “${firstWord(before)},” which does not clearly show ownership of the work.`
       : `Does not clearly connect the documented ${beforeTerms.slice(0, 2).join(' and ') || 'engineering work'} to an engineering objective.`,
     beforeTerms.length === 0
-      ? 'Does not name the components, technology, or engineering method involved.'
+      ? 'This bullet does not name the components, technology, or engineering method involved.'
       : `Names ${beforeTerms.slice(0, 3).join(', ')} but gives limited context about how they were used.`,
     hasQuantification(before)
-      ? 'Does not clearly explain the purpose or practical result of the work.'
-      : 'Does not include a supported outcome, scope, or measurable result.',
+      ? 'This bullet does not clearly explain the purpose or practical result of the work.'
+      : 'This bullet does not state a supported outcome, scope, or measurable result.',
   ];
 
   const missingInformation = [
     addedTerms.length
-      ? `The documented technical context: ${addedTerms.slice(0, 3).join(', ')}.`
-      : 'The specific components, technology, or method used in the work.',
+      ? `Detected in the source bullet: ${addedTerms.slice(0, 3).join(', ')}.`
+      : 'Not explicitly stated in this bullet: components, technology, or method used. Check other resume sections before treating this as missing.',
     purpose
-      ? `The engineering objective: ${purpose}.`
-      : 'The engineering purpose the work was intended to support or enable.',
+      ? `Detected engineering objective: ${purpose}.`
+      : 'Not explicitly stated in this bullet: the engineering purpose. Do not assume it is missing from the rest of the resume.',
     hasQuantification(before)
-      ? 'A clear link between the documented work and its practical outcome.'
-      : 'A supported metric, test result, scope, or performance outcome, if available.',
+      ? 'Detected: a clear link between the documented work and its practical outcome.'
+      : 'Unsupported in this bullet: a metric, test result, scope, or performance outcome. Add one only if documented elsewhere.',
   ];
 
   const whyStronger = [
@@ -198,8 +214,8 @@ function buildDetailedBulletTeachingGuide(
       ? `Clarifies the engineering objective: ${purpose}.`
       : 'Uses a clearer action-to-contribution structure without adding unsupported results.',
     targetTerms.length
-      ? `Improves ATS relevance for this role through supported terminology: ${targetTerms.slice(0, 2).join(', ')}.`
-      : 'Presents the documented work in clearer, recruiter-friendly language for this role.',
+      ? `Improves alignment with this role through supported job terminology: ${targetTerms.slice(0, 2).join(', ')}.`
+      : `Makes the documented work easier to evaluate against this role's stated requirements without adding unsupported job terminology.`,
   ];
   return { whyWeak, missingInformation, whyStronger };
 }

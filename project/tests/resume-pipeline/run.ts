@@ -163,6 +163,53 @@ Arduino, C++`);
     },
   },
   {
+    name: 'classifies explicit engineering education and concrete sensor work at the correct evidence level',
+    run: () => {
+      const resume = parseResumeText(`Education
+Bachelor of Engineering in Mechatronics Engineering
+
+Projects
+Interfaced sensors, LiDAR, PLC, and BLDC motors for an autonomous robot.
+Implemented PID Control for autonomous navigation.`);
+      const gaps = buildJobGapAnalysis(resume, {
+        requiredSkills: [
+          "Bachelor's degree in Mechatronics Engineering",
+          'Control Systems',
+          'Sensor Integration',
+        ],
+      });
+      assert.equal(gaps.items[0]?.status, 'MATCHED');
+      assert.equal(gaps.items[0]?.evidenceLevel, 'Exact Match');
+      assert.equal(gaps.items[0]?.evidenceSpans[0]?.section, 'Education');
+      assert.equal(gaps.items[1]?.status, 'MATCHED');
+      assert.equal(gaps.items[1]?.evidenceLevel, 'Strong Match');
+      assert.equal(gaps.items[2]?.status, 'MATCHED');
+      assert.equal(gaps.items[2]?.evidenceLevel, 'Exact Match');
+      assert.match(gaps.items[2]?.evidenceSpans[0]?.text || '', /sensors.*LiDAR.*PLC.*BLDC/i);
+    },
+  },
+  {
+    name: 'keeps the requirement set inside the current job-description boundary',
+    run: () => {
+      const job = validateAndEnrichParsedJob({
+        title: 'Embedded Systems Intern',
+        requiredSkills: ['Arduino', 'SIEM'],
+        preferredSkills: ['Splunk'],
+        responsibilities: ['Develop firmware using C++', 'Monitor SIEM alerts'],
+      }, `Embedded Systems Intern
+Requirements
+- Arduino
+- C++
+Responsibilities
+- Develop firmware using C++`);
+      assert.deepEqual(job.requiredSkills, ['Arduino', 'C++']);
+      assert.deepEqual(job.preferredSkills, []);
+      assert.deepEqual(job.responsibilities, ['Develop firmware using C++']);
+      assert.equal(JSON.stringify(job).includes('SIEM'), false);
+      assert.equal(JSON.stringify(job).includes('Splunk'), false);
+    },
+  },
+  {
     name: 'matches hand-labelled requirement fixtures with grounded section citations',
     run: () => {
       for (const fixture of requirementMatchingFixtures) {

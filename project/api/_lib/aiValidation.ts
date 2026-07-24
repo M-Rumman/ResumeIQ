@@ -17,6 +17,7 @@ type HiringManagerAssessmentInput = {
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
 const URL_PATTERN = /(?:https?:\/\/|www\.)\S+/i;
 const METRIC_PATTERN = /\b\d+(?:\.\d+)?%?\b/g;
+const UNSUPPORTED_METRIC_PLACEHOLDER = /\[\s*x\s*\]\s*(?:%|users?|components?|requests?)/i;
 const COMMON_CAPITALIZED_WORDS = new Set([
   'A', 'An', 'And', 'At', 'By', 'Created', 'Delivered', 'Designed', 'Developed', 'For', 'In', 'Implemented',
   'Led', 'Managed', 'On', 'Optimized', 'The', 'To', 'With', 'Using', 'Built', 'Improved', 'Reduced',
@@ -317,7 +318,7 @@ function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
     // A rewrite may use only technologies, metrics, and named terms supported
     // by its own source bullet; evidence elsewhere in the resume is not enough.
-    if (hasInventedMetric(after, before) || hasInventedNamedTerm(after, before)) continue;
+    if (hasInventedMetric(after, before) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, before)) continue;
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
     const beforeWords = new Set((before.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4));
     const afterWords = (after.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4);

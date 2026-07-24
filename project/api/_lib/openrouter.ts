@@ -517,7 +517,7 @@ Respond with valid JSON only.`;
 
 const REWRITER_SYSTEM_PROMPT = `You are an expert resume editor. Identify weak bullet points in the provided experience and projects list and rewrite them.
 The input contains experience and project content, a target-job context, ranked rewrite priorities, and evidence-backed job-gap focus. Identify "weakBullets" only from the supplied experience and project arrays. Target-job data is priority context only, never independent evidence for a rewrite.
-Generate "improvedBulletPoints" as before/after pairs (MINIMUM 4 pairs). Every item listed in "weakBullets" MUST have exactly one matching pair in "improvedBulletPoints" whose "before" value is that original bullet. Do not list a weak bullet unless you can also provide its grounded improved version.
+Generate only the safe before/after pairs supported by the supplied bullets. Every item listed in "weakBullets" MUST have exactly one matching pair in "improvedBulletPoints" whose "before" value is that original bullet. Do not list a weak bullet unless you can also provide its grounded improved version; return fewer than four pairs when the resume does not support more.
 
 Rules:
 - ONLY rewrite supplied experience or project bullets. Never add a new bullet based on information outside those arrays.
@@ -535,7 +535,7 @@ Rules:
 - Return a confidence level: High only when every material detail is directly stated in the original bullet; Medium when the rewrite is a conservative wording inference from the original; Low only when the source is too vague for a confident rewrite (and normally omit that bullet instead).
 - Surface technical contribution only when the original bullet explicitly provides the relevant technologies, tools, components, methods, or domain context. Do not add technical detail that is not in the supplied bullet.
 - Strict Grounding: Do NOT invent or exaggerate projects, technologies, tools, employers, companies, certifications, scope, seniority, ownership, outcomes, or metrics.
-- If quantification would materially improve a bullet but no supported metric exists, you MAY use one clearly marked placeholder such as [X]%, [X] users, [X] components, or [X] requests. Never fabricate a number, percentage, duration, or scale.
+- Never add a metric, placeholder, result, performance claim, engineering objective, or scale unless it is explicitly supported by that same source bullet.
 - Keep each rewrite to one concise resume bullet. Do not add explanations, section headings, contact information, URLs, emails, phone numbers, or LinkedIn references.
 - If a bullet cannot be safely strengthened from its supplied content, omit it instead of inventing detail.
 
@@ -645,6 +645,7 @@ function toParserResumeInput(resume: StructuredResume) {
 
 export type GapStatus = 'MATCHED' | 'PARTIALLY MATCHED' | 'MISSING' | 'NOT APPLICABLE';
 export type SkillMatchClassification = 'EXACT_MATCH' | 'EXCEEDED_REQUIREMENT' | 'EQUIVALENT_MATCH' | 'RELATED_MATCH' | 'WEAK_EVIDENCE' | 'NOT_EVIDENCED' | 'NOT_APPLICABLE';
+export type EvidenceLevel = 'Exact Match' | 'Strong Match' | 'Related Match' | 'Missing';
 
 /** A source-specific resume excerpt that supports a deterministic job match. */
 export type ResumeEvidenceSpan = {
@@ -667,6 +668,8 @@ const MIN_CITATION_CONFIDENCE = 0.72;
 export type JobGapItem = {
   skill: string;
   status: GapStatus;
+  /** Four-level evidence decision used by all new matching conclusions. */
+  evidenceLevel: EvidenceLevel;
   /** Exclusive deterministic tier; never derived from model certainty. */
   matchTier: 'Strong Match' | 'Exceeded Requirement' | 'Equivalent Match' | 'Related Match' | 'Weak Evidence' | 'Missing' | 'Not Applicable';
   /** Debuggable threshold responsible for the tier. */
@@ -800,6 +803,8 @@ const SKILL_FAMILIES: SkillFamily[] = [
 ];
 
 const GAP_RULES: Record<string, GapRule> = {
+  'control systems': { direct: ['control systems', 'pid control', 'pid controller', 'pid'], partial: ['automation', 'robotics', 'motion control'] },
+  'sensor integration': { direct: ['sensor integration', 'sensor interfacing', 'interfacing sensors', 'sensor interface'], partial: ['sensor', 'lidar', 'plc', 'bldc', 'motor'] },
   'firmware development': { direct: ['firmware', 'firmware development'], partial: ['embedded programming', 'embedded systems', 'microcontroller'] },
   'embedded programming': { direct: ['embedded programming'], partial: ['embedded systems', 'firmware', 'microcontroller', 'arduino'] },
   microcontrollers: { direct: ['microcontroller', 'arduino', 'stm32', 'esp32'], partial: ['embedded systems'] },
@@ -896,7 +901,7 @@ function degreeRequirement(value: string): DegreeRequirement | null {
   const level = degreeLevel(value);
   if (!level) return null;
   const normalized = normalizeGapTerm(value)
-    .replace(/\b(?:bachelor(?:\s+s)?|master(?:\s+s)?|bsc|b sc|b s|beng|b eng|msc|m sc|m s|meng|m eng|ma|phd|doctorate|doctoral|doctor of|degree|science|arts|engineering)\b/g, ' ')
+    .replace(/\b(?:bachelor(?:s|\s+s)?|master(?:s|\s+s)?|bsc|b sc|b s|beng|b eng|msc|m sc|m s|meng|m eng|ma|phd|doctorate|doctoral|doctor of|degree|science|arts|engineering)\b/g, ' ')
     .replace(/\b(?:in|of|or related field|related field)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1050,6 +1055,26 @@ function matchingEvidenceSpans(sources: ResumeEvidenceSource[], terms: string[],
       return containsNormalizedPhrase(source.text, term);
     });
     return matchedTerm ? [evidenceSpanFor(source, matchedTerm, confidence)] : [];
+  }));
+}
+
+/**
+ * Some engineering requirements have a stable, concrete wording equivalence
+ * that is stronger than a loose related-skill inference. Keep it explicit so
+ * only observable terms in the same resume entry can earn direct credit.
+ */
+function recognizedDirectEvidenceSpans(
+  sources: ResumeEvidenceSource[],
+  normalizedSkill: string,
+): ResumeEvidenceSpan[] {
+  if (normalizedSkill !== 'sensor integration') return [];
+  return uniqueEvidenceSpans(sources.flatMap((source) => {
+    const text = normalizeGapTerm(source.text);
+    const hasSensor = /\b(?:sensor|sensors|lidar)\b/.test(text);
+    const hasIntegrationAction = /\b(?:interface|interfacing|integration|integrated|plc|bldc|motor)\b/.test(text);
+    return hasSensor && hasIntegrationAction
+      ? [evidenceSpanFor(source, hasSensor ? 'sensor' : 'integration', 0.95)]
+      : [];
   }));
 }
 
@@ -1303,6 +1328,7 @@ export function buildJobGapAnalysis(
           matchTier: 'Not Applicable' as const,
           matchTrigger: 'not_applicable' as const,
           matchClassification: 'NOT_APPLICABLE' as const,
+          evidenceLevel: 'Missing' as const,
           matchReason: 'No comparison is required for this non-applicable requirement.',
           evidence: [],
           evidenceSpans: [],
@@ -1321,9 +1347,15 @@ export function buildJobGapAnalysis(
         : [];
       const exceedsQualification = subsumptionEvidenceSpans.length > 0
         && qualificationExceedsRequirement(evidenceSources, skill);
+      const recognizedDirectSpans = exactEvidenceSpans.length || subsumptionEvidenceSpans.length
+        ? []
+        : recognizedDirectEvidenceSpans(evidenceSources, normalizedSkill);
       const directEvidenceSpans = exactEvidenceSpans.length || subsumptionEvidenceSpans.length
         ? uniqueEvidenceSpans([...exactEvidenceSpans, ...subsumptionEvidenceSpans])
-        : indexedExactEvidenceSpans(evidenceIndex, rule.direct);
+        : uniqueEvidenceSpans([
+          ...indexedExactEvidenceSpans(evidenceIndex, rule.direct),
+          ...recognizedDirectSpans,
+        ]);
       const relatedEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
       const weakEvidenceSpans = relatedEvidenceSpans.length === 0
         ? matchingEvidenceSpans(evidenceSources, weakEvidenceTermsForSkill(normalizedSkill), 0.4)
@@ -1343,6 +1375,14 @@ export function buildJobGapAnalysis(
           ? 'PARTIALLY MATCHED'
           : 'MISSING';
       const hasRecognizedSynonym = !exactEvidenceSpans.length && !subsumptionEvidenceSpans.length && directEvidenceSpans.length > 0;
+      const exactDegreeEvidence = subsumptionEvidenceSpans.length > 0 && !exceedsQualification;
+      const evidenceLevel: EvidenceLevel = exactEvidenceSpans.length > 0 || exactDegreeEvidence || recognizedDirectSpans.length > 0
+        ? 'Exact Match'
+        : hasRecognizedSynonym || exceedsQualification
+          ? 'Strong Match'
+          : relatedEvidenceSpans.length > 0 || weakEvidenceSpans.length > 0
+            ? 'Related Match'
+            : 'Missing';
       const matchClassification: SkillMatchClassification = exactEvidenceSpans.length || hasRecognizedSynonym
         ? 'EXACT_MATCH'
         : exceedsQualification
@@ -1411,7 +1451,7 @@ export function buildJobGapAnalysis(
           ? 5 as const
           : 6 as const;
 
-      return { skill, status, matchTier, matchTrigger, matchClassification, matchReason, evidence, evidenceSpans, verificationStep, recommendation };
+      return { skill, status, evidenceLevel, matchTier, matchTrigger, matchClassification, matchReason, evidence, evidenceSpans, verificationStep, recommendation };
     });
 
   const responsibilities = jobTextList(job.responsibilities);
