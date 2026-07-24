@@ -1058,6 +1058,26 @@ Embedded Monitoring Prototype
     },
   },
   {
+    name: 'keeps explicit education qualifications out of missing skills',
+    run: () => {
+      const resume = parseResumeText('PROFESSIONAL SUMMARY\nMechatronics undergraduate interested in embedded systems.\n\nEducation\nBachelor of Engineering in Mechatronics Engineering\n\nSkills\nC++\nArduino');
+      const requirement = "Bachelor's degree in Mechatronics Engineering, Mechanical Engineering, Electrical Engineering, or Robotics";
+      const gaps = buildJobGapAnalysis(resume, { requiredSkills: [requirement, 'STM32'] });
+      const education = gaps.items.find((item) => item.skill === requirement);
+      assert.equal(education?.requirementType, 'education');
+      assert.equal(education?.status, 'MATCHED');
+      assert.equal(education?.evidenceSpans[0]?.section, 'Education');
+      assert.match(education?.evidenceSpans[0]?.text || '', /Bachelor of Engineering in Mechatronics Engineering/i);
+      const compatibility = buildKeywordCompatibility(resume, {
+        requiredSkills: [requirement, 'STM32'],
+        preferredSkills: [],
+      });
+      assert.equal(compatibility.missing.includes(requirement), false);
+      assert.equal(compatibility.strongMatches.includes(requirement), false);
+      assert.equal([...compatibility.strongMatches, ...compatibility.partialMatches, ...compatibility.missing].includes(requirement), false);
+    },
+  },
+  {
     name: 'uses projects competitions academic work and leadership before penalizing student employment history in ATS',
     run: () => {
       const resume = parseResumeText('Education\nBachelor of Science in Mechatronics\nAcademic coursework in embedded control systems.\n\nLeadership & Extracurriculars\nRobotics Society Captain leading autonomous vehicle testing.\n\nProjects\nAutonomous Robot Prototype\nBuilt an Arduino sensor-navigation prototype.\n\nPCB Simulation Capstone\nValidated circuits in Proteus.\n\nAwards\nNational Robotics Competition finalist.');

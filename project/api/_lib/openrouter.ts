@@ -126,6 +126,7 @@ export interface AiResumeAnalysisFull {
   keywordRecommendations: KeywordRecommendation[];
   keywordGaps: string[];
   missingRequiredSkills: string[];
+  educationAlignment: EducationAlignmentItem[];
   detectedSections: string[];
   missingSections: string[];
   formattingIssues: string[];
@@ -667,6 +668,7 @@ const MIN_CITATION_CONFIDENCE = 0.72;
 
 export type JobGapItem = {
   skill: string;
+  requirementType: 'education' | 'skill';
   status: GapStatus;
   /** Four-level evidence decision used by all new matching conclusions. */
   evidenceLevel: EvidenceLevel;
@@ -687,6 +689,14 @@ export type JobGapItem = {
   /** Ordered verification question that produced this final classification. */
   verificationStep: 1 | 2 | 3 | 4 | 5 | 6 | 0;
   recommendation: string;
+};
+
+export type EducationAlignmentItem = {
+  requirement: string;
+  status: 'Direct Match' | 'Related Match' | 'Missing';
+  evidence: ResumeEvidenceSpan[];
+  confidence: number;
+  reason: string;
 };
 
 /** Evidence for a job responsibility. Responsibilities are assessed separately
@@ -897,6 +907,15 @@ function normalizeGapTerm(value: string): string {
 
 type DegreeRequirement = { level: number; fields: string[] };
 
+function isEducationRequirement(value: string): boolean {
+  const normalized = normalizeGapTerm(value);
+  return Boolean(degreeLevel(value)) || /\b(?:degree|undergraduate|bachelors?|masters?|phd|doctorate|qualification)\b/.test(normalized);
+}
+
+const RELATED_ENGINEERING_FIELDS = new Set([
+  'mechatronics', 'mechanical', 'electrical', 'electronics', 'robotics', 'computer engineering',
+]);
+
 function degreeLevel(value: string): number {
   const normalized = normalizeGapTerm(value);
   if (/\b(?:phd|doctorate|doctoral|doctor of)\b/.test(normalized)) return 3;
@@ -908,13 +927,19 @@ function degreeLevel(value: string): number {
 function degreeRequirement(value: string): DegreeRequirement | null {
   const level = degreeLevel(value);
   if (!level) return null;
-  const normalized = normalizeGapTerm(value)
+  const rawNormalized = normalizeGapTerm(value);
+  const knownFields = [...RELATED_ENGINEERING_FIELDS]
+    .filter((field) => containsNormalizedPhrase(rawNormalized, field));
+  if (knownFields.length) return { level, fields: knownFields };
+  const normalized = rawNormalized
     .replace(/\b(?:bachelor(?:s|\s+s)?|master(?:s|\s+s)?|bsc|b sc|b s|beng|b eng|msc|m sc|m s|meng|m eng|ma|phd|doctorate|doctoral|doctor of|degree|science|arts|engineering)\b/g, ' ')
     .replace(/\b(?:in|of|or related field|related field)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   const fields = normalized.split(/\s+or\s+|\//).map((field) => field.trim()).filter((field) => field.length >= 3);
-  return fields.length ? { level, fields } : null;
+  // A fieldless requirement (for example, "Bachelor's degree") is still a
+  // valid education requirement and can be satisfied by any explicit degree.
+  return { level, fields };
 }
 
 /**
@@ -1093,8 +1118,18 @@ function credentialSubsumptionEvidenceSpans(
 ): ResumeEvidenceSpan[] {
   const degree = degreeRequirement(requirement);
   if (!degree) return [];
-  return uniqueEvidenceSpans(sources.flatMap((source) => {
-    if (source.section !== 'Education' || degreeLevel(source.text) < degree.level) return [];
+  const sectionPriority: Record<ResumeEvidenceSpan['section'], number> = {
+    Education: 0, Summary: 1, Experience: 2, Skills: 9, Languages: 9,
+    Projects: 9, Certifications: 9, Awards: 9,
+  };
+  return uniqueEvidenceSpans([...sources]
+    .sort((left, right) => sectionPriority[left.section] - sectionPriority[right.section])
+    .flatMap((source) => {
+    // Degrees are only valid when explicitly stated in Education first,
+    // followed by Summary and then Experience. Certifications and institution
+    // names must never satisfy an education requirement.
+    if (!['Education', 'Summary', 'Experience'].includes(source.section) || degreeLevel(source.text) < degree.level) return [];
+    if (degree.fields.length === 0) return [evidenceSpanFor(source, source.text, 1)];
     const field = degree.fields.find((candidate) => containsNormalizedPhrase(source.text, candidate));
     return field ? [evidenceSpanFor(source, field, 1)] : [];
   }));
@@ -1108,10 +1143,50 @@ function qualificationExceedsRequirement(
   const degree = degreeRequirement(requirement);
   if (!degree) return false;
   return sources.some((source) =>
-    source.section === 'Education'
+    ['Education', 'Summary', 'Experience'].includes(source.section)
     && degreeLevel(source.text) > degree.level
-    && degree.fields.some((field) => containsNormalizedPhrase(source.text, field)),
+    && (degree.fields.length === 0 || degree.fields.some((field) => containsNormalizedPhrase(source.text, field))),
   );
+}
+
+/** Related engineering disciplines may receive related—not direct—credit. */
+function relatedDegreeEvidenceSpans(
+  sources: ResumeEvidenceSource[],
+  requirement: string,
+): ResumeEvidenceSpan[] {
+  const degree = degreeRequirement(requirement);
+  if (!degree || degree.fields.length === 0) return [];
+  const allowedSections = new Set<ResumeEvidenceSpan['section']>(['Education', 'Summary', 'Experience']);
+  const priority: Record<ResumeEvidenceSpan['section'], number> = {
+    Education: 0, Summary: 1, Experience: 2, Skills: 9, Languages: 9,
+    Projects: 9, Certifications: 9, Awards: 9,
+  };
+  return uniqueEvidenceSpans([...sources]
+    .sort((left, right) => priority[left.section] - priority[right.section])
+    .flatMap((source) => {
+      if (!allowedSections.has(source.section) || degreeLevel(source.text) < degree.level) return [];
+      const documentedField = [...RELATED_ENGINEERING_FIELDS]
+        .find((field) => containsNormalizedPhrase(source.text, field));
+      return documentedField && !degree.fields.includes(documentedField)
+        ? [evidenceSpanFor(source, documentedField, 0.68)]
+        : [];
+    }));
+}
+
+function buildEducationAlignment(items: JobGapItem[]): EducationAlignmentItem[] {
+  return items
+    .filter((item) => item.requirementType === 'education')
+    .map((item) => ({
+      requirement: item.skill,
+      status: item.status === 'MATCHED' ? 'Direct Match' : item.status === 'PARTIALLY MATCHED' ? 'Related Match' : 'Missing',
+      evidence: item.evidenceSpans,
+      confidence: item.status === 'MATCHED' ? 100 : item.status === 'PARTIALLY MATCHED' ? 68 : 0,
+      reason: item.status === 'MATCHED'
+        ? `The resume explicitly satisfies this qualification. ${requirementEvidenceCitation(item)}`
+        : item.status === 'PARTIALLY MATCHED'
+          ? `The resume shows a related qualification. ${requirementEvidenceCitation(item)}`
+          : `No explicit degree evidence was found in Education, Summary, or Experience for this qualification.`,
+    }));
 }
 
 function buildResumeEvidenceSources(
@@ -1355,9 +1430,11 @@ export function buildJobGapAnalysis(
 
   const items = requiredSkills.map((skill) => {
       const normalizedSkill = normalizeGapTerm(skill);
+      const requirementType = isEducationRequirement(skill) ? 'education' as const : 'skill' as const;
       if (!normalizedSkill || /^(?:n a|not applicable)$/i.test(normalizedSkill)) {
         return {
           skill,
+          requirementType,
           status: 'NOT APPLICABLE' as const,
           matchTier: 'Not Applicable' as const,
           matchTrigger: 'not_applicable' as const,
@@ -1402,8 +1479,19 @@ export function buildJobGapAnalysis(
           ...indexedExactEvidenceSpans(evidenceIndex, rule.direct),
           ...recognizedDirectSpans,
         ]);
-      const relatedEvidenceSpans = matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
-      const weakEvidenceSpans = relatedEvidenceSpans.length === 0
+      // Qualification matching is deliberately isolated from generic skill
+      // similarity. An unrelated degree cannot become "related" merely
+      // because both entries contain words such as "degree" or "engineering".
+      const relatedEvidenceSpans = requirementType === 'education'
+        ? []
+        : matchingEvidenceSpans(evidenceSources, rule.partial, 0.75);
+      const educationRelatedEvidenceSpans = requirementType === 'education' && directEvidenceSpans.length === 0
+        ? relatedDegreeEvidenceSpans(evidenceSources, comparisonSkill)
+        : [];
+      const weakEvidenceSpans = requirementType === 'education'
+        ? []
+        : relatedEvidenceSpans.length === 0
+        && educationRelatedEvidenceSpans.length === 0
         ? matchingEvidenceSpans(evidenceSources, weakEvidenceTermsForSkill(comparisonNormalizedSkill), 0.4)
         : [];
       // Citations always come from the same spans that established the tier.
@@ -1412,12 +1500,14 @@ export function buildJobGapAnalysis(
         ? directEvidenceSpans
         : relatedEvidenceSpans.length > 0
           ? relatedEvidenceSpans
-          : weakEvidenceSpans;
+          : educationRelatedEvidenceSpans.length > 0
+            ? educationRelatedEvidenceSpans
+            : weakEvidenceSpans;
       const evidence = uniqueGapEvidence(evidenceSpans.map((span) => span.text));
 
       const status: GapStatus = directEvidenceSpans.length > 0
         ? 'MATCHED'
-        : relatedEvidenceSpans.length > 0 || weakEvidenceSpans.length > 0
+        : relatedEvidenceSpans.length > 0 || educationRelatedEvidenceSpans.length > 0 || weakEvidenceSpans.length > 0
           ? 'PARTIALLY MATCHED'
           : 'MISSING';
       const hasRecognizedSynonym = !exactEvidenceSpans.length && !subsumptionEvidenceSpans.length && directEvidenceSpans.length > 0;
@@ -1426,7 +1516,7 @@ export function buildJobGapAnalysis(
         ? 'Exact Match'
         : hasRecognizedSynonym || exceedsQualification
           ? 'Strong Match'
-          : relatedEvidenceSpans.length > 0 || weakEvidenceSpans.length > 0
+          : relatedEvidenceSpans.length > 0 || educationRelatedEvidenceSpans.length > 0 || weakEvidenceSpans.length > 0
             ? 'Related Match'
             : 'Missing';
       const matchClassification: SkillMatchClassification = exactEvidenceSpans.length || hasRecognizedSynonym
@@ -1435,7 +1525,7 @@ export function buildJobGapAnalysis(
           ? 'EXCEEDED_REQUIREMENT'
         : subsumptionEvidenceSpans.length > 0
           ? 'EQUIVALENT_MATCH'
-          : relatedEvidenceSpans.length > 0
+          : relatedEvidenceSpans.length > 0 || educationRelatedEvidenceSpans.length > 0
             ? 'RELATED_MATCH'
             : weakEvidenceSpans.length > 0
               ? 'WEAK_EVIDENCE'
@@ -1459,12 +1549,12 @@ export function buildJobGapAnalysis(
           ? 'credential_subsumption' as const
           : hasRecognizedSynonym
             ? 'recognized_synonym' as const
-          : relatedEvidenceSpans.length > 0
+          : relatedEvidenceSpans.length > 0 || educationRelatedEvidenceSpans.length > 0
             ? 'related_evidence' as const
             : weakEvidenceSpans.length > 0
               ? 'weak_evidence' as const
             : 'no_evidence' as const;
-      const relatedSkillLabels = uniqueGapEvidence(relatedEvidenceSpans.map((span) => span.matchedText));
+      const relatedSkillLabels = uniqueGapEvidence([...relatedEvidenceSpans, ...educationRelatedEvidenceSpans].map((span) => span.matchedText));
       const weakEvidenceLabels = uniqueGapEvidence(weakEvidenceSpans.map((span) => span.matchedText));
       const matchReason = matchClassification === 'EXACT_MATCH'
         ? `Exact ${skill} evidence is documented in the resume.`
@@ -1499,6 +1589,7 @@ export function buildJobGapAnalysis(
 
       return {
         skill,
+        requirementType,
         status,
         evidenceLevel,
         evidenceConfidence: evidenceConfidenceFor(evidenceLevel, evidenceSpans),
@@ -1590,7 +1681,8 @@ export function buildKeywordCompatibility(
   // the pipeline remain supported because buildJobGapAnalysis builds one when
   // it is not supplied.
   const comparison = buildJobGapAnalysis(resume, { requiredSkills: requirements }, evidenceIndex);
-  const items = comparison.items.filter((item) => item.status !== 'NOT APPLICABLE');
+  // Education qualifications are evaluated separately and are never keywords.
+  const items = comparison.items.filter((item) => item.requirementType === 'skill' && item.status !== 'NOT APPLICABLE');
   const strongMatches = items
     .filter((item) => item.matchClassification === 'EXACT_MATCH' || item.matchClassification === 'EXCEEDED_REQUIREMENT' || item.matchClassification === 'EQUIVALENT_MATCH')
     .map((item) => item.skill);
@@ -2197,6 +2289,7 @@ export function buildKeywordRecommendations(
     item: JobGapItem,
     source: 'required' | 'preferred',
   ): KeywordRecommendation | null => {
+    if (item.requirementType === 'education') return null;
     if (item.status === 'MATCHED' || item.status === 'NOT APPLICABLE') return null;
     const key = normalizeGapTerm(item.skill);
     if (!key || seen.has(key)) return null;
@@ -2506,6 +2599,25 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
         }];
       })
     : [];
+  const educationAlignment: EducationAlignmentItem[] = Array.isArray(o.educationAlignment)
+    ? o.educationAlignment.flatMap((item: unknown): EducationAlignmentItem[] => {
+      if (!item || typeof item !== 'object') return [];
+      const candidate = item as Record<string, unknown>;
+      const requirement = typeof candidate.requirement === 'string' ? candidate.requirement.trim() : '';
+      const status = candidate.status;
+      if (!requirement || !['Direct Match', 'Related Match', 'Missing'].includes(String(status))) return [];
+      const evidence = Array.isArray(candidate.evidence)
+        ? candidate.evidence.filter((span): span is ResumeEvidenceSpan => Boolean(span && typeof span === 'object' && typeof (span as ResumeEvidenceSpan).text === 'string'))
+        : [];
+      return [{
+        requirement,
+        status: status as EducationAlignmentItem['status'],
+        evidence,
+        confidence: Math.max(0, Math.min(100, Number(candidate.confidence) || 0)),
+        reason: typeof candidate.reason === 'string' ? candidate.reason.trim() : '',
+      }];
+    })
+    : [];
   const scoreExplanation = o.atsScoreExplanation || {};
   const jobMatchExplanation = o.jobMatchExplanation || {};
   const priorityGroups = o.recommendationPriorities || {};
@@ -2534,6 +2646,7 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
     keywordSuggestions,
     keywordGaps,
     missingRequiredSkills: arr(o.missingRequiredSkills),
+    educationAlignment,
     detectedSections: arr(o.detectedSections),
     missingSections: arr(o.missingSections),
     formattingSuggestions: mapWithConfidence(o.formattingSuggestions),
@@ -2974,10 +3087,10 @@ export async function analyzeResumeWithAi(
   // gap analysis that drives ATS, Job Match, and recommendations. Model-sent
   // keyword lists are intentionally not allowed to become a second source.
   const deterministicExistingSkills = gapAnalysis.items
-    .filter((item) => item.status === 'MATCHED')
+    .filter((item) => item.requirementType === 'skill' && item.status === 'MATCHED')
     .map((item) => item.skill);
   const deterministicMissingSkills = gapAnalysis.items
-    .filter((item) => item.status === 'MISSING')
+    .filter((item) => item.requirementType === 'skill' && item.status === 'MISSING')
     .map((item) => item.skill);
 
   // Combine and validate final structure
@@ -2991,6 +3104,7 @@ export async function analyzeResumeWithAi(
     keywordSuggestions: [],
     keywordGaps: [],
     missingRequiredSkills: deterministicMissingSkills,
+    educationAlignment: buildEducationAlignment(gapAnalysis.items),
     detectedSections: analysisJson.detectedSections || [],
     missingSections: analysisJson.missingSections || [],
     formattingIssues: analysisJson.formattingIssues || [],
