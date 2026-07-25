@@ -154,7 +154,7 @@ function prioritizeRecommendations(output: Record<string, any>): RecommendationP
 export function planResumeRecommendations(
   raw: Record<string, any>,
   resumeText: string,
-  gapAnalysis?: { items?: { skill?: unknown; status?: unknown; evidence?: unknown }[] },
+  gapAnalysis?: { items?: { skill?: unknown; status?: unknown; evidence?: unknown; requirementType?: unknown }[] },
   jobTitle = 'target role',
 ): Record<string, any> {
   const output = { ...raw };
@@ -165,7 +165,7 @@ export function planResumeRecommendations(
   // those gaps available to every downstream recommendation decision.
   const missingFromGap = Array.isArray(gapAnalysis?.items)
     ? gapAnalysis.items
-      .filter((item) => item?.status === 'MISSING' && typeof item.skill === 'string')
+      .filter((item) => item?.requirementType !== 'education' && item?.status === 'MISSING' && typeof item.skill === 'string')
       .map((item) => String(item.skill).trim())
       .filter(Boolean)
     : [];
@@ -188,7 +188,7 @@ export function planResumeRecommendations(
       const evidence = Array.isArray(item?.evidence)
         ? item.evidence.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).slice(0, 2)
         : [];
-      if (!skill || item?.status === 'NOT APPLICABLE' || item?.status === 'MATCHED') return [];
+      if (!skill || item?.requirementType === 'education' || item?.status === 'NOT APPLICABLE' || item?.status === 'MATCHED') return [];
       if (item?.status === 'PARTIALLY MATCHED') {
         return [`The ${jobTitle} role requires ${skill}. Your resume shows related evidence in ${evidence.join('; ') || 'the Skills, Experience, or Projects sections'}, but does not explicitly demonstrate ${skill}, so a recruiter cannot confirm this required capability.`];
       }

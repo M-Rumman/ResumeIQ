@@ -501,6 +501,32 @@ function KeywordCompatibilityCard({ compatibility }: { compatibility: AnalysisRe
   );
 }
 
+function EducationAlignmentCard({ items }: { items: AnalysisResults['engine']['educationAlignment'] }) {
+  if (items.length === 0) return null;
+  const statusStyle = {
+    'Direct Match': 'border-emerald-100 bg-emerald-50 text-emerald-900',
+    'Related Match': 'border-amber-100 bg-amber-50 text-amber-900',
+    Missing: 'border-red-100 bg-red-50 text-red-900',
+  } as const;
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <h3 className="font-bold text-gray-900">Education Alignment</h3>
+      <div className="mt-4 space-y-3">
+        {items.map((item) => (
+          <div key={item.requirement} className={`rounded-xl border p-4 ${statusStyle[item.status]}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-bold text-sm">{item.requirement}</p>
+              <span className="text-xs font-extrabold">{item.status} {item.confidence ? `· ${item.confidence}%` : ''}</span>
+            </div>
+            {item.evidence[0] && <p className="mt-2 text-xs leading-5">Evidence — {item.evidence[0].section}: “{item.evidence[0].text}”</p>}
+            {item.reason && <p className="mt-1 text-xs leading-5 opacity-90">{item.reason}</p>}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function KeywordRecommendations({ recommendations }: { recommendations: AnalysisResults['keywordRecommendations'] }) {
   if (recommendations.length === 0) return null;
   const priorities = ['Critical', 'Important', 'Nice-to-Have'] as const;
@@ -1066,6 +1092,7 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
             </div>
 
             <KeywordCompatibilityCard compatibility={results.engine.keywordCompatibility} />
+            <EducationAlignmentCard items={results.engine.educationAlignment} />
             <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
             <StrengthsMatchingRoleCard strengths={results.engine.roleStrengths} />
 
@@ -1156,6 +1183,7 @@ function ResumeResultsPreview({ results }: { results: AnalysisResults }) {
         </div>
       </div>
       <KeywordCompatibilityCard compatibility={results.engine.keywordCompatibility} />
+      <EducationAlignmentCard items={results.engine.educationAlignment} />
       <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
       <StrengthsMatchingRoleCard strengths={results.engine.roleStrengths} />
     </>

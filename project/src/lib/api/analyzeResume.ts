@@ -42,6 +42,13 @@ export interface AiResumeAnalysis {
   keywordSuggestions: string[];
   keywordGaps: string[];
   missingRequiredSkills: string[];
+  educationAlignment: {
+    requirement: string;
+    status: 'Direct Match' | 'Related Match' | 'Missing';
+    evidence: { section: string; text: string }[];
+    confidence: number;
+    reason: string;
+  }[];
   detectedSections: string[];
   missingSections: string[];
   formattingSuggestions: string[];
