@@ -1097,6 +1097,28 @@ Embedded Monitoring Prototype
       assert.equal(internScore.experienceRelevance.score >= 0, true);
     },
   },
+  {
+    name: 'builds a source-aware resume understanding index without headings',
+    run: () => {
+      const resume = parseResumeText(`Amina Khan
+Mechatronics undergraduate building embedded robotics systems.
+Bachelor of Engineering in Mechatronics Engineering, Expected 2027
+Python3 | C Plus Plus | Solid Works | Programmable Logic Controller
+Built an autonomous robot using Arduino, LiDAR sensors, and PLC interfaces.
+Research Intern at RoboLab Ltd
+Improved sensor validation time by 30%.
+PADI Advanced Open Water Diver`);
+      assert.equal(resume.education.some((item) => /Bachelor of Engineering/i.test(item)), true);
+      assert.equal(resume.projects.some((item) => /autonomous robot/i.test(item)), true);
+      assert.equal(resume.experience.some((item) => /Research Intern/i.test(item)), true);
+      assert.equal(resume.understanding.entities.some((entity) => entity.normalizedName === 'C++' && entity.confidence >= 0.8), true);
+      assert.equal(resume.understanding.entities.some((entity) => entity.normalizedName === 'SolidWorks'), true);
+      assert.equal(resume.understanding.entities.some((entity) => entity.normalizedName === 'PLC'), true);
+      assert.equal(resume.understanding.entities.some((entity) => entity.type === 'metric' && entity.normalizedName === '30%'), true);
+      assert.equal(resume.understanding.semanticIndex['embedded'].length > 0, true);
+      assert.equal(resume.understanding.educationDetails[0]?.status, 'Current');
+    },
+  },
 ];
 
 let failures = 0;

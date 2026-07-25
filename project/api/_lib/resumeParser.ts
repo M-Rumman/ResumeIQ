@@ -29,6 +29,32 @@ export type SkillCategories = {
   professionalSkills: string[];
 };
 
+/** A source-aware fact extracted from the resume understanding pass. */
+export type ResumeEntity = {
+  type: 'skill' | 'technology' | 'organization' | 'education' | 'certification' | 'award' | 'metric' | 'link' | 'contact' | 'other';
+  normalizedName: string;
+  rawText: string;
+  category: string;
+  confidence: number;
+  sourceSection: string;
+  semanticTags: string[];
+  industryTags: string[];
+  relatedSkills: string[];
+  evidence: string;
+};
+
+export type ResumeUnderstanding = {
+  /** Every non-artifact line is assigned exactly one semantic category. */
+  classifiedLines: Array<{ rawText: string; category: string; sourceSection: string; confidence: number }>;
+  entities: ResumeEntity[];
+  inferredProfiles: Array<{ role: string; confidence: number; evidence: string[] }>;
+  educationDetails: Array<{ degree: string; major: string; institution: string; grade: string; dates: string; status: string; evidence: string }>;
+  experienceDetails: Array<{ company: string; position: string; employmentType: string; duration: string; responsibilities: string[]; achievements: string[]; technologies: string[]; metrics: string[]; evidence: string }>;
+  projectUnderstanding: Array<{ title: string; role: string; technologies: string[]; hardware: string[]; software: string[]; outcomes: string[]; metrics: string[]; domains: string[]; evidence: string[] }>;
+  /** Keyword, normalized-name, domain, and source-section lookup for downstream reasoning. */
+  semanticIndex: Record<string, Array<{ entity: string; sourceSection: string; evidence: string; confidence: number }>>;
+};
+
 export type StructuredResume = {
   contact: { name: string; email: string; phone: string; location: string };
   summary: string;
@@ -47,6 +73,8 @@ export type StructuredResume = {
   awards: string[];
   languages: string[];
   links: { linkedinUrl: string; portfolioUrl: string; items: ResumeLink[] };
+  /** Additive understanding model; legacy fields above remain the pipeline contract. */
+  understanding: ResumeUnderstanding;
 };
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -636,6 +664,141 @@ function findLocation(lines: string[]): string {
   return '';
 }
 
+type UnderstandingCategory =
+  | 'Summary' | 'Objective' | 'Headline' | 'Experience' | 'Internship' | 'Research Experience'
+  | 'Projects' | 'Academic Projects' | 'Research Projects' | 'Publications' | 'Patents'
+  | 'Education' | 'Certifications' | 'Licenses' | 'Awards' | 'Competitions' | 'Volunteer'
+  | 'Leadership' | 'Teaching' | 'Tutoring' | 'Languages' | 'Technical Skills' | 'Soft Skills'
+  | 'Contact Information' | 'Portfolio Links' | 'Interests' | 'References' | 'Other';
+
+const TECHNICAL_NORMALIZATIONS: Array<{ canonical: string; aliases: string[]; category: string; domains: string[]; related: string[] }> = [
+  { canonical: 'C++', aliases: ['c++', 'c plus plus', 'cplusplus'], category: 'Programming Languages', domains: ['Software', 'Engineering'], related: ['Programming'] },
+  { canonical: 'Python', aliases: ['python', 'python3'], category: 'Programming Languages', domains: ['Software', 'Data'], related: ['Programming'] },
+  { canonical: 'SolidWorks', aliases: ['solidworks', 'solid works'], category: 'CAD Software', domains: ['Mechanical'], related: ['CAD Design'] },
+  { canonical: 'PLC', aliases: ['plc', 'programmable logic controller'], category: 'Automation', domains: ['Automation', 'Electronics'], related: ['Industrial Automation'] },
+  { canonical: 'FEA', aliases: ['fea', 'finite element analysis'], category: 'Simulation Software', domains: ['Mechanical'], related: ['ANSYS'] },
+  { canonical: 'IoT', aliases: ['iot', 'internet of things'], category: 'Technical Domains', domains: ['Embedded', 'Software'], related: ['Embedded Systems'] },
+  { canonical: 'Machine Learning', aliases: ['machine learning', 'ml'], category: 'AI', domains: ['AI', 'Data'], related: ['Artificial Intelligence'] },
+  { canonical: 'Artificial Intelligence', aliases: ['artificial intelligence', 'ai'], category: 'AI', domains: ['AI'], related: ['Machine Learning'] },
+  { canonical: 'Microcontroller', aliases: ['microcontroller', 'micro controller'], category: 'Embedded', domains: ['Embedded', 'Electronics'], related: ['Embedded Systems'] },
+];
+
+function matchesTerm(value: string, term: string): boolean {
+  const normalized = normalizeTechnicalKeywordSource(value);
+  const candidate = normalizeTechnicalKeywordSource(term);
+  return Boolean(candidate) && ` ${normalized} `.includes(` ${candidate} `);
+}
+
+function inferContentCategory(line: string): { category: UnderstandingCategory; confidence: number } {
+  const clean = sanitizeResumeContentLine(line);
+  if (!clean) return { category: 'Other', confidence: 0 };
+  if (DEGREE_EVIDENCE_PATTERN.test(clean)) return { category: 'Education', confidence: 0.98 };
+  if (/\b(?:published|journal|conference paper|doi|proceedings)\b/i.test(clean)) return { category: 'Publications', confidence: 0.92 };
+  if (/\b(?:patent|inventor)\b/i.test(clean)) return { category: 'Patents', confidence: 0.92 };
+  if (/\b(?:certified|certification|license|licensed|padi)\b/i.test(clean)
+    && !/\b(?:conference|workshop|seminar|participation|volunteer)\b/i.test(clean)) return { category: 'Certifications', confidence: 0.9 };
+  if (/\b(?:intern|internship)\b/i.test(clean)) return { category: 'Internship', confidence: 0.9 };
+  if (/\b(?:research assistant|researcher|laboratory|lab)\b/i.test(clean)) return { category: 'Research Experience', confidence: 0.85 };
+  if (/\b(?:software engineer|engineer|analyst|developer|manager|consultant|officer|associate|worked as|employed)\b/i.test(clean)) return { category: 'Experience', confidence: 0.82 };
+  if (/\b(?:volunteer|community service)\b/i.test(clean)) return { category: 'Volunteer', confidence: 0.85 };
+  if (/\b(?:tutor|tutoring|teaching assistant|lecturer|teacher)\b/i.test(clean)) return { category: /\btutor/i.test(clean) ? 'Tutoring' : 'Teaching', confidence: 0.88 };
+  if (/\b(?:captain|president|chair|leadership|society|club|committee)\b/i.test(clean)) return { category: 'Leadership', confidence: 0.8 };
+  if (/\b(?:award|honou?r|scholarship|dean.s list)\b/i.test(clean)) return { category: 'Awards', confidence: 0.88 };
+  if (/\b(?:competition|hackathon|olympiad|contest|finalist)\b/i.test(clean)) return { category: 'Competitions', confidence: 0.82 };
+  if (PROJECT_ACTION_PATTERN.test(clean) || /\b(?:project|prototype|capstone|robot|simulation)\b/i.test(clean)) return { category: 'Projects', confidence: 0.78 };
+  if (Object.values(extractDeterministicTechnicalKeywords(clean)).some((values) => values.length > 0)
+    || TECHNICAL_NORMALIZATIONS.some((rule) => rule.aliases.some((alias) => matchesTerm(clean, alias)))) {
+    return { category: 'Technical Skills', confidence: 0.8 };
+  }
+  if (/\b(?:objective|seeking|aspiring|looking for)\b/i.test(clean)) return { category: 'Objective', confidence: 0.72 };
+  if (clean.split(/\s+/).length >= 8) return { category: 'Summary', confidence: 0.55 };
+  return { category: 'Other', confidence: 0.35 };
+}
+
+function sectionCategory(section: ResumeSection | null, line: string): { category: UnderstandingCategory; confidence: number } {
+  const map: Record<ResumeSection, UnderstandingCategory> = {
+    summary: 'Summary', experience: 'Experience', projects: 'Projects', skills: 'Technical Skills',
+    education: 'Education', certifications: 'Certifications', awards: 'Awards', languages: 'Languages',
+  };
+  return section ? { category: map[section], confidence: 1 } : inferContentCategory(line);
+}
+
+function domainTagsFor(value: string): string[] {
+  const source = normalizeTechnicalKeywordSource(value);
+  const tags: Array<[string, RegExp]> = [
+    ['Embedded', /\b(?:embedded|firmware|microcontroller|arduino|stm32|esp32|plc)\b/],
+    ['Electronics', /\b(?:pcb|circuit|sensor|actuator|lidar|motor|electronics)\b/],
+    ['Mechanical', /\b(?:solidworks|autocad|ansys|cad|mechanical|fea)\b/],
+    ['Software', /\b(?:python|java|javascript|typescript|react|api|database)\b/],
+    ['AI', /\b(?:machine learning|artificial intelligence|tensorflow|pytorch|computer vision)\b/],
+    ['Cybersecurity', /\b(?:security|siem|soc|incident response|penetration)\b/],
+    ['Finance', /\b(?:finance|accounting|financial|audit)\b/],
+    ['Healthcare', /\b(?:medical|clinical|patient|healthcare)\b/],
+  ];
+  return tags.filter(([, pattern]) => pattern.test(source)).map(([tag]) => tag);
+}
+
+function buildResumeUnderstanding(
+  cleanedText: string,
+  resume: Omit<StructuredResume, 'understanding'>,
+): ResumeUnderstanding {
+  const lines = cleanedText.split('\n').map((line) => line.trim()).filter(Boolean);
+  let activeSection: ResumeSection | null = null;
+  const classifiedLines: ResumeUnderstanding['classifiedLines'] = [];
+  const entities: ResumeEntity[] = [];
+  const addEntity = (entity: ResumeEntity) => {
+    if (!entities.some((existing) => existing.normalizedName.toLowerCase() === entity.normalizedName.toLowerCase()
+      && existing.sourceSection === entity.sourceSection && existing.rawText === entity.rawText)) entities.push(entity);
+  };
+  for (const rawLine of lines) {
+    const heading = getSection(rawLine);
+    if (heading) { activeSection = heading; continue; }
+    const clean = sanitizeResumeContentLine(rawLine);
+    if (!clean) continue;
+    const classification = sectionCategory(activeSection, clean);
+    classifiedLines.push({ rawText: clean, category: classification.category, sourceSection: activeSection || classification.category, confidence: classification.confidence });
+    const keywords = extractDeterministicTechnicalKeywords(clean);
+    const explicitSkillContext = activeSection === 'skills' || activeSection === 'languages';
+    for (const [group, values] of Object.entries(keywords)) {
+      for (const value of values) addEntity({
+        type: group === 'technicalDomains' ? 'technology' : 'skill', normalizedName: value, rawText: clean,
+        category: group, confidence: explicitSkillContext || classification.category === 'Technical Skills' ? 1 : classification.category === 'Projects' || classification.category === 'Experience' ? 0.85 : 0.55,
+        sourceSection: activeSection || classification.category, semanticTags: [group, ...domainTagsFor(value)],
+        industryTags: domainTagsFor(value), relatedSkills: [], evidence: clean,
+      });
+    }
+    for (const rule of TECHNICAL_NORMALIZATIONS) {
+      if (rule.aliases.some((alias) => matchesTerm(clean, alias))) addEntity({
+        type: 'skill', normalizedName: rule.canonical, rawText: clean, category: rule.category,
+        confidence: explicitSkillContext || classification.category === 'Technical Skills' ? 1 : classification.category === 'Projects' || classification.category === 'Experience' ? 0.85 : 0.45,
+        sourceSection: activeSection || classification.category, semanticTags: [rule.category, ...rule.domains],
+        industryTags: rule.domains, relatedSkills: rule.related, evidence: clean,
+      });
+    }
+    if (DEGREE_EVIDENCE_PATTERN.test(clean)) addEntity({ type: 'education', normalizedName: clean, rawText: clean, category: 'Degree', confidence: 1, sourceSection: activeSection || 'Education', semanticTags: ['Education'], industryTags: domainTagsFor(clean), relatedSkills: [], evidence: clean });
+    if (/\b(?:certified|certification|license|licensed|padi)\b/i.test(clean) && !/\b(?:conference|workshop|seminar|participation)\b/i.test(clean)) addEntity({ type: 'certification', normalizedName: clean, rawText: clean, category: 'Certification', confidence: 0.95, sourceSection: activeSection || 'Certifications', semanticTags: ['Certification'], industryTags: domainTagsFor(clean), relatedSkills: [], evidence: clean });
+    for (const metric of clean.match(/(?:\b\d+(?:\.\d+)?%|\b\d+\+|\b\d+(?:,\d{3})+\b|\b\d+x\b)/gi) || []) addEntity({ type: 'metric', normalizedName: metric, rawText: clean, category: 'Metric', confidence: 1, sourceSection: activeSection || classification.category, semanticTags: ['Quantified Impact'], industryTags: domainTagsFor(clean), relatedSkills: [], evidence: clean });
+  }
+  for (const link of resume.links.items) addEntity({ type: 'link', normalizedName: link.url, rawText: link.anchorText, category: /linkedin/i.test(`${link.url} ${link.anchorText}`) ? 'LinkedIn' : /github|gitlab/i.test(`${link.url} ${link.anchorText}`) ? 'GitHub' : 'Website', confidence: 1, sourceSection: 'Contact Information', semanticTags: ['Portfolio Link'], industryTags: [], relatedSkills: [], evidence: link.url });
+  const profileScores: Record<string, string[]> = {};
+  for (const entity of entities) for (const domain of entity.industryTags) (profileScores[domain] ||= []).push(entity.normalizedName);
+  const inferredProfiles = Object.entries(profileScores).sort((a, b) => b[1].length - a[1].length).slice(0, 3).map(([domain, evidence]) => ({ role: `${domain} Professional`, confidence: Math.min(95, 50 + evidence.length * 12), evidence: unique(evidence) }));
+  const projectUnderstanding = resume.projectDetails.map((project) => {
+    const all = [project.title, project.description, ...project.bullets, ...project.technologies, ...project.outcomes].join(' ');
+    const projectEntities = entities.filter((entity) => project.bullets.some((bullet) => entity.evidence === bullet) || entity.evidence === project.description || entity.evidence === project.title);
+    return { title: project.title, role: '', technologies: unique(projectEntities.map((entity) => entity.normalizedName)), hardware: unique(projectEntities.filter((entity) => /electronics|embedded/i.test(entity.industryTags.join(' '))).map((entity) => entity.normalizedName)), software: unique(projectEntities.filter((entity) => /software|ai|data/i.test(entity.industryTags.join(' '))).map((entity) => entity.normalizedName)), outcomes: project.outcomes, metrics: unique((all.match(/(?:\b\d+(?:\.\d+)?%|\b\d+\+|\b\d+(?:,\d{3})+\b|\b\d+x\b)/gi) || [])), domains: domainTagsFor(all), evidence: unique([project.description, ...project.bullets].filter(Boolean)) };
+  });
+  const educationDetails = resume.education.map((evidence) => ({ degree: evidence.match(/\b(?:bachelor|master|doctor|bsc|bs|msc|ms|phd)[^.\n]*/i)?.[0] || evidence, major: evidence.match(/\b(?:in|of)\s+([A-Za-z &-]+?)(?:\s*(?:\||,|\d{4}|$))/i)?.[1]?.trim() || '', institution: evidence.match(/\b(?:university|college|institute)\b[^,;]*/i)?.[0] || '', grade: evidence.match(/\b(?:cgpa|gpa)\s*[:=-]?\s*\d(?:\.\d+)?\b/i)?.[0] || '', dates: evidence.match(/\b(?:19|20)\d{2}\s*(?:[-–]|to)\s*(?:(?:19|20)\d{2}|present|expected)\b/i)?.[0] || '', status: /\b(?:pursuing|expected|current|undergraduate)\b/i.test(evidence) ? 'Current' : 'Completed', evidence }));
+  const experienceDetails = resume.experience.map((evidence) => ({ company: evidence.match(/\b(?:at|, )\s*([A-Z][A-Za-z0-9& .'-]+(?:Ltd|Inc|LLC|University|Labs?)?)\b/)?.[1] || '', position: evidence.match(/\b(?:software|mechanical|electrical|embedded|research|sales|financial)?\s*(?:engineer|intern|analyst|assistant|manager|developer|consultant)\b/i)?.[0] || '', employmentType: /\bintern/i.test(evidence) ? 'Internship' : '', duration: evidence.match(/\b(?:19|20)\d{2}\s*(?:[-–]|to)\s*(?:(?:19|20)\d{2}|present)\b/i)?.[0] || '', responsibilities: [evidence], achievements: /\b(?:improved|reduced|increased|delivered|achieved)\b/i.test(evidence) ? [evidence] : [], technologies: unique(entities.filter((entity) => entity.evidence === evidence).map((entity) => entity.normalizedName)), leadership: '', impact: '', metrics: unique(evidence.match(/\b(?:\d+(?:\.\d+)?%|\d+\+|\d+x)\b/gi) || []), evidence }));
+  const semanticIndex: ResumeUnderstanding['semanticIndex'] = {};
+  for (const entity of entities) for (const key of unique([entity.normalizedName, entity.category, ...entity.semanticTags, ...entity.industryTags, ...entity.relatedSkills])) {
+    const indexKey = normalizeTechnicalKeywordSource(key);
+    if (!indexKey) continue;
+    (semanticIndex[indexKey] ||= []).push({ entity: entity.normalizedName, sourceSection: entity.sourceSection, evidence: entity.evidence, confidence: entity.confidence });
+  }
+  return { classifiedLines, entities, inferredProfiles, educationDetails, experienceDetails, projectUnderstanding, semanticIndex };
+}
+
 /** Deterministic, safe resume structure used before the existing AI pipeline. */
 export function parseResumeText(resumeText: string): StructuredResume {
   const cleanedResumeText = cleanResumeExtractionArtifacts(resumeText);
@@ -763,6 +926,25 @@ export function parseResumeText(resumeText: string): StructuredResume {
     }
     if (active) {
       appendSectionContent(active, line, activeSkillCategory);
+    } else {
+      // Content-led recovery for resumes without conventional headings. This
+      // intentionally routes only high-confidence core evidence into legacy
+      // sections; every other useful line remains available in understanding.
+      const inferred = inferContentCategory(line);
+      const inferredSection: ResumeSection | null = inferred.category === 'Education' ? 'education'
+        : inferred.category === 'Experience' || inferred.category === 'Internship' || inferred.category === 'Research Experience'
+          || inferred.category === 'Volunteer' || inferred.category === 'Leadership' || inferred.category === 'Teaching' || inferred.category === 'Tutoring' ? 'experience'
+          : inferred.category === 'Projects' || inferred.category === 'Academic Projects' || inferred.category === 'Research Projects' ? 'projects'
+          : inferred.category === 'Technical Skills' ? 'skills'
+          : inferred.category === 'Certifications' || inferred.category === 'Licenses' ? 'certifications'
+          : inferred.category === 'Awards' || inferred.category === 'Competitions' ? 'awards'
+          : inferred.category === 'Summary' || inferred.category === 'Objective' ? 'summary'
+          : null;
+      // Keep unheaded project-like lines together for recoverProjectBlocks;
+      // appending only a later action bullet would otherwise prevent its
+      // preceding title from becoming an independent project record.
+      if (inferredSection === 'projects') continue;
+      if (inferredSection && inferred.confidence >= 0.78) appendSectionContent(inferredSection, line);
     }
   }
   if (lastPracticalDestination === 'projects') finishProjectBlock();
@@ -797,7 +979,7 @@ export function parseResumeText(resumeText: string): StructuredResume {
   }
   const recoveredSummary = sections.summary.length === 0 ? recoverIntroductorySummary(lines) : '';
 
-  return {
+  const parsedWithoutUnderstanding = {
     contact: { name: findName(lines), email, phone, location: findLocation(lines) },
     summary: unique([...sections.summary, recoveredSummary]).join(' '),
     experience: unique(sections.experience), projects: unique(sections.projects),
@@ -811,5 +993,9 @@ export function parseResumeText(resumeText: string): StructuredResume {
     skills: unique([...sections.skills, ...flattenTechnicalKeywordGroups(technicalKeywords)]),
     education: unique(sections.education), certifications: unique(sections.certifications), awards: unique(sections.awards), languages: unique(sections.languages),
     links: { linkedinUrl, portfolioUrl, items: links },
+  };
+  return {
+    ...parsedWithoutUnderstanding,
+    understanding: buildResumeUnderstanding(cleanedResumeText, parsedWithoutUnderstanding),
   };
 }

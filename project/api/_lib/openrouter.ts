@@ -369,7 +369,7 @@ export function extractJsonFromText(text: string): unknown {
 
 const RESUME_PARSER_SYSTEM_PROMPT = `You are a precise resume and job description parser.
 You receive a structured resume JSON object and job description text. Return JSON only.
-Use the provided resume values as source evidence. Preserve their content, categorize it structurally, and never invent projects, technologies, companies, metrics, certifications, or links.
+The resume includes an additive "understanding" object with normalized entities, source sections, confidence, and evidence. Use it to understand content-led sections, synonyms, projects, education, and experience; its cited evidence remains the source of truth. Preserve supplied content and never invent projects, technologies, companies, metrics, certifications, or links.
 
 Required JSON Schema:
 {
@@ -641,6 +641,15 @@ function toParserResumeInput(resume: StructuredResume) {
     awards: resume.awards,
     languages: resume.languages,
     links: resume.links.items,
+    // Source-aware understanding gives the LLM normalized entities and their
+    // local evidence without exposing raw contact data inside content fields.
+    understanding: {
+      inferredProfiles: resume.understanding.inferredProfiles,
+      entities: resume.understanding.entities,
+      educationDetails: resume.understanding.educationDetails,
+      experienceDetails: resume.understanding.experienceDetails,
+      projectUnderstanding: resume.understanding.projectUnderstanding,
+    },
   };
 }
 
