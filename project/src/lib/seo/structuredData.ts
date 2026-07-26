@@ -334,7 +334,9 @@ export function buildBlogArticleStructuredDataGraph(article: BlogArticle): Recor
     headline: article.title,
     description: article.metaDescription,
     image: [article.coverImage],
-    author: { '@type': 'Person', name: article.author.name },
+    author: article.author.name === 'ResuV'
+      ? { '@type': 'Organization', name: 'ResuV', '@id': ORGANIZATION_ID }
+      : { '@type': 'Person', name: article.author.name },
     publisher: { '@id': ORGANIZATION_ID },
     datePublished: published,
     dateModified: published,

@@ -27,7 +27,7 @@ export type BlogArticle = {
   metaTitle: string;
   metaDescription: string;
   tags: string[];
-  content?: Array<{ heading?: string; paragraphs?: string[]; bullets?: string[]; numbered?: string[] }>;
+  content?: Array<{ heading?: string; subheading?: string; paragraphs?: string[]; bullets?: string[]; numbered?: string[]; callout?: string; code?: string }>;
   featured?: boolean;
 };
 
@@ -41,11 +41,33 @@ export const BLOG_CATEGORIES: Array<'All Articles' | BlogCategory> = [
 export const BLOG_ARTICLES: BlogArticle[] = [
   {
     slug: 'how-ats-resume-scanners-actually-work',
-    title: 'How ATS Resume Scanners Actually Work',
-    excerpt: 'A practical look at how applicant tracking systems read structure, keywords, and evidence before a recruiter opens your resume.',
-    category: 'ATS Optimization', author: { name: 'Maya Ahmed', role: 'Career Strategy Editor', initials: 'MA' }, readingTime: '12 min read', publishDate: 'July 2026',
+    title: 'How ATS Resume Scanners Actually Work (And Why Most People Get Rejected Before a Recruiter Sees Their Resume)',
+    excerpt: 'Understand how applicant tracking systems extract, parse, match, and rank resume evidence before a recruiter sees an application.',
+    category: 'ATS Optimization', author: { name: 'ResuV', role: 'ResuV Editorial Team', initials: 'RV' }, readingTime: '12 min read', publishDate: 'July 26, 2026',
     coverImage: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=1400&q=85',
-    metaTitle: 'How ATS Resume Scanners Work | ResuV', metaDescription: 'Learn how ATS systems read resumes and how to make your application easier to evaluate.', tags: ['ATS', 'Resume Keywords', 'Job Search'], featured: true,
+    metaTitle: 'How ATS Resume Scanners Actually Work | ResuV', metaDescription: 'Learn how ATS resume scanners extract, parse, match, and rank applications—and how to make your resume easier for both software and recruiters to evaluate.', tags: ['ATS', 'Resume Keywords', 'Job Search'], featured: true,
+    content: [
+      { paragraphs: [
+        "If you've ever submitted a resume and never heard back, you've probably blamed the Applicant Tracking System (ATS). People often say, “The ATS rejected my resume,” “My resume didn't have enough keywords,” or “ATS can't read PDFs.”",
+        'Some of those statements are true. Many are not. Modern ATS platforms are more sophisticated than most job seekers realize, and understanding how they actually work can dramatically improve your chances of landing interviews.',
+      ] },
+      { heading: 'What Is an ATS?', paragraphs: ['An Applicant Tracking System is software companies use to manage job applications. Popular platforms include Workday, Greenhouse, Lever, Taleo, iCIMS, BambooHR, and SAP SuccessFactors.', 'Their primary job is not to reject resumes. It is to organize thousands of applications into structured, searchable candidate profiles so recruiters can filter, search, and rank candidates faster.'] },
+      { heading: 'The ATS Pipeline', paragraphs: ['Think of an ATS as a five-stage pipeline. Most resumes fail long before a recruiter opens them—not because the candidate lacks ability, but because important information was not extracted or structured correctly.'], code: 'Resume\n  ↓\nText Extraction\n  ↓\nResume Parsing\n  ↓\nSection Detection\n  ↓\nKeyword & Skill Matching\n  ↓\nRanking\n  ↓\nRecruiter Review' },
+      { heading: 'Step 1 — Text Extraction', paragraphs: ['Before an ATS can understand anything, it must convert your document into plain text. Images, icons, tables, multiple columns, text boxes, and scanned pages can cause the extraction process to lose important information.', 'Instead of preserving a Skills section containing Python, C++, and SolidWorks, an extractor may scatter those values between Education and Experience. The information still exists, but its structure has been lost.'], callout: 'Use selectable text and a simple document structure. Scanned PDFs require OCR, which is inherently less reliable than text-based PDF or DOCX files.' },
+      { heading: 'Step 2 — Resume Parsing', paragraphs: ['Once the text is extracted, the parser identifies your name, email, phone number, experience, education, skills, certifications, projects, and awards. It converts the resume into structured database fields.', 'Recruiters do not search your PDF line by line. In many workflows, they search these parsed fields.'] },
+      { heading: 'Step 3 — Section Detection', paragraphs: ['The parser must determine where every piece of information belongs. “Experience / Software Engineer / Google” is straightforward. A custom label such as “Professional Journey” may not be recognized by every system.', 'Using standard section names such as Experience, Education, and Skills makes parsing more reliable.'] },
+      { heading: 'Step 4 — Keyword Matching', paragraphs: ['Keyword matching is the fourth stage, not the first. The system compares the parsed resume against the job description and looks for technical skills, certifications, software, programming languages, tools, job titles, and degrees.', 'Modern systems can recognize some synonyms and related skills, but exact wording from the job description still matters because not every ATS expands terminology in the same way.'] },
+      { heading: 'Step 5 — Candidate Ranking', paragraphs: ['Finally, the ATS may rank applicants using required skills, preferred skills, experience relevance, education alignment, certifications, location, and recruiter-defined filters. Some systems also use semantic similarity to understand related concepts.'] },
+      { heading: 'Biggest ATS Myths', subheading: 'Myth 1: ATS automatically rejects resumes', paragraphs: ['Not always. Many systems simply organize candidates. Recruiters decide which filters to apply.'] },
+      { subheading: 'Myth 2: Keyword stuffing works', paragraphs: ['Years ago, sometimes. Today, not really. Repeating “Python” 20 times does not demonstrate evidence. Context matters far more.'] },
+      { subheading: 'Myth 3: Fancy templates are always ATS-friendly', paragraphs: ['Many templates can still confuse parsers. Simple layouts consistently perform better.'] },
+      { subheading: 'Myth 4: PDF is always bad', paragraphs: ['Modern ATS systems usually handle properly generated PDFs well. Scanned PDFs remain problematic because they rely on less reliable OCR.'] },
+      { heading: 'What Recruiters Actually Want', paragraphs: ['Recruiters do not hire keywords. They hire evidence. Replace a vague claim such as “Experienced in Python” with a truthful example of what you built, how you used Python, and the outcome.', 'Likewise, replace “Team player” with concrete collaboration: “Collaborated with a five-member engineering team to deliver a robotics prototype within six weeks.” Evidence beats buzzwords every time.'] },
+      { heading: 'How to Make Your Resume ATS-Friendly', bullets: ['Use standard section headings.', 'Keep a clean, single-column layout.', 'Tailor your resume to each job description.', 'Mirror relevant terminology naturally.', 'Quantify achievements where possible.', 'Use readable fonts.', 'Include measurable project outcomes.', 'Save as PDF or DOCX unless the employer instructs otherwise.'] },
+      { heading: 'How ResuV Helps', paragraphs: ['Instead of guessing what an ATS might like, ResuV analyzes your resume against a specific job description and provides ATS compatibility scoring, job-specific keyword analysis, missing-skill identification, bullet-point improvements, recruiter-style feedback, interview-readiness estimates, and personalized optimization suggestions.', 'The goal is not to game the ATS. It is to ensure your genuine experience is presented in a way that both software and recruiters can understand.'] },
+      { heading: 'Final Thoughts', paragraphs: ['An ATS is not your enemy. It is software trying to organize information. The biggest reasons resumes fail are often poor structure, unclear evidence, weak accomplishments, and missing alignment with the target role.', 'Rather than stuffing keywords or chasing myths, focus on presenting clear, measurable evidence that matches the role you are applying for. That is what gets interviews.'] },
+      { heading: 'Ready to See How Your Resume Performs?', paragraphs: ['Upload your resume to ResuV and receive an ATS-focused analysis tailored to the exact job description you are targeting.'] },
+    ],
   },
   {
     slug: 'resume-mistakes-that-cost-interviews', title: '20 Resume Mistakes That Cost Interviews',
