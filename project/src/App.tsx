@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage';
 import ResumeAnalyzerPage from './pages/ResumeAnalyzerPage';
 import InterviewPrepPage from './pages/InterviewPrepPage';
 import DashboardPage from './pages/DashboardPage';
+import JobMatchPage from './pages/JobMatchPage';
 import PricingPage from './pages/PricingPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
@@ -295,6 +296,7 @@ export default function App() {
             <DashboardPage onNavigate={navigate} />
           </ProtectedRoute>
         )}
+        {currentPage === 'job-match' && <ProtectedRoute session={verifiedSession} authLoading={authLoading} onNavigate={navigate}><JobMatchPage /></ProtectedRoute>}
         {currentPage === 'pricing' && <PricingPage onNavigate={navigate} />}
         {currentPage === 'resume-analyzer' && (
           <ResumeAnalyzerLandingPage onNavigate={navigate} />

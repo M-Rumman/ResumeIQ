@@ -128,7 +128,7 @@ function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) 
  * They identify the type of detail a candidate should add, without claiming an
  * unsupported tool, outcome, or metric exists in the source resume.
  */
-function buildBulletTeachingGuide({ before, after }: AnalysisResults['bulletSuggestions'][number]) {
+export function buildBulletTeachingGuide({ before, after }: AnalysisResults['bulletSuggestions'][number]) {
   const originalStartsStrong = STRONG_BULLET_ACTION_VERBS.has(firstWord(before));
   const rewrittenVerb = firstWord(after);
   const originalHasMetric = hasQuantification(before);
@@ -316,7 +316,7 @@ function ResumeCoachingReport({ results }: { results: AnalysisResults }) {
       category: 'ATS Formatting',
       recommendations: results.generalResumeImprovements.map((item) => item.text).slice(0, 3),
     },
-  ].filter((section) => section.recommendations.length > 0);
+  ].filter((section) => section.recommendations.length > 0) as AnalysisResults['engine']['coachingReport'];
   const sections = results.engine.coachingReport.length > 0
     ? results.engine.coachingReport
     : fallbackReport;
@@ -360,7 +360,7 @@ function ResumeCoachingReport({ results }: { results: AnalysisResults }) {
   );
 }
 
-function AtsScoreExplanation({ explanation }: { explanation: AnalysisResults['engine']['atsScoreExplanation'] }) {
+export function AtsScoreExplanation({ explanation }: { explanation: AnalysisResults['engine']['atsScoreExplanation'] }) {
   const hasDetails = explanation.whatIncreasedScore.length
     || explanation.whatReducedScore.length
     || explanation.topImprovements.length;

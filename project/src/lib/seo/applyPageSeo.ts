@@ -72,7 +72,7 @@ export function applyStructuredDataGraph(graph: Record<string, unknown>[]): void
     return;
   }
 
-  const script = existing ?? document.createElement('script');
+  const script = (existing ?? document.createElement('script')) as HTMLScriptElement;
   script.id = PAGE_JSONLD_ID;
   script.type = 'application/ld+json';
   script.setAttribute('data-seo-managed', 'true');

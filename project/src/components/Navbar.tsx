@@ -22,6 +22,7 @@ export default function Navbar({ currentPage, onNavigate, session, onLogout }: N
     { label: 'Home', page: 'home' },
     { label: 'Resume Analyzer', page: 'analyzer' },
     { label: 'Interview Prep', page: 'interview' },
+    { label: 'AI Job Match', page: 'job-match' },
     { label: 'Dashboard', page: 'dashboard' },
     { label: 'Pricing', page: 'pricing' },
     { label: 'Blog', page: 'blog' },

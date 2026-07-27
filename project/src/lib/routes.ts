@@ -23,6 +23,7 @@ export const PUBLIC_PATHS = {
   interview: '/interview',
   'interview-prep': '/interview-prep',
   dashboard: '/dashboard',
+  'job-match': '/job-match',
 } as const;
 
 export type RoutablePage = keyof typeof PUBLIC_PATHS;

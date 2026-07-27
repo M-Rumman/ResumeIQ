@@ -131,6 +131,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     isPro: false,
     loading: true,
   });
+  void usageInfo;
 
   const [reportId, setReportId] = useState<string | null>(null);
 
@@ -478,6 +479,7 @@ function InterviewCategoryCard({
   border,
   questions,
 }: InterviewCategory) {
+  void id;
   return (
     <div className="glass-card glass-card-interactive overflow-hidden">
       <div className={`px-6 py-5 border-b ${border} ${bg}`}>
