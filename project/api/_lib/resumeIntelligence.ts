@@ -1,15 +1,43 @@
 import type { StructuredResume } from './resumeParser.js';
+import { classifyCareerTaxonomy, type CareerTaxonomyMembership } from './careerTaxonomy.js';
 
 /** The stable, deterministic candidate profile consumed by Job Match. */
 export type ResumeIntelligenceProfile = {
   primary_domain: string;
   secondary_domains: string[];
+  career_taxonomy: CareerTaxonomyMembership;
   career_level: 'Student' | 'Intern' | 'Graduate' | 'Junior' | 'Mid' | 'Senior' | 'Principal' | 'Director';
+  /** Companies explicitly named in the candidate's resume; never guessed. */
+  likely_companies: string[];
+  /** Company types inferred from the evidence-backed domain, not company names. */
+  target_company_types: string[];
+  preferred_locations: string[];
+  preferred_work_modes: Array<'Remote' | 'Hybrid' | 'Onsite'>;
   education: string;
   major: string;
   experience_years: number;
+  experience: {
+    years: number;
+    companies: string[];
+    titles: string[];
+    project_count: number;
+    research_or_internship_count: number;
+  };
   technical_skills: string[];
   software_tools: string[];
+  technical_stack: {
+    programming_languages: string[];
+    frameworks: string[];
+    libraries: string[];
+    software: string[];
+    tools: string[];
+    platforms: string[];
+    hardware: string[];
+    protocols: string[];
+    engineering_concepts: string[];
+    technical_domains: string[];
+  };
+  soft_skills: string[];
   industries: string[];
   job_titles: string[];
   keywords: string[];
@@ -47,6 +75,7 @@ const unique = (values: string[]) => [...new Map(values.map((value) => [value.tr
 const normalized = (value: string) => ` ${String(value || '').toLowerCase().replace(/[^a-z0-9+#]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
 const hasPhrase = (source: string, phrase: string) => normalized(source).includes(normalized(phrase));
 const NON_TECHNICAL_SKILL = /^(?:communication|teamwork|leadership|problem solving|time management|adaptability|critical thinking|collaboration|work ethic)$/i;
+const WORK_MODE = /\b(remote|hybrid|on[ -]?site)\b/gi;
 
 function experienceYears(entries: string[]): number {
   const intervals = entries.flatMap((entry) => [...entry.matchAll(/\b((?:19|20)\d{2})\s*(?:-|–|to)\s*((?:19|20)\d{2}|present|current)\b/gi)]
@@ -78,6 +107,25 @@ function educationMajor(resume: StructuredResume, rawResumeText = ''): { educati
   const inField = education.match(/\bin\s+([A-Za-z][A-Za-z &/-]{2,80}?)(?=\s*(?:\||,|\(|\d{4}|$))/i);
   const ofField = education.match(/\bof\s+([A-Za-z][A-Za-z &/-]{2,80}?)(?=\s*(?:\||,|\(|\d{4}|$))/i);
   return { education, major: detailMajor || inField?.[1]?.trim() || ofField?.[1]?.trim() || '' };
+}
+
+function preferredWorkModes(resume: StructuredResume, rawResumeText: string): ResumeIntelligenceProfile['preferred_work_modes'] {
+  const found = `${resume.contact.location} ${rawResumeText.match(WORK_MODE)?.join(' ') || ''}`.toLowerCase();
+  return [
+    /remote/.test(found) && 'Remote',
+    /hybrid/.test(found) && 'Hybrid',
+    /on[ -]?site/.test(found) && 'Onsite',
+  ].filter(Boolean) as ResumeIntelligenceProfile['preferred_work_modes'];
+}
+
+function companiesFromExperience(resume: StructuredResume): string[] {
+  const parsed = resume.understanding.experienceDetails.map((detail) => detail.company).filter(Boolean);
+  const inline = resume.experience.flatMap((entry) => {
+    const pipeCompany = entry.match(/\|\s*([A-Z][A-Za-z0-9&.,' -]{1,80})(?:\||$)/m)?.[1];
+    const atCompany = entry.match(/\bat\s+([A-Z][A-Za-z0-9&.,' -]{1,80})(?:\s*[|,]|$)/m)?.[1];
+    return [pipeCompany, atCompany].filter((value): value is string => Boolean(value));
+  });
+  return unique([...parsed, ...inline].map((value) => value.trim()).filter(Boolean));
 }
 
 export function extractResumeIntelligence(resume: StructuredResume, rawResumeText = ''): ResumeIntelligenceProfile {
@@ -119,15 +167,51 @@ export function extractResumeIntelligence(resume: StructuredResume, rawResumeTex
   const primary = scoredDomains[0]?.definition;
   const secondary = scoredDomains.slice(1, 3).map((item) => item.definition.domain);
   const years = experienceYears(resume.experience);
+  const experienceCompanies = companiesFromExperience(resume);
+  const experienceTitles = unique(resume.understanding.experienceDetails.map((detail) => detail.position).filter(Boolean));
+  const technical_stack: ResumeIntelligenceProfile['technical_stack'] = {
+    programming_languages: unique([...resume.skillCategories.programming, ...resume.technicalKeywords.programmingLanguages]),
+    frameworks: unique([...resume.skillCategories.frameworks, ...resume.technicalKeywords.frameworks]),
+    libraries: unique(resume.skillCategories.libraries),
+    software: unique([...resume.skillCategories.software, ...resume.technicalKeywords.cadSoftware, ...resume.technicalKeywords.simulationTools]),
+    tools: unique(resume.skillCategories.tools),
+    platforms: unique(resume.skillCategories.platforms),
+    hardware: unique(resume.understanding.projectUnderstanding.flatMap((project) => project.hardware)),
+    protocols: unique(resume.technicalKeywords.protocols),
+    engineering_concepts: unique([...resume.skillCategories.engineering, ...resume.technicalKeywords.engineeringConcepts, ...resume.technicalKeywords.algorithms]),
+    technical_domains: unique(resume.technicalKeywords.technicalDomains),
+  };
+  const targetCompanyTypes = unique((primary?.industries || []).map((industry) => `${industry} organizations`));
+  const primaryDomain = primary?.domain || fallbackDomain;
+  const secondaryDomains = unique(secondary);
+  const career_taxonomy = classifyCareerTaxonomy(primaryDomain, secondaryDomains, [
+    ...technical_skills,
+    ...software_tools,
+    ...resume.understanding.projectUnderstanding.flatMap((project) => [...project.domains, ...project.technologies, ...project.hardware]),
+  ]);
   return {
-    primary_domain: primary?.domain || fallbackDomain,
-    secondary_domains: unique(secondary),
+    primary_domain: primaryDomain,
+    secondary_domains: secondaryDomains,
+    career_taxonomy,
     career_level: careerLevel(resume, years),
+    likely_companies: experienceCompanies,
+    target_company_types: targetCompanyTypes,
+    preferred_locations: unique([resume.contact.location].filter(Boolean)),
+    preferred_work_modes: preferredWorkModes(resume, rawResumeText),
     education: educationInfo.education,
     major: educationInfo.major,
     experience_years: years,
+    experience: {
+      years,
+      companies: experienceCompanies,
+      titles: experienceTitles,
+      project_count: resume.projectDetails.length,
+      research_or_internship_count: resume.understanding.experienceDetails.filter((detail) => /research|intern/i.test(`${detail.position} ${detail.employmentType}`)).length,
+    },
     technical_skills,
     software_tools,
+    technical_stack,
+    soft_skills: unique([...resume.skillCategories.softSkills, ...resume.skillCategories.professionalSkills]),
     industries: unique(scoredDomains.flatMap((item) => item.definition.industries)),
     job_titles: unique(primary?.titles || (educationInfo.major ? [`${educationInfo.major} Professional`] : [])),
     keywords: unique([...technical_skills, ...software_tools, primary?.domain || '', ...secondary]),

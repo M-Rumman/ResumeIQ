@@ -5,7 +5,9 @@ import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
 import { buildJobGapAnalysis, buildJobProfile, buildKeywordCompatibility, buildKeywordRecommendations, buildResumeEvidenceIndex, buildRoleStrengths, calculateAssessmentConfidence, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
-import { resumeRelevanceScore } from '../../api/_lib/jobMatch.js';
+import { getLocationProviderPlan, getPakistanPublicFeeds, mergeAndNormalizeJobs, relevantAshbyBoards, relevantGreenhouseBoards, relevantLeverBoards, resumeRelevanceScore } from '../../api/_lib/jobMatch.js';
+import { extractResumeIntelligence } from '../../api/_lib/resumeIntelligence.js';
+import { generateJobSearchIntent } from '../../api/_lib/jobSearchIntent.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -15,14 +17,118 @@ const tests: TestCase[] = [
     run: () => {
       const score = resumeRelevanceScore({
         primary_domain: 'Computer Science', secondary_domains: [], career_level: 'Junior',
+        career_taxonomy: { primary_path: ['Engineering and Technology', 'Computer Science'], related_domains: [], confidence: 90, evidence: ['computer science'] },
+        likely_companies: [], target_company_types: ['Technology organizations'], preferred_locations: [], preferred_work_modes: [],
         education: 'Bachelor of Science in Computer Science', major: 'Computer Science', experience_years: 0,
+        experience: { years: 0, companies: [], titles: [], project_count: 0, research_or_internship_count: 0 },
         technical_skills: ['C++', 'C#', '.NET'], software_tools: [], industries: ['Technology'],
+        technical_stack: { programming_languages: ['C++', 'C#'], frameworks: [], libraries: [], software: ['.NET'], tools: [], platforms: [], hardware: [], protocols: [], engineering_concepts: [], technical_domains: ['Software'] },
+        soft_skills: [],
         job_titles: ['Software Engineer'], keywords: ['C++', 'C#', '.NET'],
       }, {
         id: 'symbol-skills', source: 'adzuna', title: 'Software Engineer', company: 'Example', location: 'Remote',
         remoteType: 'Remote', salary: '', description: 'Required: C++, C#, and .NET.', tags: [], applyUrl: '', employmentType: 'Full Time',
       });
       assert.equal(score >= 55, true);
+    },
+  },
+  {
+    name: 'routes job sources by the selected country without a Germany fallback',
+    run: () => {
+      const pakistan = getLocationProviderPlan('Pakistan');
+      assert.equal(pakistan.countryCode, 'pk');
+      assert.equal(pakistan.providers.includes('adzuna'), true);
+      assert.equal(pakistan.providers.includes('arbeitnow'), false);
+      assert.deepEqual(pakistan.unavailablePublicSources, ['rozee', 'brightsypre', 'mustakbil']);
+      const germany = getLocationProviderPlan('Germany');
+      assert.equal(germany.countryCode, 'de');
+      assert.equal(germany.providers.includes('arbeitnow'), true);
+      const usa = getLocationProviderPlan('United States');
+      assert.equal(usa.countryCode, 'us');
+      assert.equal(usa.providers.includes('greenhouse') && usa.providers.includes('lever') && usa.providers.includes('ashby'), true);
+    },
+  },
+  {
+    name: 'accepts only configured HTTPS public feeds for Pakistan providers',
+    run: () => {
+      const previousFeeds = process.env.PAKISTAN_PUBLIC_JOB_FEEDS;
+      try {
+        process.env.PAKISTAN_PUBLIC_JOB_FEEDS = JSON.stringify([
+          { source: 'brightsypre', url: 'https://feeds.example.com/jobs.rss', format: 'rss' },
+          { source: 'rozee', url: 'http://not-secure.example/jobs.json', format: 'json' },
+          { source: 'mustakbil', url: 'https://feeds.example.com/jobs.html', format: 'html' },
+        ]);
+        assert.deepEqual(getPakistanPublicFeeds(), [{ source: 'brightsypre', url: 'https://feeds.example.com/jobs.rss', format: 'rss' }]);
+      } finally {
+        if (previousFeeds === undefined) delete process.env.PAKISTAN_PUBLIC_JOB_FEEDS;
+        else process.env.PAKISTAN_PUBLIC_JOB_FEEDS = previousFeeds;
+      }
+    },
+  },
+  {
+    name: 'merges duplicate jobs and normalizes provider fields before ranking',
+    run: () => {
+      const jobs = mergeAndNormalizeJobs([
+        { id: 'adzuna:1', source: 'adzuna', title: ' Embedded   Engineer ', company: 'Acme Robotics', location: 'Lahore', remoteType: 'Unknown', salary: '$50,000–$70,000', description: '<p>Build embedded systems</p>', tags: ['C++', 'c++', 'Arduino'], applyUrl: 'https://jobs.example.com/role?utm_source=adzuna', employmentType: 'Full Time' },
+        { id: 'remoteok:1', source: 'remoteok', title: 'Embedded Engineer', company: 'Acme Robotics', location: 'Lahore', remoteType: 'Unknown', salary: '', description: 'Build embedded systems for autonomous robotics with C++ and Arduino.', tags: ['Arduino'], applyUrl: 'https://jobs.example.com/role?utm_source=remoteok', employmentType: 'Full Time' },
+      ]);
+      assert.equal(jobs.length, 1);
+      assert.equal(jobs[0].title, 'Embedded Engineer');
+      assert.equal(jobs[0].salary, '$50,000 - $70,000');
+      assert.deepEqual(jobs[0].tags, ['C++', 'Arduino']);
+      assert.equal(jobs[0].applyUrl, 'https://jobs.example.com/role');
+      assert.match(jobs[0].description, /autonomous robotics/i);
+    },
+  },
+  {
+    name: 'builds a structured career profile from resume evidence',
+    run: () => {
+      const resume = parseResumeText('Amina Khan\nLahore, Pakistan | Open to Remote and Hybrid\nEducation\nBachelor of Engineering in Mechatronics Engineering\nSkills\nC++\nArduino\nSolidWorks\nPLC\nProjects\nAutonomous Robot\nBuilt an Arduino robot using PLC control and sensors.\nExperience\nRobotics Intern | Acme Robotics\nAssisted with automation testing.');
+      const profile = extractResumeIntelligence(resume, 'Amina Khan\nLahore, Pakistan | Open to Remote and Hybrid');
+      assert.equal(profile.primary_domain, 'Mechatronics Engineering');
+      assert.deepEqual(profile.career_taxonomy.primary_path, ['Engineering and Technology', 'Mechatronics Engineering']);
+      assert.equal(profile.career_taxonomy.related_domains.includes('Robotics'), true);
+      assert.equal(profile.career_taxonomy.related_domains.includes('Automation'), true);
+      assert.equal(profile.job_titles.includes('Robotics Engineer'), true);
+      assert.equal(profile.technical_stack.programming_languages.includes('C++'), true);
+      assert.equal(profile.technical_stack.software.includes('SolidWorks'), true);
+      assert.equal(profile.experience.project_count >= 1, true);
+      assert.equal(profile.likely_companies.includes('Acme Robotics'), true);
+      assert.equal(profile.preferred_work_modes.includes('Remote'), true);
+      assert.equal(profile.preferred_work_modes.includes('Hybrid'), true);
+      const strategy = generateJobSearchIntent(profile);
+      for (const title of ['Robotics Engineer', 'Automation Engineer', 'Embedded Engineer', 'Mechatronics Engineer', 'Control Engineer', 'PLC Engineer']) {
+        assert.equal(strategy.job_titles.includes(title), true);
+      }
+      const previousRegistry = process.env.GREENHOUSE_BOARD_REGISTRY;
+      const previousLeverRegistry = process.env.LEVER_BOARD_REGISTRY;
+      const previousAshbyRegistry = process.env.ASHBY_BOARD_REGISTRY;
+      try {
+        process.env.GREENHOUSE_BOARD_REGISTRY = JSON.stringify([
+          { company: 'US Robotics Co', boardName: 'usrobotics', country: 'US', industries: ['Robotics', 'Automation'] },
+          { company: 'US Finance Co', boardName: 'usfinance', country: 'US', industries: ['Finance'] },
+          { company: 'German Robotics Co', boardName: 'derobotics', country: 'DE', industries: ['Robotics'] },
+        ]);
+        assert.deepEqual(relevantGreenhouseBoards(profile, 'us').map((board) => board.boardName), ['usrobotics']);
+        process.env.LEVER_BOARD_REGISTRY = JSON.stringify([
+          { company: 'US Automation Co', siteName: 'usautomation', country: 'US', industries: ['Automation'] },
+          { company: 'US Marketing Co', siteName: 'usmarketing', country: 'US', industries: ['Marketing'] },
+        ]);
+        assert.deepEqual(relevantLeverBoards(profile, 'us').map((board) => board.siteName), ['usautomation']);
+        process.env.ASHBY_BOARD_REGISTRY = JSON.stringify([
+          { company: 'US Embedded Co', boardName: 'usembedded', country: 'US', industries: ['Embedded Systems'] },
+          { company: 'German Embedded Co', boardName: 'deembedded', country: 'DE', industries: ['Embedded Systems'] },
+          { company: 'US Legal Co', boardName: 'uslegal', country: 'US', industries: ['Law'] },
+        ]);
+        assert.deepEqual(relevantAshbyBoards(profile, 'us').map((board) => board.boardName), ['usembedded']);
+      } finally {
+        if (previousRegistry === undefined) delete process.env.GREENHOUSE_BOARD_REGISTRY;
+        else process.env.GREENHOUSE_BOARD_REGISTRY = previousRegistry;
+        if (previousLeverRegistry === undefined) delete process.env.LEVER_BOARD_REGISTRY;
+        else process.env.LEVER_BOARD_REGISTRY = previousLeverRegistry;
+        if (previousAshbyRegistry === undefined) delete process.env.ASHBY_BOARD_REGISTRY;
+        else process.env.ASHBY_BOARD_REGISTRY = previousAshbyRegistry;
+      }
     },
   },
   {

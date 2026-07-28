@@ -13,7 +13,7 @@ type DomainQueryDefinition = {
 // Titles are curated role-family expansions. The generator only selects a
 // family already evidenced by the structured resume profile.
 const DOMAIN_QUERIES: Record<string, DomainQueryDefinition> = {
-  'Mechatronics Engineering': { titles: ['Mechatronics Engineer', 'Robotics Engineer', 'Automation Engineer', 'Embedded Engineer', 'Control Systems Engineer', 'Hardware Engineer', 'Electronics Engineer'], keywords: ['Mechatronics Engineering', 'Robotics', 'Automation', 'Embedded Systems', 'Control Systems', 'Sensor Integration', 'Microcontrollers'] },
+  'Mechatronics Engineering': { titles: ['Robotics Engineer', 'Automation Engineer', 'Embedded Engineer', 'Mechatronics Engineer', 'Control Engineer', 'PLC Engineer', 'Control Systems Engineer', 'Hardware Engineer', 'Electronics Engineer'], keywords: ['Mechatronics Engineering', 'Robotics', 'Automation', 'Embedded Systems', 'Control Systems', 'PLC Programming', 'Sensor Integration', 'Microcontrollers'] },
   'Embedded Systems': { titles: ['Embedded Systems Engineer', 'Firmware Engineer', 'Embedded Software Engineer', 'IoT Engineer', 'Hardware Engineer', 'Electronics Engineer'], keywords: ['Embedded Systems', 'Firmware Development', 'Microcontrollers', 'Embedded Programming', 'Sensor Integration', 'IoT'] },
   'Mechanical Engineering': { titles: ['Mechanical Engineer', 'Mechanical Design Engineer', 'Product Design Engineer', 'Manufacturing Engineer', 'CAD Engineer', 'Design Engineer'], keywords: ['Mechanical Engineering', 'Mechanical Design', 'CAD Design', 'Product Design', 'Manufacturing', 'Engineering Analysis'] },
   'Electrical Engineering': { titles: ['Electrical Engineer', 'Electronics Engineer', 'Hardware Engineer', 'Power Systems Engineer', 'PCB Design Engineer', 'Control Systems Engineer'], keywords: ['Electrical Engineering', 'Electronics', 'Circuit Design', 'PCB Design', 'Power Systems', 'Hardware Design'] },
@@ -35,7 +35,7 @@ const unique = (values: string[]) => [...new Map(values.filter(Boolean).map((val
 const softSkill = /^(?:communication|teamwork|leadership|problem solving|time management|adaptability|critical thinking|collaboration|work ethic)$/i;
 
 export function generateJobSearchIntent(profile: ResumeIntelligenceProfile): JobSearchIntent {
-  const domains = [profile.primary_domain, ...profile.secondary_domains];
+  const domains = [profile.primary_domain, ...profile.secondary_domains, ...profile.career_taxonomy.related_domains];
   const definitions = domains.map((domain) => DOMAIN_QUERIES[domain]).filter(Boolean);
   const job_titles = unique([
     ...profile.job_titles,

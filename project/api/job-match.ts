@@ -1,29 +1,31 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUserFromRequest } from './_lib/auth.js';
-import { fallbackRank, filterByResumeRelevance, localProfile, relevanceLabel, searchJobs, type NormalizedJob, type RankedJob } from './_lib/jobMatch.js';
+import { fallbackRank, filterByResumeRelevance, localProfile, mergeAndNormalizeJobs, relevanceLabel, searchJobs, type NormalizedJob, type RankedJob } from './_lib/jobMatch.js';
 import { understandAndRank } from './_lib/geminiJobMatch.js';
 import { generateJobSearchIntent } from './_lib/jobSearchIntent.js';
+import { loadJobMatchMemory, recordJobMatchSearch } from './_lib/jobSearchMemory.js';
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  if (!await getUserFromRequest(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const user = await getUserFromRequest(req); if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const { resumeText = '', location = '', workPreference = 'both' } = req.body || {}; if (String(resumeText).trim().length < 50) return res.status(400).json({ error: 'Resume text is too short.' });
   try {
     const profile = localProfile(String(resumeText));
+    const memory = await loadJobMatchMemory(user.id);
     const searchIntent = generateJobSearchIntent(profile);
     const queries = searchIntent.job_titles.length ? searchIntent.job_titles : [profile.primary_domain];
-    // Expand the highest-confidence role titles in small parallel batches.
-    // Provider calls already run in parallel per title; batching avoids a long
-    // serial chain that can exceed a serverless request's execution window.
+    // Search every generated role title in small parallel batches. Provider
+    // calls already run in parallel per title; batching avoids a long serial
+    // chain while ensuring the result set is not dominated by one role name.
     const searches: Awaited<ReturnType<typeof searchJobs>>[] = [];
-    const retrievedById = new Map<string, NormalizedJob>();
+    let retrieved: NormalizedJob[] = [];
     let relevant = [] as ReturnType<typeof filterByResumeRelevance>;
     let queryIndex = 0;
-    while (queryIndex < queries.length && relevant.length < 20) {
+    while (queryIndex < queries.length) {
       const batch = queries.slice(queryIndex, queryIndex + 3);
       queryIndex += batch.length;
       const outcomes = await Promise.all(batch.map(async (query) => {
         try {
-          return { query, search: await searchJobs(query, String(location), workPreference) };
+          return { query, search: await searchJobs(query, String(location), workPreference, profile) };
         } catch (error) {
           // A malformed response or transient provider error for one title
           // must not cancel searches for the other candidate role titles.
@@ -37,18 +39,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       outcomes.forEach(({ search }) => {
         if (!search) return;
         searches.push(search);
-        search.jobs.forEach((job) => retrievedById.set(job.id, job));
+        retrieved = mergeAndNormalizeJobs([...retrieved, ...search.jobs]);
       });
-      relevant = filterByResumeRelevance(profile, [...retrievedById.values()], String(location));
+      relevant = filterByResumeRelevance(profile, retrieved, String(location));
       console.info('[job-match] query-validation', {
         queries: batch,
         queryIndex,
-        retrieved: retrievedById.size,
+        retrieved: retrieved.length,
         validated: relevant.length,
-        continuing: relevant.length < 20 && queryIndex < queries.length
+        continuing: queryIndex < queries.length
       });
     }
-    const retrieved = [...retrievedById.values()];
     const allSources = searches.flatMap((result) => result.sources);
 
     // Gemini receives only the highest deterministic matches, already sorted by
@@ -66,14 +67,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return score ? { ...job, matchPercent: score.relevanceScore, relevanceScore: score.relevanceScore, matchLabel: score.matchLabel, matchEvidence: score.matchEvidence } : job;
     }).sort((left, right) => right.relevanceScore - left.relevanceScore);
     console.info('[job-match] relevance-gate', { queriesSearched: queries.slice(0, queryIndex), retrieved: retrieved.length, accepted: relevant.length, rejected: retrieved.length - relevant.length, sentToGemini: shortlisted.length });
-    if (!shortlisted.length) return res.status(200).json({ profile, search_intent: searchIntent, jobs: [], sources: allSources });
+    if (!shortlisted.length) {
+      await recordJobMatchSearch(user.id, profile, String(location), workPreference, queries, 0);
+      return res.status(200).json({ profile, search_intent: searchIntent, jobs: [], sources: allSources });
+    }
 
     try {
-      const ranked = await understandAndRank(profile, shortlisted, String(location), workPreference);
-      return res.status(200).json({ ...ranked, search_intent: searchIntent, jobs: applyGeminiRerank(ranked.jobs).slice(0, 30), sources: allSources, rankingMode: 'gemini' });
+      const ranked = await understandAndRank(profile, shortlisted, String(location), workPreference, memory);
+      const jobs = applyGeminiRerank(ranked.jobs).slice(0, 30);
+      await recordJobMatchSearch(user.id, profile, String(location), workPreference, queries, jobs.length);
+      return res.status(200).json({ ...ranked, search_intent: searchIntent, jobs, sources: allSources, rankingMode: 'gemini' });
     } catch (error) {
       console.error('[job-match] gemini ranking fallback', { message: error instanceof Error ? error.message : 'unknown', configuredKeys: [process.env.GEMINI_KEY_1, process.env.GEMINI_KEY_2, process.env.GEMINI_KEY_3].filter(Boolean).length });
-      return res.status(200).json({ profile, search_intent: searchIntent, jobs: applyDeterministicScore(fallbackRank(profile, shortlisted, String(location))).slice(0, 30), sources: allSources, rankingMode: 'fallback' });
+      const jobs = applyDeterministicScore(fallbackRank(profile, shortlisted, String(location))).slice(0, 30);
+      await recordJobMatchSearch(user.id, profile, String(location), workPreference, queries, jobs.length);
+      return res.status(200).json({ profile, search_intent: searchIntent, jobs, sources: allSources, rankingMode: 'fallback' });
     }
   } catch (error) { console.error('[job-match] request failed', { message: error instanceof Error ? error.message : 'unknown' }); return res.status(502).json({ error: 'Job sources are temporarily unavailable. Please try again shortly.' }); }
 }
