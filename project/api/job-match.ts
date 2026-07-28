@@ -11,21 +11,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const profile = localProfile(String(resumeText));
     const searchIntent = generateJobSearchIntent(profile);
     const queries = searchIntent.job_titles.length ? searchIntent.job_titles : [profile.primary_domain];
-    // Start with the highest-confidence intent, then expand one role at a time
-    // only while fewer than 20 validated jobs are available. This prevents an
-    // API's broad first page from filling the UI with merely adjacent roles.
+    // Expand the highest-confidence role titles in small parallel batches.
+    // Provider calls already run in parallel per title; batching avoids a long
+    // serial chain that can exceed a serverless request's execution window.
     const searches: Awaited<ReturnType<typeof searchJobs>>[] = [];
     const retrievedById = new Map<string, NormalizedJob>();
     let relevant = [] as ReturnType<typeof filterByResumeRelevance>;
     let queryIndex = 0;
     while (queryIndex < queries.length && relevant.length < 20) {
-      const query = queries[queryIndex++];
-      const search = await searchJobs(query, String(location), workPreference);
-      searches.push(search);
-      search.jobs.forEach((job) => retrievedById.set(job.id, job));
+      const batch = queries.slice(queryIndex, queryIndex + 3);
+      queryIndex += batch.length;
+      const outcomes = await Promise.all(batch.map(async (query) => {
+        try {
+          return { query, search: await searchJobs(query, String(location), workPreference) };
+        } catch (error) {
+          // A malformed response or transient provider error for one title
+          // must not cancel searches for the other candidate role titles.
+          console.error('[job-match] query-search-failed', {
+            query,
+            message: error instanceof Error ? error.message : 'unknown'
+          });
+          return { query, search: null };
+        }
+      }));
+      outcomes.forEach(({ search }) => {
+        if (!search) return;
+        searches.push(search);
+        search.jobs.forEach((job) => retrievedById.set(job.id, job));
+      });
       relevant = filterByResumeRelevance(profile, [...retrievedById.values()], String(location));
       console.info('[job-match] query-validation', {
-        query,
+        queries: batch,
         queryIndex,
         retrieved: retrievedById.size,
         validated: relevant.length,

@@ -4,6 +4,9 @@
   "functions": {
     "api/analyze-resume.ts": {
       "maxDuration": 300
+    },
+    "api/job-match.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [
