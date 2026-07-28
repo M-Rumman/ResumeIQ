@@ -5,10 +5,26 @@ import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
 import { planResumeRecommendations } from '../../api/_lib/recommendationPlanner.js';
 import { rankMissingSkills } from '../../api/_lib/missingSkillRanking.js';
 import { buildJobGapAnalysis, buildJobProfile, buildKeywordCompatibility, buildKeywordRecommendations, buildResumeEvidenceIndex, buildRoleStrengths, calculateAssessmentConfidence, calculateInterviewReadinessScore, calculateJobMatchScore, calculateJobSpecificAtsScore, validateAndEnrichParsedJob } from '../../api/_lib/openrouter.js';
+import { resumeRelevanceScore } from '../../api/_lib/jobMatch.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
 const tests: TestCase[] = [
+  {
+    name: 'matches technical skills containing regular-expression symbols without crashing',
+    run: () => {
+      const score = resumeRelevanceScore({
+        primary_domain: 'Computer Science', secondary_domains: [], career_level: 'Junior',
+        education: 'Bachelor of Science in Computer Science', major: 'Computer Science', experience_years: 0,
+        technical_skills: ['C++', 'C#', '.NET'], software_tools: [], industries: ['Technology'],
+        job_titles: ['Software Engineer'], keywords: ['C++', 'C#', '.NET'],
+      }, {
+        id: 'symbol-skills', source: 'adzuna', title: 'Software Engineer', company: 'Example', location: 'Remote',
+        remoteType: 'Remote', salary: '', description: 'Required: C++, C#, and .NET.', tags: [], applyUrl: '', employmentType: 'Full Time',
+      });
+      assert.equal(score >= 55, true);
+    },
+  },
   {
     name: 'detects LinkedIn from extracted PDF annotation text',
     run: () => {

@@ -118,7 +118,13 @@ export type JobValidationResult = {
 };
 const DOMAIN_TERMS = ['embedded', 'robotics', 'automation', 'firmware', 'hardware', 'pcb', 'electronics', 'electrical', 'mechanical', 'industrial', 'manufacturing', 'control systems', 'software', 'mechatronics', 'cybersecurity', 'finance', 'accounting', 'marketing', 'human resources', 'legal', 'healthcare', 'marine biology', 'construction', 'education'];
 const normalizeMatchText = (value: string) => value.toLowerCase().replace(/[^a-z0-9+#.]+/g, ' ').replace(/\s+/g, ' ').trim();
-const containsPhrase = (text: string, phrase: string) => new RegExp(`(?:^|\\s)${normalizeMatchText(phrase).replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(?:$|\\s)`, 'i').test(text);
+// Skills routinely contain regexp metacharacters (for example C++, C#, .NET).
+// Escape after normalization before using the value as a literal phrase.
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const containsPhrase = (text: string, phrase: string) => {
+  const normalizedPhrase = normalizeMatchText(phrase);
+  return Boolean(normalizedPhrase) && new RegExp(`(?:^|\\s)${escapeRegExp(normalizedPhrase)}(?:$|\\s)`, 'i').test(text);
+};
 const unique = <T>(items: T[]) => [...new Set(items)];
 
 const RELATED_DOMAIN_TERMS: Record<string, string[]> = {
