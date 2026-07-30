@@ -235,12 +235,21 @@ export function getSubscriptionExpiresAt(payload: LemonWebhookPayload): string |
 }
 
 type LemonApiResource = {
+  id?: string;
   attributes?: {
     user_email?: string | null;
     email?: string | null;
     urls?: {
       customer_portal?: string | null;
     };
+    status?: unknown;
+    customer_id?: unknown;
+    renews_at?: unknown;
+    ends_at?: unknown;
+    trial_ends_at?: unknown;
+    cancelled_at?: unknown;
+    pause?: unknown;
+    [key: string]: unknown;
   };
 };
 
@@ -300,6 +309,24 @@ async function lemonApiGet(path: string): Promise<LemonApiResponse> {
   }
 
   return json;
+}
+
+/** Fetches the current subscription directly from Lemon Squeezy's API. */
+export async function fetchLemonSubscription(subscriptionId: string): Promise<LemonWebhookPayload> {
+  const id = subscriptionId.trim();
+  if (!id) throw new Error('Cannot reconcile a subscription without an id.');
+
+  const json = await lemonApiGet(`subscriptions/${encodeURIComponent(id)}`);
+  const attributes = json.data?.attributes;
+  if (!attributes) throw new Error('Lemon Squeezy returned an invalid subscription response.');
+
+  return {
+    data: {
+      type: 'subscriptions',
+      id: json.data?.id || id,
+      attributes: attributes as Record<string, unknown>,
+    },
+  };
 }
 
 function extractCustomerPortalUrl(json: LemonApiResponse): string | null {

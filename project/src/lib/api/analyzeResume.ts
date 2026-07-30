@@ -26,7 +26,8 @@ export interface ParsedResume {
   certifications: string[];
 }
 
-export interface AiResumeAnalysis {
+export interface AiResumeAnalysisPremium {
+  tier: 'premium';
   parsed: ParsedResume;
   atsScore: number;
   matchScore: number;
@@ -102,6 +103,17 @@ export interface AiResumeAnalysis {
     confidence: 'High' | 'Medium' | 'Low';
   };
 }
+
+export interface AiResumeAnalysisFree {
+  tier: 'free';
+  parsed: ParsedResume;
+  atsScore: number;
+  detectedSections: string[];
+  missingSections: string[];
+  basicFeedback: string[];
+}
+
+export type AiResumeAnalysis = AiResumeAnalysisPremium | AiResumeAnalysisFree;
 
 export async function fetchAiResumeAnalysis(
   resumeText: string,

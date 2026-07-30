@@ -161,7 +161,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
                     <div className="space-y-3">
                       {proActive && expiryLabel && (
                         <p className="text-sm text-body text-center">
-                          Pro access until {expiryLabel}. You can resume or update billing below.
+                          Your subscription is cancelled and will expire on {expiryLabel}. You still have access to all Pro features.
                         </p>
                       )}
                       <button

@@ -1,5 +1,4 @@
 import { apiGet } from './api/client.js';
-import { isProPlan } from './usageLimits.js';
 
 export type BillingStatus = {
   plan: string;
@@ -14,32 +13,21 @@ export async function fetchBillingStatus(): Promise<BillingStatus> {
 }
 
 export function isSubscriptionExpired(expiresAt: string | null | undefined): boolean {
-  if (!expiresAt) return false;
+  if (typeof expiresAt !== 'string' || !expiresAt.trim()) return true;
   const expiresMs = new Date(expiresAt).getTime();
-  return !Number.isNaN(expiresMs) && expiresMs <= Date.now();
+  return !Number.isFinite(expiresMs) || expiresMs <= Date.now();
 }
 
 export function deriveIsPro(
   plan: string,
   subscriptionStatus: string,
-  isProFlag: boolean,
+  _isProFlag: boolean,
   expiresAt: string | null = null,
 ): boolean {
   const normalizedPlan = (plan || 'free').toLowerCase();
   const normalizedStatus = (subscriptionStatus || 'inactive').toLowerCase();
 
-  if (normalizedStatus === 'expired') return false;
-  if (isSubscriptionExpired(expiresAt)) return false;
-
-  if (isProFlag && normalizedPlan === 'pro') return true;
-
-  if (!isProPlan(normalizedPlan) && normalizedPlan !== 'pro') return false;
-
-  if (normalizedStatus === 'active' || normalizedStatus === 'trialing') return true;
-
-  if (normalizedStatus === 'cancelled' && expiresAt) {
-    return !isSubscriptionExpired(expiresAt);
-  }
-
-  return false;
+  return normalizedPlan === 'pro'
+    && normalizedStatus === 'active'
+    && !isSubscriptionExpired(expiresAt);
 }

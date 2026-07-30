@@ -15,17 +15,18 @@ import {
 import LogoMark from '../components/LogoMark';
 import { supabase } from '../lib/supabase.js';
 import { fetchAiResumeAnalysis } from '../lib/api/analyzeResume.js';
-import { ApiRequestError } from '../lib/api/client.js';
-import { mapAiResumeToDisplay, type ResumeDisplayResults } from '../lib/api/mapAiResults.js';
+import { ApiRequestError, apiPost } from '../lib/api/client.js';
+import {
+  mapAiResumeToDisplay,
+  type PremiumResumeDisplayResults,
+  type ResumeDisplayResults,
+} from '../lib/api/mapAiResults.js';
 import {
   checkFeatureAccess,
   FEATURE_TYPES,
 } from '../lib/usageLimits.js';
 import UpgradePrompt from '../components/UpgradePrompt';
 import ResumeFileUpload from '../components/ResumeFileUpload';
-import PaywallBlurGate from '../components/PaywallBlurGate';
-import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
-import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 import { canExportPdf } from '../lib/planAccess.js';
 import { FREE_DAILY_RESUME_LIMIT } from '../lib/planConfig.js';
 import { downloadResumeAnalysisPdf } from '../utils/exportReportPdf.js';
@@ -35,6 +36,7 @@ import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
 
 type AnalysisResults = ResumeDisplayResults;
+type PremiumResults = PremiumResumeDisplayResults;
 
 const STRONG_BULLET_ACTION_VERBS = new Set([
   'accelerated', 'achieved', 'analyzed', 'architected', 'assembled', 'automated', 'built',
@@ -129,7 +131,7 @@ function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) 
  * They identify the type of detail a candidate should add, without claiming an
  * unsupported tool, outcome, or metric exists in the source resume.
  */
-export function buildBulletTeachingGuide({ before, after }: AnalysisResults['bulletSuggestions'][number]) {
+export function buildBulletTeachingGuide({ before, after }: PremiumResults['bulletSuggestions'][number]) {
   const originalStartsStrong = STRONG_BULLET_ACTION_VERBS.has(firstWord(before));
   const rewrittenVerb = firstWord(after);
   const originalHasMetric = hasQuantification(before);
@@ -172,7 +174,7 @@ function technicalTermsIn(text: string) {
 
 /** Bullet-specific coaching derived from the validated source/rewrite pair only. */
 function buildDetailedBulletTeachingGuide(
-  { before, after }: AnalysisResults['bulletSuggestions'][number],
+  { before, after }: PremiumResults['bulletSuggestions'][number],
   targetKeywords: string[],
 ) {
   const beforeTerms = technicalTermsIn(before);
@@ -225,7 +227,7 @@ function BulletImprovementGuide({
   items,
   targetKeywords,
 }: {
-  items: AnalysisResults['bulletSuggestions'];
+  items: PremiumResults['bulletSuggestions'];
   targetKeywords: string[];
 }) {
   return (
@@ -307,8 +309,8 @@ function BulletImprovementGuide({
   );
 }
 
-function ResumeCoachingReport({ results }: { results: AnalysisResults }) {
-  const fallbackReport: AnalysisResults['engine']['coachingReport'] = [
+function ResumeCoachingReport({ results }: { results: PremiumResults }) {
+  const fallbackReport: PremiumResults['engine']['coachingReport'] = [
     {
       category: 'Job Alignment',
       recommendations: results.jobSpecificImprovements.map((item) => item.text).slice(0, 3),
@@ -317,7 +319,7 @@ function ResumeCoachingReport({ results }: { results: AnalysisResults }) {
       category: 'ATS Formatting',
       recommendations: results.generalResumeImprovements.map((item) => item.text).slice(0, 3),
     },
-  ].filter((section) => section.recommendations.length > 0) as AnalysisResults['engine']['coachingReport'];
+  ].filter((section) => section.recommendations.length > 0) as PremiumResults['engine']['coachingReport'];
   const sections = results.engine.coachingReport.length > 0
     ? results.engine.coachingReport
     : fallbackReport;
@@ -361,7 +363,7 @@ function ResumeCoachingReport({ results }: { results: AnalysisResults }) {
   );
 }
 
-export function AtsScoreExplanation({ explanation }: { explanation: AnalysisResults['engine']['atsScoreExplanation'] }) {
+export function AtsScoreExplanation({ explanation }: { explanation: PremiumResults['engine']['atsScoreExplanation'] }) {
   const hasDetails = explanation.whatIncreasedScore.length
     || explanation.whatReducedScore.length
     || explanation.topImprovements.length;
@@ -400,7 +402,7 @@ function AtsBreakdown({
   breakdown,
   overallScore,
 }: {
-  breakdown: AnalysisResults['engine']['atsBreakdown'];
+  breakdown: PremiumResults['engine']['atsBreakdown'];
   overallScore: number;
 }) {
   if (breakdown.length === 0) return null;
@@ -427,7 +429,7 @@ function AtsBreakdown({
   );
 }
 
-function JobMatchExplanation({ explanation }: { explanation: AnalysisResults['engine']['jobMatchExplanation'] }) {
+function JobMatchExplanation({ explanation }: { explanation: PremiumResults['engine']['jobMatchExplanation'] }) {
   const hasDetails = explanation.strongMatches.length || explanation.partialMatches.length || explanation.missingSkills.length;
   if (!hasDetails) return null;
 
@@ -455,7 +457,7 @@ function JobMatchExplanation({ explanation }: { explanation: AnalysisResults['en
   );
 }
 
-function KeywordCompatibilityCard({ compatibility }: { compatibility: AnalysisResults['engine']['keywordCompatibility'] }) {
+function KeywordCompatibilityCard({ compatibility }: { compatibility: PremiumResults['engine']['keywordCompatibility'] }) {
   const groups = [
     { title: 'Strong Match', icon: '✓', items: compatibility.strongMatches, className: 'border-emerald-100 bg-emerald-50 text-emerald-900', iconClassName: 'text-emerald-700' },
     { title: 'Partial Match', icon: '~', items: compatibility.partialMatches, className: 'border-amber-100 bg-amber-50 text-amber-900', iconClassName: 'text-amber-700' },
@@ -502,7 +504,7 @@ function KeywordCompatibilityCard({ compatibility }: { compatibility: AnalysisRe
   );
 }
 
-function EducationAlignmentCard({ items }: { items: AnalysisResults['engine']['educationAlignment'] }) {
+function EducationAlignmentCard({ items }: { items: PremiumResults['engine']['educationAlignment'] }) {
   if (items.length === 0) return null;
   const statusStyle = {
     'Direct Match': 'border-emerald-100 bg-emerald-50 text-emerald-900',
@@ -528,7 +530,7 @@ function EducationAlignmentCard({ items }: { items: AnalysisResults['engine']['e
   );
 }
 
-function KeywordRecommendations({ recommendations }: { recommendations: AnalysisResults['keywordRecommendations'] }) {
+function KeywordRecommendations({ recommendations }: { recommendations: PremiumResults['keywordRecommendations'] }) {
   if (recommendations.length === 0) return null;
   const priorities = ['Critical', 'Important', 'Nice-to-Have'] as const;
   const priorityStyle = {
@@ -567,7 +569,7 @@ function KeywordRecommendations({ recommendations }: { recommendations: Analysis
   );
 }
 
-function HiringManagerAssessmentCard({ assessment }: { assessment: AnalysisResults['engine']['hiringManagerAssessment'] }) {
+function HiringManagerAssessmentCard({ assessment }: { assessment: PremiumResults['engine']['hiringManagerAssessment'] }) {
   const decisionStyle = {
     'Strong Match': 'bg-emerald-100 text-emerald-800',
     'Good Match': 'bg-green-100 text-green-800',
@@ -618,7 +620,7 @@ function HiringManagerAssessmentCard({ assessment }: { assessment: AnalysisResul
   );
 }
 
-function StrengthsMatchingRoleCard({ strengths }: { strengths: AnalysisResults['engine']['roleStrengths'] }) {
+function StrengthsMatchingRoleCard({ strengths }: { strengths: PremiumResults['engine']['roleStrengths'] }) {
   if (strengths.length === 0) return null;
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
@@ -639,7 +641,7 @@ function StrengthsMatchingRoleCard({ strengths }: { strengths: AnalysisResults['
 }
 
 /** Final, API-backed verdict shown after every analysis section. */
-function OverallAssessmentCard({ results }: { results: AnalysisResults }) {
+function OverallAssessmentCard({ results }: { results: PremiumResults }) {
   const readiness = Math.max(0, Math.min(100, Math.round(results.engine.hiringManagerAssessment.estimatedInterviewProbability)));
   const explanation = readiness >= 75
     ? 'Your resume demonstrates strong alignment with this position. Addressing the remaining role-specific gaps could further improve your competitiveness.'
@@ -742,19 +744,13 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   const [exportingPdf, setExportingPdf] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
 
-  const {
-    unlocked: reportUnlocked,
-    userId,
-    isPro,
-    refresh: refreshPaywallAccess,
-  } = usePaywallAccess(reportId);
+  const { userId, isPro } = usePaywallAccess(reportId);
 
   const paywallCheckout = usePaywallCheckout({
     userId,
     reportId,
   });
 
-  const hasFullAccess = !PAYMENTS_ENABLED || reportUnlocked;
   const canExport = canExportPdf(isPro || usageInfo.isPro);
 
   async function refreshUsageStatus() {
@@ -835,14 +831,18 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
       return;
     }
 
-    const strengths = analysisResults.improvements
-      .filter((i) => i.type === 'success')
-      .map((i) => i.text)
-      .join('\n');
-    const improvements = analysisResults.improvements
-      .filter((i) => i.type !== 'success')
-      .map((i) => `- ${i.text}`)
-      .join('\n');
+    const strengths = analysisResults.tier === 'premium'
+      ? analysisResults.improvements
+        .filter((i) => i.type === 'success')
+        .map((i) => i.text)
+        .join('\n')
+      : analysisResults.basicFeedback.join('\n');
+    const improvements = analysisResults.tier === 'premium'
+      ? analysisResults.improvements
+        .filter((i) => i.type !== 'success')
+        .map((i) => `- ${i.text}`)
+        .join('\n')
+      : analysisResults.basicFeedback.map((item) => `- ${item}`).join('\n');
 
     const { data: inserted, error: insertError } = await supabase
       .from('resume_analysis')
@@ -869,7 +869,6 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     setResults(analysisResults);
     setSaveSuccess(true);
     await refreshUsageStatus();
-    await refreshPaywallAccess();
     setTimeout(() => {
       document.getElementById('results-section')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
@@ -986,14 +985,17 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
                 <h2 className="font-extrabold text-gray-900 text-xl px-4 whitespace-nowrap">Analysis Results</h2>
                 <div className="h-px flex-1 bg-gray-200" />
               </div>
-              {canExport ? (
+              {results.tier === 'premium' && canExport && reportId ? (
                 <button
                   type="button"
                   disabled={exportingPdf}
                   onClick={async () => {
                     setExportingPdf(true);
                     try {
+                      await apiPost('/api/export-resume-report', { reportId });
                       await downloadResumeAnalysisPdf(results);
+                    } catch (error) {
+                      setSaveError(error instanceof Error ? error.message : 'PDF export is temporarily unavailable.');
                     } finally {
                       setExportingPdf(false);
                     }
@@ -1021,44 +1023,23 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
               </p>
             )}
 
-            {PAYMENTS_ENABLED && !hasFullAccess && (
-              <p className="text-center text-xs text-primary">
-                Premium sections are locked. Unlock this report for $2 or upgrade to Pro for $5/month.
-              </p>
-            )}
-
             {paywallCheckout.error && (
               <p className="text-center text-sm text-red-600 font-medium">{paywallCheckout.error}</p>
             )}
-
-            {!PAYMENTS_ENABLED ? (
-              <div className="space-y-8">
+            {results.tier === 'premium' ? (
+              <>
                 <ResumeResultsBody results={results} />
-                <PaywallCheckoutPreview onPricingSoon={() => onNavigate('pricing')} />
-              </div>
+                <OverallAssessmentCard results={results} />
+              </>
             ) : (
               <>
-                <div id="paywall-free-preview" className="space-y-8">
-                  <ResumeResultsPreview results={results} />
-                </div>
-                <div className="space-y-8">
-                  {hasFullAccess || !reportId ? (
-                    <ResumeResultsPremium results={results} />
-                  ) : (
-                    <PaywallBlurGate
-                      unlocked={false}
-                      previewPercent={0}
-                      reportId={reportId}
-                      onUnlockReport={paywallCheckout.unlockReport}
-                      onSubscribePro={paywallCheckout.subscribePro}
-                    >
-                      <ResumeResultsPremium results={results} />
-                    </PaywallBlurGate>
-                  )}
-                </div>
+                <ResumeResultsFree results={results} />
+                <PremiumUpgradeCard
+                  onUnlock={() => paywallCheckout.unlockReport()}
+                  onUpgrade={() => paywallCheckout.subscribePro()}
+                />
               </>
             )}
-            <OverallAssessmentCard results={results} />
           </div>
         )}
       </div>
@@ -1074,7 +1055,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   );
 }
 
-function ResumeResultsBody({ results }: { results: AnalysisResults }) {
+function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }) {
   return (
     <>
             <div className="grid sm:grid-cols-2 gap-6">
@@ -1170,56 +1151,48 @@ function ResumeResultsBody({ results }: { results: AnalysisResults }) {
   );
 }
 
-function ResumeResultsPreview({ results }: { results: AnalysisResults }) {
+function ResumeResultsFree({ results }: { results: Extract<AnalysisResults, { tier: 'free' }> }) {
   return (
-    <>
-      <div className="grid sm:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-[#3c4a59]" />
-              <h3 className="font-bold text-gray-900">ATS Compatibility</h3>
-            </div>
-            <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
-          </div>
-          <ProgressBar value={results.atsScore} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
-          <AtsBreakdown breakdown={results.engine.atsBreakdown} overallScore={results.atsScore} />
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Target className="w-5 h-5 text-[#3c4a59]" />
+          <h3 className="font-bold text-gray-900">Basic ATS Feedback</h3>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-bold text-gray-900">Job Match Score</h3>
-            </div>
-            <span className="text-3xl font-extrabold text-emerald-600">{results.matchScore}%</span>
-          </div>
-          <ProgressBar value={results.matchScore} color="bg-gradient-to-r from-emerald-500 to-emerald-600" />
-          <JobMatchExplanation explanation={results.engine.jobMatchExplanation} />
+        <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
+      </div>
+      <ProgressBar value={results.atsScore} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Detected sections</p>
+          <p className="text-sm text-gray-800">{results.detectedSections.join(', ') || 'None detected'}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Missing sections</p>
+          <p className="text-sm text-gray-800">{results.missingSections.join(', ') || 'None identified'}</p>
         </div>
       </div>
-      <KeywordCompatibilityCard compatibility={results.engine.keywordCompatibility} />
-      <EducationAlignmentCard items={results.engine.educationAlignment} />
-      <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
-      <StrengthsMatchingRoleCard strengths={results.engine.roleStrengths} />
-    </>
+      {results.basicFeedback.length > 0 && (
+        <ul className="mt-5 space-y-2 text-sm text-gray-800">
+          {results.basicFeedback.map((item) => <li key={item}>• {item}</li>)}
+        </ul>
+      )}
+    </section>
   );
 }
 
-function ResumeResultsPremium({ results }: { results: AnalysisResults }) {
+function PremiumUpgradeCard({ onUnlock, onUpgrade }: { onUnlock: () => void; onUpgrade: () => void }) {
   return (
-    <>
-      <KeywordRecommendations recommendations={results.keywordRecommendations} />
-
-      <ResumeCoachingReport results={results} />
-
-      <BulletImprovementGuide
-        items={results.bulletSuggestions}
-        targetKeywords={[
-          ...results.engine.keywordCompatibility.strongMatches,
-          ...results.engine.keywordCompatibility.partialMatches,
-          ...results.engine.keywordCompatibility.missing,
-        ]}
-      />
-    </>
+    <section className="rounded-2xl border border-[#d7e2f0] bg-white p-6 text-center shadow-sm">
+      <Lock className="mx-auto h-6 w-6 text-[#3c4a59]" />
+      <h3 className="mt-3 text-lg font-extrabold text-gray-900">Unlock your complete resume report</h3>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-gray-700">
+        Full job match, hiring manager assessment, missing skills, role-specific improvements, bullet rewrites, and PDF export are available with a report unlock or ResuV Pro.
+      </p>
+      <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+        <button type="button" className="btn-primary" onClick={onUnlock}>Unlock Report — $2</button>
+        <button type="button" className="btn-ghost" onClick={onUpgrade}>Upgrade to Pro</button>
+      </div>
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUserFromRequest } from '../_lib/auth.js';
-import { getProfileBilling, profileHasProAccess } from '../_lib/billing.js';
+import { getReconciledProfileBilling, profileHasProAccess } from '../_lib/billing.js';
 import { applyBillingRateLimit } from '../_lib/billingRateLimit.js';
 import { CLIENT_ERRORS, logApiError, respondError } from '../_lib/safeError.js';
 
@@ -19,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const billing = await getProfileBilling(user.id);
+    const billing = await getReconciledProfileBilling(user.id);
     return res.status(200).json({
       plan: billing.plan,
       subscription_status: billing.subscription_status,

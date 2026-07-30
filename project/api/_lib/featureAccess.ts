@@ -1,4 +1,4 @@
-import { getProfileBilling, profileHasProAccess } from './billing.js';
+import { getReconciledProfileBilling, profileHasProAccess } from './billing.js';
 import { isPaymentsEnabled } from './payments.js';
 import {
   reserveDailyUsage,
@@ -18,7 +18,7 @@ export async function verifyAiFeatureAccess(
   userId: string,
   featureType: FeatureType,
 ): Promise<AiFeatureAccessResult> {
-  const billing = await getProfileBilling(userId);
+  const billing = await getReconciledProfileBilling(userId);
   const hasPro = profileHasProAccess(billing);
 
   if (!isPaymentsEnabled()) {

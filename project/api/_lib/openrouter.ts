@@ -117,6 +117,7 @@ export interface ParsedResume {
 }
 
 export interface AiResumeAnalysisFull {
+  tier: 'premium';
   parsed: ParsedResume;
   atsScore: number;
   matchScore: number;
@@ -651,6 +652,15 @@ function toParserResumeInput(resume: StructuredResume) {
       projectUnderstanding: resume.understanding.projectUnderstanding,
     },
   };
+}
+
+export interface AiResumeAnalysisFree {
+  tier: 'free';
+  parsed: ParsedResume;
+  atsScore: number;
+  detectedSections: string[];
+  missingSections: string[];
+  basicFeedback: string[];
 }
 
 export type GapStatus = 'MATCHED' | 'PARTIALLY MATCHED' | 'MISSING' | 'NOT APPLICABLE';
@@ -2635,6 +2645,7 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
     : [];
 
   const result: AiResumeAnalysisFull = {
+    tier: 'premium',
     parsed: {
       name: String(parsed.name || ''),
       email: String(parsed.email || ''),
@@ -2902,8 +2913,8 @@ function recommendationOutputCount(value: Record<string, any>): number {
 export async function analyzeResumeWithAi(
   resumeText: string,
   jobDescription: string,
-  options: { observability?: AiObservabilityContext } = {},
-): Promise<AiResumeAnalysisFull> {
+  options: { observability?: AiObservabilityContext; includePremium?: boolean } = {},
+): Promise<AiResumeAnalysisFull | AiResumeAnalysisFree> {
   const observability = options.observability;
   logAiEvent(observability, 'pipeline_started', {
     resume: textMetadata(resumeText),
@@ -2977,6 +2988,39 @@ export async function analyzeResumeWithAi(
       }, {}),
     },
   });
+
+  // Free users receive a deterministic ATS/structure preview only. Do not run
+  // the analyzer, bullet rewriter, validation, or recommendation planner here:
+  // those stages produce the paid report and must never enter a free response.
+  if (!options.includePremium) {
+    const detectedSections = [
+      parsedJson.resume.summary && 'Summary',
+      parsedJson.resume.experience.length > 0 && 'Experience',
+      parsedJson.resume.projects.length > 0 && 'Projects',
+      parsedJson.resume.skills.length > 0 && 'Skills',
+      parsedJson.resume.education.length > 0 && 'Education',
+      parsedJson.resume.certifications.length > 0 && 'Certifications',
+    ].filter((section): section is string => Boolean(section));
+    const expectedSections = ['Summary', 'Experience', 'Projects', 'Skills', 'Education'];
+    const missingSections = expectedSections.filter((section) => !detectedSections.includes(section));
+    const basicFeedback = [
+      ...missingSections.slice(0, 3).map((section) => `Add a clearly labeled ${section} section to improve resume structure.`),
+      ...atsBreakdown.structure.reasons.slice(0, 2),
+    ].filter(Boolean).slice(0, 3);
+
+    logAiEvent(observability, 'free_preview_completed', {
+      totalDurationMs: observability ? Date.now() - observability.startedAt : null,
+      premiumStagesSkipped: true,
+    });
+    return {
+      tier: 'free',
+      parsed: parsedJson.resume,
+      atsScore: atsBreakdown.total,
+      detectedSections,
+      missingSections,
+      basicFeedback,
+    };
+  }
 
   // Step 2 & 3: Run Analyzer and Rewriter in Parallel
   // Strip contact and links from the rewriter/analyzer inputs to prevent leakage
@@ -3104,6 +3148,7 @@ export async function analyzeResumeWithAi(
 
   // Combine and validate final structure
   const combinedRaw = {
+    tier: 'premium' as const,
     parsed: parsedJson.resume,
     atsScore: atsBreakdown.total,
     matchScore: jobMatchBreakdown.total,

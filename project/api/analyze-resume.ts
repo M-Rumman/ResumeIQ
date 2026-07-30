@@ -14,6 +14,7 @@ import {
 } from './_lib/dailyUsage.js';
 import { enforceAiRateLimit } from './_lib/rateLimit.js';
 import { verifyAiFeatureAccess } from './_lib/featureAccess.js';
+import { getReconciledProfileBilling } from './_lib/billing.js';
 import { BODY_LIMITS, INPUT_LIMITS, rejectOversizedBody } from './_lib/requestLimits.js';
 import { CLIENT_ERRORS, respondError } from './_lib/safeError.js';
 
@@ -43,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string };
+  const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string; reportId?: string };
   const resumeText = (body.resumeText || '').trim().slice(0, INPUT_LIMITS.RESUME_TEXT_MAX);
   const jobDescription = (body.jobDescription || body.jobRole || '')
     .trim()
@@ -72,8 +73,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return respondError(res, access.status, access.message);
   }
 
+  const requestedReportId = typeof body.reportId === 'string' ? body.reportId.trim() : '';
+  const billing = await getReconciledProfileBilling(user.id);
+  const unlockedReports = Array.isArray(billing.unlocked_reports)
+    ? billing.unlocked_reports.filter((reportId): reportId is string => typeof reportId === 'string')
+    : [];
+  const hasReportUnlock = requestedReportId.length > 0 && unlockedReports.includes(requestedReportId);
+  const includePremium = access.hasPro || hasReportUnlock;
+
   try {
-    const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability });
+    const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability, includePremium });
     await recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
     logAiEvent(observability, 'request_completed', {
       status: 200,

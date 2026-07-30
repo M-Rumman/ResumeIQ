@@ -24,13 +24,15 @@ export default function PaymentSuccessPage({ onNavigate }: PaymentSuccessPagePro
             plan: string;
             subscription_status: string;
             is_pro: boolean;
+            subscription_expires_at?: string | null;
           }>('/api/billing/sync', {});
 
           const isActive =
-            result.plan?.toLowerCase() === 'pro' ||
-            result.subscription_status?.toLowerCase() === 'active' ||
-            result.subscription_status?.toLowerCase() === 'trialing' ||
-            result.is_pro;
+            result.plan?.toLowerCase() === 'pro'
+            && result.subscription_status?.toLowerCase() === 'active'
+            && typeof result.subscription_expires_at === 'string'
+            && Number.isFinite(new Date(result.subscription_expires_at).getTime())
+            && new Date(result.subscription_expires_at).getTime() > Date.now();
 
           if (isActive) {
             if (!cancelled) {
