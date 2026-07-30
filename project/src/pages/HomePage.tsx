@@ -312,15 +312,20 @@ export default function HomePage({ onNavigate }: HomePageProps) {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           {PAYMENTS_ENABLED ? (
             <ScrollReveal className="glass-card p-8 lg:p-10 text-center flex flex-col items-center gap-4">
-              <p className="section-label">ResuV Pro</p>
+              <p className="section-label">Free Forever Plan</p>
               <h2 className="text-3xl lg:text-4xl text-primary">
-                Unlimited analyses, exports, and full history
+                Start with generous daily AI access
               </h2>
               <p className={`text-base leading-relaxed max-w-lg ${proActive ? 'text-gray-900 font-medium' : 'text-primary'}`}>
                 {proActive
                   ? 'Your Pro subscription is active — unlimited resume optimization and interview prep.'
                   : `Upgrade to Pro for ${PRO_SUBSCRIPTION.priceDisplay}${PRO_SUBSCRIPTION.period} — unlimited resume optimization and interview prep.`}
               </p>
+              {!proActive && (
+                <p className="text-sm text-primary">
+                  Free Forever includes 2 Resume Analyses every day and 2 Interview Prep sessions every day.
+                </p>
+              )}
               {checkout.error && (
                 <p className="text-sm text-red-600 font-medium">{checkout.error}</p>
               )}

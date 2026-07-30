@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { LayoutDashboard, RefreshCw } from 'lucide-react';
 import LogoMark from '../components/LogoMark';
 import UserSubscriptionSummary from '../components/UserSubscriptionSummary';
+import DailyUsageSummary from '../components/DailyUsageSummary';
 import ResumeAnalysisHistory from '../components/ResumeAnalysisHistory';
 import InterviewPrepHistory from '../components/InterviewPrepHistory';
 import DashboardAnalytics from '../components/DashboardAnalytics';
@@ -86,6 +87,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             <h2 className="text-lg font-bold text-gray-900">Subscription</h2>
           </div>
           <UserSubscriptionSummary refreshKey={refreshKey} />
+          <DailyUsageSummary refreshKey={refreshKey} />
         </section>
 
         {!planLoading && (

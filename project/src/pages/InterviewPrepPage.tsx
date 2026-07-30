@@ -13,6 +13,7 @@ import { ApiRequestError } from '../lib/api/client.js';
 import { buildReportId } from '../lib/monetizationConfig.js';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
+import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
 import { fetchAiInterviewPrep } from '../lib/api/interviewPrepApi.js';
 import { mapAiInterviewToDisplayWithContext } from '../lib/api/mapInterviewAi.js';
 import {
@@ -125,6 +126,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
+  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
   const [usageInfo, setUsageInfo] = useState({
     used: 0,
     limit: FREE_DAILY_INTERVIEW_LIMIT,
@@ -200,7 +202,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     }
     if (!access.allowed) {
       setLoading(false);
-      setSaveError("You've reached today's free interview preparation limit. Your limit resets tomorrow or upgrade to Pro for unlimited interview preparation.");
+      setShowDailyLimitModal(true);
       return;
     }
 
@@ -217,7 +219,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 429 && /today's free interview preparation limit/i.test(error.message)) {
         setLoading(false);
-        setSaveError(error.message);
+        setShowDailyLimitModal(true);
         await refreshUsageStatus();
         return;
       }
@@ -456,6 +458,14 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
           </div>
         )}
       </div>
+      {showDailyLimitModal && (
+        <DailyUsageLimitModal
+          featureLabel="Interview Prep"
+          onUpgrade={() => paywallCheckout.subscribePro()}
+          onUnlockReport={() => onNavigate('pricing')}
+          onDismiss={() => setShowDailyLimitModal(false)}
+        />
+      )}
     </div>
   );
 }

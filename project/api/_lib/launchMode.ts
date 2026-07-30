@@ -1,7 +1,7 @@
 /**
- * Server-side counterpart to VITE_FREE_LAUNCH_MODE. Defaults to true so a
- * checkout can never be enabled accidentally. Lemon Squeezy configuration,
- * webhooks, variants, and billing records remain untouched.
+ * Server-side counterpart to VITE_FREE_LAUNCH_MODE. Paid access is the normal
+ * default. Lemon Squeezy configuration, webhooks, variants, and billing
+ * records remain untouched while the optional launch mode is enabled.
  */
 export function isFreeLaunchMode(): boolean {
   // VITE_FREE_LAUNCH_MODE is deliberately not secret and is also available to
@@ -9,7 +9,7 @@ export function isFreeLaunchMode(): boolean {
   const value = (process.env.FREE_LAUNCH_MODE ?? process.env.VITE_FREE_LAUNCH_MODE)
     ?.trim()
     .toLowerCase();
-  return value !== 'false' && value !== '0';
+  return value === 'true' || value === '1';
 }
 
 export const FREE_LAUNCH_CHECKOUT_MESSAGE =

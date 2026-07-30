@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, X, ArrowRight, Loader2 } from 'lucide-react';
 import LogoMark from '../components/LogoMark';
 import ManageSubscriptionButton from '../components/ManageSubscriptionButton';
-import { PRICING_PLANS } from '../lib/planConfig.js';
+import { PRICING_PLANS, REPORT_UNLOCK_PLAN } from '../lib/planConfig.js';
 import type { PlanFeature, PricingPlan } from '../lib/planConfig.js';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 import { ONE_TIME_UNLOCK, PRO_SUBSCRIPTION } from '../lib/monetizationConfig.js';
@@ -51,12 +51,14 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
     new Date(subscriptionExpiresAt!).getTime() > Date.now();
   const expiryLabel = cancelledGrace ? formatSubscriptionExpiry(subscriptionExpiresAt) : null;
 
-  const plans = PRICING_PLANS.map((plan) => ({
+  const plans = [PRICING_PLANS[0], REPORT_UNLOCK_PLAN, PRICING_PLANS[1]].map((plan) => ({
     ...plan,
     ctaAction:
       plan.id === 'free'
         ? () => onNavigate('analyzer')
-        : () => checkout.subscribePro(),
+        : plan.id === 'report-unlock'
+          ? () => onNavigate('analyzer')
+          : () => checkout.subscribePro(),
   }));
 
   return (
@@ -89,7 +91,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
           <p className="text-center text-sm text-red-600 font-medium mb-6">{checkout.error}</p>
         )}
 
-        <div className="grid md:grid-cols-2 gap-8">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-8">
           {plans.map((plan: PricingPlan & { ctaAction: () => void }) => (
             <div
               key={plan.name}
@@ -138,6 +140,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
 
                 {(() => {
                   const isProCard = plan.id === 'pro';
+                  const isUnlockCard = plan.id === 'report-unlock';
                   const proActive = isProCard && isPro && Boolean(userId);
                   const buttonDisabled =
                     proActive ||
@@ -180,6 +183,11 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
                         {buttonLabel}
                         {!proActive && <ArrowRight className="w-4 h-4" />}
                       </button>
+                      {isUnlockCard && PAYMENTS_ENABLED && (
+                        <p className="text-center text-xs text-body">
+                          Run an analysis first, then unlock that specific report securely.
+                        </p>
+                      )}
                       {proActive && showManageSubscription && (
                         <ManageSubscriptionButton />
                       )}

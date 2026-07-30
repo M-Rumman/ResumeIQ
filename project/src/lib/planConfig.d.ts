@@ -20,6 +20,7 @@ export const FREE_DAILY_INTERVIEW_LIMIT: number;
 export const FREE_HISTORY_LIMIT: number;
 export const FREE_INTERVIEW_QUESTIONS_PER_CATEGORY: number;
 export const PRICING_PLANS: PricingPlan[];
+export const REPORT_UNLOCK_PLAN: PricingPlan;
 export const HOME_PRICING_PREVIEW: {
   free: PlanFeature[];
   pro: PlanFeature[];

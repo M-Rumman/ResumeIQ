@@ -32,6 +32,7 @@ import { downloadResumeAnalysisPdf } from '../utils/exportReportPdf.js';
 import { buildReportId } from '../lib/monetizationConfig.js';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
+import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
 
 type AnalysisResults = ResumeDisplayResults;
 
@@ -731,6 +732,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
+  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
   const [usageInfo, setUsageInfo] = useState({
     used: 0,
     limit: FREE_DAILY_RESUME_LIMIT,
@@ -805,7 +807,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     }
     if (!access.allowed) {
       setAnalyzing(false);
-      setSaveError("You've reached today's free resume analysis limit. Your limit resets tomorrow or you can upgrade to Pro for unlimited analyses.");
+      setShowDailyLimitModal(true);
       return;
     }
 
@@ -823,6 +825,11 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
       analysisResults = mapAiResumeToDisplay(ai) as AnalysisResults;
     } catch (error) {
       setAnalyzing(false);
+      if (error instanceof ApiRequestError && error.status === 429 && /today's free resume analysis limit/i.test(error.message)) {
+        setShowDailyLimitModal(true);
+        await refreshUsageStatus();
+        return;
+      }
       setSaveError(analysisErrorMessage(error));
       await refreshUsageStatus();
       return;
@@ -1055,6 +1062,14 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
           </div>
         )}
       </div>
+      {showDailyLimitModal && (
+        <DailyUsageLimitModal
+          featureLabel="Resume Analysis"
+          onUpgrade={() => paywallCheckout.subscribePro()}
+          onUnlockReport={() => onNavigate('pricing')}
+          onDismiss={() => setShowDailyLimitModal(false)}
+        />
+      )}
     </div>
   );
 }

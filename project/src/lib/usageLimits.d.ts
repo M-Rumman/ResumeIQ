@@ -22,4 +22,12 @@ export function getUserPlan(
   userId: string,
 ): Promise<{ plan: string; isPro: boolean; error: string | null }>;
 
+export function getDailyUsageCounters(
+  userId: string,
+): Promise<{
+  resumeAnalysisCountToday: number;
+  interviewPrepCountToday: number;
+  error: string | null;
+}>;
+
 export function isProPlan(plan: string | null | undefined): boolean;
