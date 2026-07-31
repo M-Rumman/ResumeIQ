@@ -18,48 +18,44 @@ function getLimitForFeature(featureType: FeatureType): number {
 }
 
 /**
- * Resets stale counters and reserves one free request atomically. Reserving
- * before the model call prevents concurrent requests from exceeding the cap.
+ * Read-only preflight. It never reserves or increments a daily allowance.
  */
-export async function reserveDailyUsage(
+export async function checkDailyUsage(
   userId: string,
   featureType: FeatureType,
-): Promise<{ allowed: boolean; used: number; limit: number; reserved: boolean; resetDate: string | null }> {
+): Promise<{ allowed: boolean; used: number; limit: number }> {
   const limit = getLimitForFeature(featureType);
 
   const admin = getSupabaseAdmin();
-  const { data, error } = await admin.rpc('consume_free_ai_usage', {
+  const { data, error } = await admin.from('profiles')
+    .select('resume_analysis_count_today, interview_prep_count_today, last_usage_reset_date')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    console.error('[dailyUsage] preflight check failed', error.message);
+    return { allowed: false, used: limit, limit };
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const used = data?.last_usage_reset_date === today
+    ? Number(featureType === FEATURE_TYPES.RESUME_ANALYSIS ? data.resume_analysis_count_today : data.interview_prep_count_today) || 0
+    : 0;
+  return { allowed: used < limit, used, limit };
+}
+
+/** Atomically increments only after a complete successful operation. */
+export async function commitSuccessfulDailyUsage(userId: string, featureType: FeatureType): Promise<{ committed: boolean; used: number; limit: number }> {
+  const limit = getLimitForFeature(featureType);
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc('complete_free_ai_usage', {
     p_user_id: userId,
     p_feature_type: featureType,
   });
   const row = Array.isArray(data) ? data[0] : data;
   if (error || !row || typeof row.allowed !== 'boolean') {
-    console.error('[dailyUsage] reservation failed', error?.message || 'invalid RPC response');
-    // Fail closed: a quota-store outage must not silently grant unlimited use.
-    return { allowed: false, used: limit, limit, reserved: false, resetDate: null };
+    console.error('[dailyUsage] completion commit failed', error?.message || 'invalid RPC response');
+    return { committed: false, used: limit, limit };
   }
-
-  return {
-    allowed: row.allowed,
-    used: typeof row.used === 'number' ? row.used : limit,
-    limit: typeof row.daily_limit === 'number' ? row.daily_limit : limit,
-    reserved: row.allowed,
-    resetDate: typeof row.reset_date === 'string' ? row.reset_date : null,
-  };
-}
-
-/** Returns a reserved slot after an AI pipeline failure. */
-export async function releaseDailyUsage(userId: string, featureType: FeatureType, resetDate: string | null): Promise<void> {
-  if (!resetDate) return;
-  const admin = getSupabaseAdmin();
-  const { error } = await admin.rpc('release_free_ai_usage', {
-    p_user_id: userId,
-    p_feature_type: featureType,
-    p_usage_date: resetDate,
-  });
-  if (error) {
-    console.error('[dailyUsage] release failed', error.message);
-  }
+  return { committed: row.allowed, used: typeof row.used === 'number' ? row.used : limit, limit: typeof row.daily_limit === 'number' ? row.daily_limit : limit };
 }
 
 /** Retain request events for observability; profile counters are authoritative. */

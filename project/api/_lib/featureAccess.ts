@@ -1,13 +1,9 @@
 import { getReconciledProfileBilling, profileHasProAccess } from './billing.js';
 import { isPaymentsEnabled } from './payments.js';
-import {
-  reserveDailyUsage,
-  dailyLimitMessage,
-  type FeatureType,
-} from './dailyUsage.js';
+import { checkDailyUsage, dailyLimitMessage, type FeatureType } from './dailyUsage.js';
 
 export type AiFeatureAccessResult =
-  | { allowed: true; hasPro: boolean; dailyUsageReserved: boolean; dailyUsageResetDate: string | null }
+  | { allowed: true; hasPro: boolean }
   | { allowed: false; hasPro: boolean; status: 403 | 429; message: string };
 
 /**
@@ -22,14 +18,14 @@ export async function verifyAiFeatureAccess(
   const hasPro = profileHasProAccess(billing);
 
   if (!isPaymentsEnabled()) {
-    return { allowed: true, hasPro: false, dailyUsageReserved: false, dailyUsageResetDate: null };
+    return { allowed: true, hasPro: false };
   }
 
   if (hasPro) {
-    return { allowed: true, hasPro: true, dailyUsageReserved: false, dailyUsageResetDate: null };
+    return { allowed: true, hasPro: true };
   }
 
-  const daily = await reserveDailyUsage(userId, featureType);
+  const daily = await checkDailyUsage(userId, featureType);
   if (!daily.allowed) {
     return {
       allowed: false,
@@ -39,5 +35,5 @@ export async function verifyAiFeatureAccess(
     };
   }
 
-  return { allowed: true, hasPro: false, dailyUsageReserved: daily.reserved, dailyUsageResetDate: daily.resetDate };
+  return { allowed: true, hasPro: false };
 }

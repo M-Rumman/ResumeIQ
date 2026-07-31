@@ -9,7 +9,7 @@ import {
 } from './_lib/aiObservability.js';
 import {
   FEATURE_TYPES,
-  releaseDailyUsage,
+  commitSuccessfulDailyUsage,
   recordDailyUsage,
 } from './_lib/dailyUsage.js';
 import { enforceAiRateLimit } from './_lib/rateLimit.js';
@@ -83,6 +83,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability, includePremium });
+    if (!access.hasPro) {
+      if (req.aborted || res.writableEnded) return;
+      const usage = await commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
+      if (!usage.committed) {
+        return respondError(res, 429, "You've reached today's free resume analysis limit. Your limit resets tomorrow or you can upgrade to Pro for unlimited analyses.");
+      }
+    }
     await recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
     logAiEvent(observability, 'request_completed', {
       status: 200,
@@ -90,9 +97,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     return res.status(200).json(result);
   } catch (err) {
-    if (access.dailyUsageReserved) {
-      await releaseDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS, access.dailyUsageResetDate);
-    }
     if (err instanceof AiPipelineError) {
       logAiEvent(observability, 'request_failed', {
         status: 502,

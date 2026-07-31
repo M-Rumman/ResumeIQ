@@ -3,7 +3,7 @@ import { getUserFromRequest } from './_lib/auth.js';
 import { generateInterviewPrepWithAi } from './_lib/openrouter.js';
 import {
   FEATURE_TYPES,
-  releaseDailyUsage,
+  commitSuccessfulDailyUsage,
   recordDailyUsage,
 } from './_lib/dailyUsage.js';
 import { enforceAiRateLimit } from './_lib/rateLimit.js';
@@ -54,12 +54,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const result = await generateInterviewPrepWithAi(jobRole, experienceLevel, skills);
+    if (!access.hasPro) {
+      if (req.aborted || res.writableEnded) return;
+      const usage = await commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
+      if (!usage.committed) {
+        return respondError(res, 429, "You've reached today's free interview preparation limit. Your limit resets tomorrow or upgrade to Pro for unlimited interview preparation.");
+      }
+    }
     await recordDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
     return res.status(200).json(result);
   } catch (err) {
-    if (access.dailyUsageReserved) {
-      await releaseDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP, access.dailyUsageResetDate);
-    }
     logApiError('interview-prep', err);
     return respondError(res, 502, CLIENT_ERRORS.INTERVIEW_PREP);
   }
