@@ -17,6 +17,11 @@ import { verifyAiFeatureAccess } from './_lib/featureAccess.js';
 import { getReconciledProfileBilling } from './_lib/billing.js';
 import { BODY_LIMITS, INPUT_LIMITS, rejectOversizedBody } from './_lib/requestLimits.js';
 import { CLIENT_ERRORS, respondError } from './_lib/safeError.js';
+import {
+  deleteResumeAnalysisRecord,
+  insertResumeAnalysisRecord,
+  persistAiResultAndCommitUsage,
+} from './_lib/aiPersistence.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -83,19 +88,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability, includePremium });
-    if (!access.hasPro) {
-      if (req.aborted || res.writableEnded) return;
-      const usage = await commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
-      if (!usage.committed) {
+
+    const strengths = result.tier === 'premium'
+      ? result.improvements
+        .filter((item) => item.type === 'success')
+        .map((item) => item.text)
+        .join('\n')
+      : result.basicFeedback.join('\n');
+    const improvements = result.tier === 'premium'
+      ? result.improvements
+        .filter((item) => item.type !== 'success')
+        .map((item) => `- ${item.text}`)
+        .join('\n')
+      : result.basicFeedback.map((item) => `- ${item}`).join('\n');
+
+    let reportId: string | null = null;
+    try {
+      const persisted = await persistAiResultAndCommitUsage({
+        userId: user.id,
+        featureType: FEATURE_TYPES.RESUME_ANALYSIS,
+        shouldConsumeUsage: !access.hasPro,
+        insertRecord: () => insertResumeAnalysisRecord(user.id, {
+          atsScore: result.atsScore,
+          strengths: strengths || 'AI analysis completed.',
+          improvements: improvements || '- See full report in app.',
+        }),
+        deleteRecord: deleteResumeAnalysisRecord,
+        commitUsage: () => commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS),
+        buildReportId: (recordId) => `resume_analysis:${recordId}`,
+      });
+      reportId = persisted.reportId;
+    } catch (error) {
+      if (error instanceof Error && /limit reached/i.test(error.message)) {
         return respondError(res, 429, "You've reached today's free resume analysis limit. Your limit resets tomorrow or you can upgrade to Pro for unlimited analyses.");
       }
+      throw error;
     }
-    await recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
+
+    if (!access.hasPro) {
+      await recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
+    }
     logAiEvent(observability, 'request_completed', {
       status: 200,
       totalDurationMs: Date.now() - observability.startedAt,
     });
-    return res.status(200).json(result);
+    return res.status(200).json({
+      ...result,
+      reportId,
+    });
   } catch (err) {
     if (err instanceof AiPipelineError) {
       logAiEvent(observability, 'request_failed', {

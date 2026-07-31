@@ -10,7 +10,6 @@ import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 import { FREE_DAILY_INTERVIEW_LIMIT } from '../lib/planConfig.js';
 import { ApiRequestError } from '../lib/api/client.js';
-import { buildReportId } from '../lib/monetizationConfig.js';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
@@ -107,10 +106,6 @@ function AccordionItem({
       )}
     </div>
   );
-}
-
-function serializeStarTips(tips: string[]) {
-  return tips.map((tip) => `- ${tip}`).join('\n');
 }
 
 interface InterviewPrepPageProps {
@@ -229,28 +224,10 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
       return;
     }
 
-    const { data: inserted, error: insertError } = await supabase
-      .from('interview_prep')
-      .insert({
-        user_id: user.id,
-        job_role: jobRole.trim(),
-        hr_questions: JSON.stringify(prepResults.hr),
-        technical_questions: JSON.stringify(prepResults.technical),
-        behavioral_questions: JSON.stringify(prepResults.behavioral),
-        star_tips: serializeStarTips(prepResults.starTips),
-      })
-      .select('id')
-      .single();
-
     setLoading(false);
 
-    if (insertError) {
-      setSaveError('Questions generated but could not be saved. Please try again.');
-      return;
-    }
-
-    if (inserted?.id) {
-      setReportId(buildReportId('interview_prep', inserted.id));
+    if (typeof (prepResults as { reportId?: string | null }).reportId === 'string' && (prepResults as { reportId?: string | null }).reportId) {
+      setReportId((prepResults as { reportId?: string | null }).reportId ?? null);
     }
 
     setResults(prepResults);

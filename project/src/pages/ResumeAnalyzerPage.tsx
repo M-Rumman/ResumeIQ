@@ -30,7 +30,6 @@ import ResumeFileUpload from '../components/ResumeFileUpload';
 import { canExportPdf } from '../lib/planAccess.js';
 import { FREE_DAILY_RESUME_LIMIT } from '../lib/planConfig.js';
 import { downloadResumeAnalysisPdf } from '../utils/exportReportPdf.js';
-import { buildReportId } from '../lib/monetizationConfig.js';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
@@ -831,39 +830,10 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
       return;
     }
 
-    const strengths = analysisResults.tier === 'premium'
-      ? analysisResults.improvements
-        .filter((i) => i.type === 'success')
-        .map((i) => i.text)
-        .join('\n')
-      : analysisResults.basicFeedback.join('\n');
-    const improvements = analysisResults.tier === 'premium'
-      ? analysisResults.improvements
-        .filter((i) => i.type !== 'success')
-        .map((i) => `- ${i.text}`)
-        .join('\n')
-      : analysisResults.basicFeedback.map((item) => `- ${item}`).join('\n');
-
-    const { data: inserted, error: insertError } = await supabase
-      .from('resume_analysis')
-      .insert({
-        user_id: user.id,
-        ats_score: analysisResults.atsScore,
-        strengths: strengths || 'AI analysis completed.',
-        improvements: improvements || '- See full report in app.',
-      })
-      .select('id')
-      .single();
-
     setAnalyzing(false);
 
-    if (insertError) {
-      setSaveError('Analysis completed but could not be saved. Please try again.');
-      return;
-    }
-
-    if (inserted?.id) {
-      setReportId(buildReportId('resume_analysis', inserted.id));
+    if (typeof (analysisResults as { reportId?: string | null }).reportId === 'string' && (analysisResults as { reportId?: string | null }).reportId) {
+      setReportId((analysisResults as { reportId?: string | null }).reportId ?? null);
     }
 
     setResults(analysisResults);

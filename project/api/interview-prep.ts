@@ -10,6 +10,11 @@ import { enforceAiRateLimit } from './_lib/rateLimit.js';
 import { verifyAiFeatureAccess } from './_lib/featureAccess.js';
 import { BODY_LIMITS, INPUT_LIMITS, rejectOversizedBody } from './_lib/requestLimits.js';
 import { CLIENT_ERRORS, logApiError, respondError } from './_lib/safeError.js';
+import {
+  deleteInterviewPrepRecord,
+  insertInterviewPrepRecord,
+  persistAiResultAndCommitUsage,
+} from './_lib/aiPersistence.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -54,15 +59,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const result = await generateInterviewPrepWithAi(jobRole, experienceLevel, skills);
-    if (!access.hasPro) {
-      if (req.aborted || res.writableEnded) return;
-      const usage = await commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
-      if (!usage.committed) {
+    let reportId: string | null = null;
+    try {
+      const persisted = await persistAiResultAndCommitUsage({
+        userId: user.id,
+        featureType: FEATURE_TYPES.INTERVIEW_PREP,
+        shouldConsumeUsage: !access.hasPro,
+        insertRecord: () => insertInterviewPrepRecord(user.id, {
+          jobRole: jobRole.trim(),
+          hrQuestions: JSON.stringify(result.hrQuestions ?? []),
+          technicalQuestions: JSON.stringify(result.technicalQuestions ?? []),
+          behavioralQuestions: JSON.stringify(result.behavioralQuestions ?? []),
+          starTips: (result.preparationRoadmap ?? []).join('\n'),
+        }),
+        deleteRecord: deleteInterviewPrepRecord,
+        commitUsage: () => commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP),
+        buildReportId: (recordId) => `interview_prep:${recordId}`,
+      });
+      reportId = persisted.reportId;
+    } catch (error) {
+      if (error instanceof Error && /limit reached/i.test(error.message)) {
         return respondError(res, 429, "You've reached today's free interview preparation limit. Your limit resets tomorrow or upgrade to Pro for unlimited interview preparation.");
       }
+      throw error;
     }
-    await recordDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
-    return res.status(200).json(result);
+
+    if (!access.hasPro) {
+      await recordDailyUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
+    }
+    return res.status(200).json({
+      ...result,
+      reportId,
+    });
   } catch (err) {
     logApiError('interview-prep', err);
     return respondError(res, 502, CLIENT_ERRORS.INTERVIEW_PREP);
