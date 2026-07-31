@@ -143,7 +143,9 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     reportId,
   });
 
-  const hasFullAccess = !PAYMENTS_ENABLED || reportUnlocked;
+  // A newly generated report should render in full immediately; the daily free
+  // allowance is not a preview-only experience.
+  const hasFullAccess = !PAYMENTS_ENABLED || reportUnlocked || Boolean(reportId);
 
   async function refreshUsageStatus() {
     const {

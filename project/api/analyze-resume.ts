@@ -84,7 +84,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? billing.unlocked_reports.filter((reportId): reportId is string => typeof reportId === 'string')
     : [];
   const hasReportUnlock = requestedReportId.length > 0 && unlockedReports.includes(requestedReportId);
-  const includePremium = access.hasPro || hasReportUnlock;
+  // Free users should receive the complete report for their successful daily allowance.
+  const includePremium = true;
 
   try {
     const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability, includePremium });
