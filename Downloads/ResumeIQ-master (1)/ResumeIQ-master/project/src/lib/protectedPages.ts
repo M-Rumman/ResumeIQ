@@ -1,4 +1,4 @@
-export const PROTECTED_PAGES = ['analyzer', 'interview', 'interview-prep', 'dashboard'] as const;
+export const PROTECTED_PAGES = ['analyzer', 'interview', 'interview-prep', 'dashboard', 'job-match'] as const;
 
 export type ProtectedPage = (typeof PROTECTED_PAGES)[number];
 

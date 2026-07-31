@@ -8,6 +8,8 @@ import HomePage from './pages/HomePage';
 import ResumeAnalyzerPage from './pages/ResumeAnalyzerPage';
 import InterviewPrepPage from './pages/InterviewPrepPage';
 import DashboardPage from './pages/DashboardPage';
+import JobMatchPage from './pages/JobMatchPage';
+import JobMatchUnderDevelopment from './components/JobMatchUnderDevelopment';
 import PricingPage from './pages/PricingPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
@@ -25,7 +27,10 @@ import ResumeKeywordOptimizerLandingPage from './pages/ResumeKeywordOptimizerLan
 import ResumeScoreCheckerLandingPage from './pages/ResumeScoreCheckerLandingPage';
 import ResumeFeedbackLandingPage from './pages/ResumeFeedbackLandingPage';
 import InterviewPrepLandingPage from './pages/InterviewPrepLandingPage';
+import BlogPage from './pages/BlogPage';
+import BlogArticlePage from './pages/BlogArticlePage';
 import CheckoutResume from './components/CheckoutResume';
+import LaunchOfferBanner from './components/LaunchOfferBanner';
 import { supabase } from './lib/supabase.js';
 import { handleSupabaseAuthCallback } from './lib/authCallback.js';
 import { isEmailVerified } from './lib/emailVerification.js';
@@ -35,6 +40,7 @@ import { useScrollReveal } from './hooks/useScrollReveal';
 import { pathToPage, pageToPath, type RoutablePage } from './lib/routes';
 import { BillingProvider } from './context/BillingContext';
 import { usePageSeo } from './hooks/usePageSeo';
+import { FREE_LAUNCH_MODE } from './lib/launchConfig.js';
 
 type Page = RoutablePage | 'payment-success';
 
@@ -55,12 +61,18 @@ function resolveInitialPage(): Page {
   return 'home';
 }
 
+function blogSlugFromPath(pathname: string): string | null {
+  const match = pathname.replace(/\/+$/, '').match(/^\/blog\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>(resolveInitialPage);
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authRedirect, setAuthRedirect] = useState<Page | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [blogSlug, setBlogSlug] = useState<string | null>(() => blogSlugFromPath(window.location.pathname));
 
   useScrollReveal([currentPage]);
   usePageSeo(currentPage);
@@ -175,7 +187,10 @@ export default function App() {
   useEffect(() => {
     function onPopState() {
       const page = pathToPage(window.location.pathname);
-      if (page) setCurrentPage(page);
+      if (page) {
+        setCurrentPage(page);
+        setBlogSlug(page === 'blog' ? blogSlugFromPath(window.location.pathname) : null);
+      }
     }
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -193,6 +208,16 @@ export default function App() {
   }
 
   function navigate(page: string) {
+    if (page === 'blog' || page.startsWith('blog/')) {
+      const slug = page.startsWith('blog/') ? page.slice('blog/'.length) : null;
+      setAuthRedirect(null);
+      setBlogSlug(slug);
+      setCurrentPage('blog');
+      const path = slug ? `/blog/${encodeURIComponent(slug)}` : '/blog';
+      if (window.location.pathname !== path) window.history.pushState({}, '', path);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     const target = page as Page;
 
     if (isProtectedPage(target) && !verifiedSession) {
@@ -244,6 +269,11 @@ export default function App() {
         onLogout={handleLogout}
       />
       <main className="flex-1">
+        {FREE_LAUNCH_MODE && ['home', 'analyzer', 'interview', 'interview-prep', 'pricing'].includes(currentPage) && (
+          <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+            <LaunchOfferBanner onViewPricing={() => navigate('pricing')} />
+          </div>
+        )}
         {authNotice && (
           <div className="max-w-3xl mx-auto px-4 pt-4">
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -267,6 +297,15 @@ export default function App() {
             <DashboardPage onNavigate={navigate} />
           </ProtectedRoute>
         )}
+        {currentPage === 'job-match' && (
+          <ProtectedRoute session={verifiedSession} authLoading={authLoading} onNavigate={navigate}>
+            {import.meta.env.PROD ? (
+              <JobMatchUnderDevelopment onReturnToDashboard={() => navigate('dashboard')} />
+            ) : (
+              <JobMatchPage />
+            )}
+          </ProtectedRoute>
+        )}
         {currentPage === 'pricing' && <PricingPage onNavigate={navigate} />}
         {currentPage === 'resume-analyzer' && (
           <ResumeAnalyzerLandingPage onNavigate={navigate} />
@@ -282,6 +321,10 @@ export default function App() {
         )}
         {currentPage === 'ai-interview-preparation' && (
           <InterviewPrepLandingPage onNavigate={navigate} />
+        )}
+        {currentPage === 'blog' && (blogSlug
+          ? <BlogArticlePage slug={blogSlug} onBack={() => navigate('blog')} onNavigate={navigate} />
+          : <BlogPage onOpenArticle={(slug) => navigate(`blog/${slug}`)} />
         )}
         {currentPage === 'about' && <AboutPage />}
         {currentPage === 'contact' && <ContactPage />}

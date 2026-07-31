@@ -10,7 +10,7 @@ const SUPPORT_EMAIL = 'resuvhome@gmail.com';
 const SEO_SITE_URL = 'https://resuv.app';
 const SEO_SITE_NAME = 'ResuV';
 const SEO_LOGO_URL = `${SEO_SITE_URL}/favicon.svg`;
-const SEO_OG_IMAGE_URL = `${SEO_SITE_URL}/og-image.png`;
+const SEO_OG_IMAGE_URL = `${SEO_SITE_URL}/why-resuv-resume.png`;
 const SEO_DEFAULT_DESCRIPTION =
   'Optimize your resume with AI. Improve ATS compatibility, increase interview chances, receive personalized resume feedback and prepare for interviews.';
 

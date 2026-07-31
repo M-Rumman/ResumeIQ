@@ -4,18 +4,30 @@ type RecommendationValue = string | { text?: unknown; confidence?: unknown };
 
 const RECOMMENDATION_FIELDS = [
   'atsIssues',
+  'improvementSuggestions',
   'formattingIssues',
   'formattingSuggestions',
-  'improvementSuggestions',
   'optimizationRecommendations',
 ] as const;
+
+const NON_EVIDENCE_WORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'your', 'into', 'onto', 'about', 'within', 'using',
+]);
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function words(value: string): Set<string> {
-  return new Set(normalize(value).split(' ').filter((word) => word.length > 2));
+  return new Set(
+    normalize(value).split(' ').filter((word) => word.length > 2 && !NON_EVIDENCE_WORDS.has(word)),
+  );
+}
+
+function evidenceWord(word: string): string {
+  if (word.length > 4 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
+  if (word.length > 4 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
+  return word;
 }
 
 function textOf(value: RecommendationValue): string {
@@ -36,7 +48,10 @@ function semanticallySimilar(left: string, right: string): boolean {
 function confidenceFor(value: string, resumeText: string): Confidence {
   const resumeWords = words(resumeText);
   const recommendationWords = words(value);
-  const overlap = [...recommendationWords].filter((word) => resumeWords.has(word)).length;
+  const resumeEvidenceWords = new Set([...resumeWords].map(evidenceWord));
+  const overlap = [...recommendationWords].filter(
+    (word) => resumeWords.has(word) || resumeEvidenceWords.has(evidenceWord(word)),
+  ).length;
   if (overlap >= 2 || /\b\d+(?:\.\d+)?%?\b/.test(value)) return 'High';
   if (overlap === 1) return 'Medium';
   return 'Low';
@@ -70,13 +85,120 @@ function dedupeKeywords(output: Record<string, any>): void {
   }
 }
 
+type RecommendationPriorityGroups = {
+  critical: string[];
+  important: string[];
+  optional: string[];
+};
+
+function addPriorityItem(
+  groups: RecommendationPriorityGroups,
+  priority: keyof RecommendationPriorityGroups,
+  value: unknown,
+): void {
+  const text = textOf(value as RecommendationValue);
+  if (!text) return;
+  const allItems = [...groups.critical, ...groups.important, ...groups.optional];
+  if (allItems.some((existing) => semanticallySimilar(text, existing))) return;
+  groups[priority].push(text);
+}
+
+/**
+ * Creates an additive, API-safe priority view from already validated and
+ * deduplicated output. Flat legacy fields remain unchanged for the current UI.
+ */
+function prioritizeRecommendations(output: Record<string, any>): RecommendationPriorityGroups {
+  const groups: RecommendationPriorityGroups = { critical: [], important: [], optional: [] };
+  const addAll = (priority: keyof RecommendationPriorityGroups, values: unknown) => {
+    if (!Array.isArray(values)) return;
+    for (const value of values) addPriorityItem(groups, priority, value);
+  };
+
+  // Critical: failed ATS/required-skill checks and resume content that blocks
+  // a recruiter from evaluating work experience clearly.
+  addAll('critical', output.atsIssues);
+  addAll('critical', (Array.isArray(output.missingRequiredSkills) ? output.missingRequiredSkills : [])
+    .map((skill: unknown) => typeof skill === 'string' ? `Missing required job skill: ${skill}` : ''));
+  addAll('critical', (Array.isArray(output.weakBullets) ? output.weakBullets : [])
+    .map((bullet: unknown) => typeof bullet === 'string' ? `Weak bullet: ${bullet}` : ''));
+  addAll('critical', (Array.isArray(output.formattingIssues) ? output.formattingIssues : [])
+    .filter((issue: unknown) => /\b(experience|employment|work history|date|chronolog)/i.test(textOf(issue as RecommendationValue))));
+  addAll('critical', (Array.isArray(output.missingSections) ? output.missingSections : [])
+    .filter((section: unknown) => /^(experience|work experience|professional experience)$/i.test(String(section || '')))
+    .map((section: unknown) => `Missing resume section: ${section}`));
+
+  // Important: job alignment and substantive changes to the candidate's
+  // summary, projects, skills, and overall section organization.
+  addAll('important', output.improvementSuggestions);
+  addAll('important', output.missingKeywords);
+  addAll('important', output.keywordSuggestions);
+  addAll('important', output.keywordGaps);
+  addAll('important', output.missingSkills);
+  addAll('important', (Array.isArray(output.formattingIssues) ? output.formattingIssues : [])
+    .filter((issue: unknown) => !/\b(experience|employment|work history|date|chronolog)/i.test(textOf(issue as RecommendationValue))));
+  addAll('important', (Array.isArray(output.missingSections) ? output.missingSections : [])
+    .filter((section: unknown) => !/^(experience|work experience|professional experience)$/i.test(String(section || '')))
+    .map((section: unknown) => `Missing resume section: ${section}`));
+
+  // Optional: polish after substantive alignment issues have been addressed.
+  addAll('optional', output.formattingSuggestions);
+  addAll('optional', output.optimizationRecommendations);
+
+  return groups;
+}
+
 /**
  * Plans one resume recommendation per observation across ATS, format, and improvement sections.
  * Weak bullets are reserved for the bullet-rewrite section whenever a rewrite exists.
  */
-export function planResumeRecommendations(raw: Record<string, any>, resumeText: string): Record<string, any> {
+export function planResumeRecommendations(
+  raw: Record<string, any>,
+  resumeText: string,
+  gapAnalysis?: { items?: { skill?: unknown; status?: unknown; evidence?: unknown; requirementType?: unknown }[] },
+  jobTitle = 'target role',
+): Record<string, any> {
   const output = { ...raw };
   const seen: string[] = [];
+
+  // The deterministic gap stage is the source of truth for required skills
+  // absent from the resume. Retain the existing field/API shape while making
+  // those gaps available to every downstream recommendation decision.
+  const missingFromGap = Array.isArray(gapAnalysis?.items)
+    ? gapAnalysis.items
+      .filter((item) => item?.requirementType !== 'education' && item?.status === 'MISSING' && typeof item.skill === 'string')
+      .map((item) => String(item.skill).trim())
+      .filter(Boolean)
+    : [];
+  output.missingRequiredSkills = [
+    ...(Array.isArray(output.missingRequiredSkills) ? output.missingRequiredSkills : []),
+    ...missingFromGap,
+  ];
+
+  // Deterministic gaps always lead the job-specific list. This makes an
+  // interview blocker impossible to bury behind generic wording or format
+  // polish; model observations remain afterward and are semantically deduped.
+  if (Array.isArray(gapAnalysis?.items)) {
+    const gapRecommendations = [...gapAnalysis.items]
+      .sort((left, right) => {
+        const rank = (status: unknown) => status === 'MISSING' ? 0 : status === 'PARTIALLY MATCHED' ? 1 : 2;
+        return rank(left?.status) - rank(right?.status);
+      })
+      .flatMap((item) => {
+      const skill = typeof item?.skill === 'string' ? item.skill.trim() : '';
+      const evidence = Array.isArray(item?.evidence)
+        ? item.evidence.filter((value): value is string => typeof value === 'string' && Boolean(value.trim())).slice(0, 2)
+        : [];
+      if (!skill || item?.requirementType === 'education' || item?.status === 'NOT APPLICABLE' || item?.status === 'MATCHED') return [];
+      if (item?.status === 'PARTIALLY MATCHED') {
+        return [`The ${jobTitle} role requires ${skill}. Your resume shows related evidence in ${evidence.join('; ') || 'the Skills, Experience, or Projects sections'}, but does not explicitly demonstrate ${skill}, so a recruiter cannot confirm this required capability.`];
+      }
+      return [`The ${jobTitle} role requires ${skill}. Your Skills, Experience, and Projects sections do not provide evidence of ${skill}, leaving a recruiter unable to verify this required capability; add only genuine coursework, project work, or practical exposure.`];
+    });
+    output.improvementSuggestions = [
+      ...gapRecommendations,
+      ...(Array.isArray(output.improvementSuggestions) ? output.improvementSuggestions : []),
+    ];
+  }
 
   for (const field of RECOMMENDATION_FIELDS) {
     output[field] = retainUniqueRecommendations(output[field], seen, resumeText);
@@ -97,6 +219,7 @@ export function planResumeRecommendations(raw: Record<string, any>, resumeText: 
   );
 
   dedupeKeywords(output);
+  output.recommendationPriorities = prioritizeRecommendations(output);
   return output;
 }
 

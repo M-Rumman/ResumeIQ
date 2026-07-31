@@ -1,10 +1,23 @@
 import { containsPhoneNumber } from './resumeParser.js';
 
-type RewritePair = { before?: unknown; after?: unknown };
+type RewritePair = { before?: unknown; after?: unknown; confidence?: unknown };
+export type ValidationTelemetry = {
+  acceptedRecommendations: number;
+  rejectedRecommendations: number;
+  rejectionReasons: Record<string, number>;
+};
+
+type HiringManagerAssessmentInput = {
+  recruiterSummary?: unknown;
+  topReasonsToInterview?: unknown;
+  topReasonsForRejection?: unknown;
+  biggestImprovements?: unknown;
+};
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
 const URL_PATTERN = /(?:https?:\/\/|www\.)\S+/i;
 const METRIC_PATTERN = /\b\d+(?:\.\d+)?%?\b/g;
+const UNSUPPORTED_METRIC_PLACEHOLDER = /\[\s*x\s*\]\s*(?:%|users?|components?|requests?)/i;
 const COMMON_CAPITALIZED_WORDS = new Set([
   'A', 'An', 'And', 'At', 'By', 'Created', 'Delivered', 'Designed', 'Developed', 'For', 'In', 'Implemented',
   'Led', 'Managed', 'On', 'Optimized', 'The', 'To', 'With', 'Using', 'Built', 'Improved', 'Reduced',
@@ -17,6 +30,9 @@ const KEYWORD_FRAGMENT_PATTERNS = [
   /^(?:currently pursuing|understanding of|responsible for|ability to|knowledge of|familiar with)\b/i,
   /^(?:worked|working|developed|developing|implemented|implementing|managed|managing|used|using)\b/i,
 ];
+const MISSING_SKILL_ACTION_PATTERN = /\b(?:add|mention|include|highlight|emphasize|demonstrate|show|address)\b/i;
+const TECHNICAL_REQUIREMENT_SIGNAL = /\b(?:api|architecture|automation|cad|circuit|cloud|database|design|development|docker|embedded|firmware|framework|hardware|integration|kubernetes|library|microcontroller|platform|programming|protocol|security|simulation|software|testing|tool|validation)\b|\b(?:aws|azure|gcp|react|angular|vue|node|python|java|typescript|javascript|c\+\+|c#|sql|stm32|esp32|arduino|ros|ltspice|proteus)\b|[+#\d]/i;
+const GENERIC_JOB_WORDS = new Set(['about', 'and', 'candidate', 'company', 'description', 'experience', 'for', 'from', 'have', 'job', 'role', 'skills', 'the', 'this', 'with', 'work', 'your']);
 
 function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -43,6 +59,48 @@ function hasInventedNamedTerm(value: string, resumeText: string): boolean {
   return terms.some((term) => !COMMON_CAPITALIZED_WORDS.has(term) && !source.includes(term.toLowerCase()));
 }
 
+function normalizeForPhraseMatch(value: string): string {
+  return ` ${normalize(value).replace(/[^a-z0-9+#]+/g, ' ')} `;
+}
+
+function candidateMissingJobRequirement(
+  recommendation: string,
+  resumeText: string,
+  jobDescription: string,
+): boolean {
+  if (!jobDescription || !MISSING_SKILL_ACTION_PATTERN.test(recommendation)) return false;
+
+  const job = normalizeForPhraseMatch(jobDescription);
+  const resume = normalizeForPhraseMatch(resumeText);
+  const clauses = recommendation
+    .split(/[.!?;]|\b(?:to|for|in|on|with)\s+(?:your|the|a|an)\b/i)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+
+  for (const clause of clauses) {
+    const action = clause.match(/\b(?:add|mention|include|highlight|emphasize|demonstrate|show|address)\s+(.+)/i);
+    if (!action) continue;
+
+    const candidate = action[1]
+      .replace(/^(?:experience|skills?|knowledge|proficiency)\s+(?:with|in)\s+/i, '')
+      .replace(/\s+to\s+(?:(?:your|the)\s+)?(?:skills?|resume|experience|profile)\b.*$/i, '')
+      .replace(/\s+(?:within|under)\s+(?:your|the)\b.*$/i, '')
+      .trim();
+    const candidates = candidate.split(/\s*(?:,|\/|\band\b)\s*/i).filter(Boolean);
+    if (!candidates.length) continue;
+
+    const everyCandidateIsMissingRequirement = candidates.every((item) => {
+      const words = item.match(/[A-Za-z0-9+#]+/g) || [];
+      if (words.length === 0 || words.length > 4 || !TECHNICAL_REQUIREMENT_SIGNAL.test(item)) return false;
+      const phrase = normalizeForPhraseMatch(item);
+      return job.includes(phrase) && !resume.includes(phrase);
+    });
+    if (everyCandidateIsMissingRequirement) return true;
+  }
+
+  return false;
+}
+
 function isSemanticDuplicate(value: string, existing: string): boolean {
   const words = (text: string) => new Set(
     (text.toLowerCase().match(/[a-z0-9]+/g) || []).filter((word) => word.length > 2),
@@ -63,13 +121,38 @@ function recommendationText(value: unknown): string {
 }
 
 /** A recommendation must have meaningful lexical evidence in the submitted resume. */
-function isGroundedRecommendation(value: string, resumeText: string): boolean {
-  if (!value || hasSensitiveContent(value) || hasInventedMetric(value, resumeText) || hasInventedNamedTerm(value, resumeText)) {
+function isGroundedRecommendation(value: string, resumeText: string, jobDescription: string): boolean {
+  const missingJobRequirement = candidateMissingJobRequirement(value, resumeText, jobDescription);
+  if (!value || hasSensitiveContent(value) || hasInventedMetric(value, resumeText)) {
     return false;
   }
+  if (hasInventedNamedTerm(value, resumeText) && !missingJobRequirement) return false;
+  if (missingJobRequirement) return true;
   const source = sourceWords(resumeText);
   const terms = (value.toLowerCase().match(/[a-z0-9]+/g) || []).filter((word) => word.length >= 3);
   return terms.some((word) => source.has(word));
+}
+
+/** Formatting/polish advice must still explain why it matters for this job. */
+function isJobSpecificFormattingRecommendation(value: string, resumeText: string, jobDescription: string): boolean {
+  if (candidateMissingJobRequirement(value, resumeText, jobDescription)) return true;
+  const recommendationTerms = new Set((value.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 3));
+  const jobTerms = new Set((jobDescription.toLowerCase().match(/[a-z0-9+#]+/g) || [])
+    .filter((word) => word.length >= 3 && !GENERIC_JOB_WORDS.has(word)));
+  const resumeTerms = sourceWords(resumeText);
+  const mentionsJobEvidence = [...recommendationTerms].some((word) => jobTerms.has(word));
+  const mentionsResumeEvidence = [...recommendationTerms].some((word) => resumeTerms.has(word))
+    || /\b(?:summary|experience|projects?|skills?|education|certifications?|section|bullet)\b/i.test(value);
+  return mentionsJobEvidence && mentionsResumeEvidence;
+}
+
+function recommendationRejectionReason(value: string, resumeText: string, jobDescription: string): string {
+  if (!value) return 'empty';
+  if (hasSensitiveContent(value)) return 'sensitive_content';
+  if (hasInventedMetric(value, resumeText)) return 'invented_metric';
+  const missingJobRequirement = candidateMissingJobRequirement(value, resumeText, jobDescription);
+  if (hasInventedNamedTerm(value, resumeText) && !missingJobRequirement) return 'unsupported_named_term';
+  return 'insufficient_resume_evidence';
 }
 
 function validateKeyword(value: unknown): string | null {
@@ -94,20 +177,131 @@ function deduplicateKeywords(values: unknown): string[] {
   }, []);
 }
 
-function validateRecommendationGroups(output: Record<string, any>, resumeText: string): void {
-  const fields = ['atsIssues', 'formattingIssues', 'formattingSuggestions', 'improvementSuggestions', 'optimizationRecommendations'];
+function validateRecommendationGroups(
+  output: Record<string, any>,
+  resumeText: string,
+  jobDescription: string,
+  telemetry?: ValidationTelemetry,
+): void {
+  const fields = ['atsIssues', 'improvementSuggestions', 'formattingIssues', 'formattingSuggestions', 'optimizationRecommendations'];
+  const formattingFields = new Set(['formattingIssues', 'formattingSuggestions', 'optimizationRecommendations']);
   const accepted: string[] = [];
 
   for (const field of fields) {
     const values = Array.isArray(output[field]) ? output[field] : [];
     output[field] = values.filter((value: unknown) => {
       const text = recommendationText(value);
-      if (!isGroundedRecommendation(text, resumeText)) return false;
-      if (accepted.some((existing) => isSemanticDuplicate(text, existing))) return false;
+      if (!isGroundedRecommendation(text, resumeText, jobDescription)) {
+        if (telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          const reason = recommendationRejectionReason(text, resumeText, jobDescription);
+          telemetry.rejectionReasons[reason] = (telemetry.rejectionReasons[reason] || 0) + 1;
+        }
+        return false;
+      }
+      if (formattingFields.has(field) && !isJobSpecificFormattingRecommendation(text, resumeText, jobDescription)) {
+        if (telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          telemetry.rejectionReasons.not_job_specific = (telemetry.rejectionReasons.not_job_specific || 0) + 1;
+        }
+        return false;
+      }
+      if (accepted.some((existing) => isSemanticDuplicate(text, existing))) {
+        if (telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          telemetry.rejectionReasons.duplicate = (telemetry.rejectionReasons.duplicate || 0) + 1;
+        }
+        return false;
+      }
       accepted.push(text);
+      if (telemetry) telemetry.acceptedRecommendations += 1;
       return true;
     });
   }
+}
+
+const COACHING_REPORT_CATEGORIES = new Set([
+  'Summary', 'Experience', 'Projects', 'Skills', 'Education', 'ATS Formatting',
+  'Keyword Usage', 'Technical Depth', 'Action Verbs', 'Quantification',
+  'Missing Evidence', 'Job Alignment',
+]);
+
+/** Validates the categorized coaching report with the same evidence rules as all recommendations. */
+function validateCoachingReport(
+  output: Record<string, any>,
+  resumeText: string,
+  jobDescription: string,
+  telemetry?: ValidationTelemetry,
+): void {
+  const seen = new Set<string>();
+  const sections = Array.isArray(output.coachingReport) ? output.coachingReport : [];
+  output.coachingReport = sections.flatMap((section: unknown) => {
+    if (!section || typeof section !== 'object') return [];
+    const candidate = section as Record<string, unknown>;
+    const category = typeof candidate.category === 'string' ? candidate.category.trim() : '';
+    if (!COACHING_REPORT_CATEGORIES.has(category)) return [];
+    const recommendations = (Array.isArray(candidate.recommendations) ? candidate.recommendations : [])
+      .filter((value: unknown) => {
+        const text = recommendationText(value);
+        const key = normalize(text);
+        const valid = isGroundedRecommendation(text, resumeText, jobDescription)
+          && isJobSpecificFormattingRecommendation(text, resumeText, jobDescription)
+          && !seen.has(key);
+        if (!valid && telemetry) {
+          telemetry.rejectedRecommendations += 1;
+          const reason = seen.has(key) ? 'duplicate' : recommendationRejectionReason(text, resumeText, jobDescription);
+          telemetry.rejectionReasons[reason] = (telemetry.rejectionReasons[reason] || 0) + 1;
+        }
+        if (valid) {
+          seen.add(key);
+          if (telemetry) telemetry.acceptedRecommendations += 1;
+        }
+        return valid;
+      })
+      .slice(0, 3);
+    return recommendations.length ? [{ category, recommendations }] : [];
+  });
+}
+
+/** Assessment claims may cite either resume evidence or a documented job requirement. */
+function isGroundedAssessmentStatement(value: string, resumeText: string, jobDescription: string): boolean {
+  if (!value || hasSensitiveContent(value) || hasInventedMetric(value, resumeText)) return false;
+  if (hasInventedNamedTerm(value, `${resumeText}\n${jobDescription}`)) return false;
+  const terms = (value.toLowerCase().match(/[a-z0-9]+/g) || []).filter((word) => word.length >= 3);
+  const resumeTerms = sourceWords(resumeText);
+  const jobTerms = sourceWords(jobDescription);
+  return terms.some((term) => resumeTerms.has(term)) || terms.some((term) => jobTerms.has(term));
+}
+
+/** Keeps the new assessment grounded without mixing it into recommendation planning. */
+export function validateHiringManagerAssessment(
+  raw: unknown,
+  resumeText: string,
+  jobDescription: string,
+): {
+  recruiterSummary: string;
+  topReasonsToInterview: string[];
+  topReasonsForRejection: string[];
+  biggestImprovements: string[];
+} {
+  const value = raw && typeof raw === 'object' ? raw as HiringManagerAssessmentInput : {};
+  const cleanText = (input: unknown, limit: number) => Array.isArray(input)
+    ? input
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter((item) => isGroundedAssessmentStatement(item, resumeText, jobDescription))
+      .filter((item, index, items) => !items.slice(0, index).some((existing) => isSemanticDuplicate(item, existing)))
+      .slice(0, limit)
+    : [];
+  const summary = typeof value.recruiterSummary === 'string' && isGroundedAssessmentStatement(value.recruiterSummary.trim(), resumeText, jobDescription)
+    ? value.recruiterSummary.trim()
+    : '';
+  return {
+    recruiterSummary: summary,
+    topReasonsToInterview: cleanText(value.topReasonsToInterview, 5),
+    topReasonsForRejection: cleanText(value.topReasonsForRejection, 5),
+    biggestImprovements: cleanText(value.biggestImprovements, 5),
+  };
 }
 
 function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
@@ -122,15 +316,37 @@ function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
     const after = typeof pair.after === 'string' ? pair.after.trim() : '';
     if (!before || !after || !source.includes(normalize(before))) continue;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
-    if (hasInventedMetric(after, resumeText) || hasInventedNamedTerm(after, resumeText)) continue;
+    // A rewrite may use only technologies, metrics, and named terms supported
+    // by its own source bullet; evidence elsewhere in the resume is not enough.
+    if (hasInventedMetric(after, before) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, before)) continue;
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
-    accepted.push({ before, after });
+    const beforeWords = new Set((before.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4));
+    const afterWords = (after.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4);
+    const newSubstantiveWords = afterWords.filter((word) => !beforeWords.has(word));
+    const beforeWordCount = before.trim().split(/\s+/).length;
+    const afterWordCount = after.trim().split(/\s+/).length;
+    const genericOpening = /^(?:worked|helped|assisted|responsible|supported|participated)\b/i.test(before);
+    const strongerOpening = /^(?:analyzed|assembled|automated|built|configured|debugged|designed|developed|engineered|fabricated|implemented|integrated|optimized|tested|validated)\b/i.test(after);
+    // Do not surface a cosmetic verb swap as an "improvement". Strong source
+    // bullets may receive concise edits, but weak bullets need visible added value.
+    const materiallyImproved = genericOpening
+      ? strongerOpening && (newSubstantiveWords.length >= 2 || afterWordCount >= beforeWordCount + 4)
+      : newSubstantiveWords.length >= 2 || afterWordCount >= beforeWordCount + 3;
+    if (!materiallyImproved) continue;
+    const rawConfidence = typeof pair.confidence === 'string' ? pair.confidence : 'High';
+    const confidence = ['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High';
+    accepted.push({ before, after, confidence });
   }
   return accepted;
 }
 
 /** Validates untrusted LLM resume-analysis output without changing its public schema. */
-export function validateAiResumeOutput(raw: Record<string, any>, resumeText: string): Record<string, any> {
+export function validateAiResumeOutput(
+  raw: Record<string, any>,
+  resumeText: string,
+  jobDescription = '',
+  telemetry?: ValidationTelemetry,
+): Record<string, any> {
   const output = { ...raw };
   const seenKeywords = new Set<string>();
   const dedupeKeywordGroup = (values: unknown) => deduplicateKeywords(values).filter((keyword) => {
@@ -149,6 +365,7 @@ export function validateAiResumeOutput(raw: Record<string, any>, resumeText: str
   output.weakBullets = Array.isArray(output.weakBullets)
     ? output.weakBullets.filter((value: unknown) => typeof value === 'string' && normalize(resumeText).includes(normalize(value)))
     : [];
-  validateRecommendationGroups(output, resumeText);
+  validateRecommendationGroups(output, resumeText, jobDescription, telemetry);
+  validateCoachingReport(output, resumeText, jobDescription, telemetry);
   return output;
 }

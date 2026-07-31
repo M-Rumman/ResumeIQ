@@ -1,6 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUserFromRequest } from '../_lib/auth.js';
-import { syncBillingFromStoredEvents, profileHasProAccess } from '../_lib/billing.js';
+import {
+  getReconciledProfileBilling,
+  syncBillingFromStoredEvents,
+  profileHasProAccess,
+} from '../_lib/billing.js';
 import { applyBillingRateLimit } from '../_lib/billingRateLimit.js';
 import { rejectOversizedBody, BODY_LIMITS } from '../_lib/requestLimits.js';
 import { CLIENT_ERRORS, logApiError, respondError } from '../_lib/safeError.js';
@@ -24,7 +28,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const billing = await syncBillingFromStoredEvents(user.id);
+    // Replay a just-arrived webhook first, then force an authoritative Lemon
+    // lookup when a subscription id is available.
+    await syncBillingFromStoredEvents(user.id);
+    const billing = await getReconciledProfileBilling(user.id, { force: true });
     return res.status(200).json({
       plan: billing.plan,
       subscription_status: billing.subscription_status,

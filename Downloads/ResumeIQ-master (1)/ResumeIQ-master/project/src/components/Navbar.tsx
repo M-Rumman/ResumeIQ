@@ -22,12 +22,17 @@ export default function Navbar({ currentPage, onNavigate, session, onLogout }: N
     { label: 'Home', page: 'home' },
     { label: 'Resume Analyzer', page: 'analyzer' },
     { label: 'Interview Prep', page: 'interview' },
+    { label: 'AI Job Match', page: 'job-match' },
     { label: 'Dashboard', page: 'dashboard' },
     { label: 'Pricing', page: 'pricing' },
+    { label: 'Blog', page: 'blog' },
   ];
+  // Keep the Job Match route registered for internal development, but do not
+  // advertise a feature that is not yet publicly available.
+  const publicLinks = links.filter((link) => link.page !== 'job-match');
 
   const navLinkClass = (page: string) =>
-    `nav-link whitespace-nowrap ${currentPage === page ? 'nav-link-active' : ''}`;
+    `nav-link whitespace-nowrap ${currentPage === page || (page === 'blog' && currentPage.startsWith('blog/')) ? 'nav-link-active' : ''}`;
 
   return (
     <nav className="glass-nav sticky top-0 z-50">
@@ -43,7 +48,7 @@ export default function Navbar({ currentPage, onNavigate, session, onLogout }: N
           </button>
 
           <div className="hidden lg:flex items-center justify-end flex-1 min-w-0 gap-6 xl:gap-8">
-            {links.map((link) => (
+            {publicLinks.map((link) => (
               <button key={link.page} type="button" onClick={() => onNavigate(link.page)} className={navLinkClass(link.page)}>
                 {link.label}
               </button>
@@ -83,7 +88,7 @@ export default function Navbar({ currentPage, onNavigate, session, onLogout }: N
       {mobileOpen && (
         <div className="lg:hidden border-t border-[rgba(255,255,255,0.35)] glass-panel mx-4 mb-3 rounded-[var(--radius-lg)] overflow-hidden">
           <div className="px-4 py-3 space-y-1">
-            {links.map((link) => (
+            {publicLinks.map((link) => (
               <button
                 key={link.page}
                 type="button"

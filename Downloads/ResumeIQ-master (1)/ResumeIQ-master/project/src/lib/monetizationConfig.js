@@ -29,14 +29,14 @@ export const PAYWALL_COPY = {
 /**
  * @param {'resume_analysis' | 'interview_prep' | string | null} reportType
  */
-export function getFreeTrialExhaustedMessage(reportType) {
+export function getDailyLimitMessage(reportType) {
   if (reportType === 'resume_analysis') {
-    return "You've already used your 2 free Resume Analyses.";
+    return "You've reached today's free resume analysis limit. Your limit resets tomorrow.";
   }
   if (reportType === 'interview_prep') {
-    return "You've already used your 2 free Interview Prep reports.";
+    return "You've reached today's free interview preparation limit. Your limit resets tomorrow.";
   }
-  return "You've used your free reports for this feature.";
+  return "You've reached today's free limit. Your limit resets tomorrow.";
 }
 
 export function parseReportId(reportId) {

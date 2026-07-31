@@ -97,7 +97,99 @@ Built a React analytics dashboard.`,
 
 Experience
 Developed Java services.`,
+
+  certificationArtifactPdf: `Noor Ahmed
+noor.ahmed@example.com | linkedin.com/in/noor-ahmed
+
+Experience
+Developed embedded control software for test rigs.
+
+Certifications
+P@SHA ICT Awards 2025.
+
+Thank You!
+
+Extracted Links:
+LinkedIn →
+mailto:noor.ahmed@example.com
+→ https://www.linkedin.com/in/noor-ahmed
+→ https://portfolio.example.test`,
+
+  recommendationCoverageResume: `Morgan Lee
+
+Summary
+Engineer with Python, React, and TypeScript experience.
+
+Experience
+Built Docker workflows and deployed services to AWS.
+Maintained PostgreSQL data stores and Jest test suites.
+
+Projects
+Created REST APIs with GraphQL integration.
+Automated CI pipelines using Git and Kubernetes.`,
+
+  embeddedGapResume: `Avery Khan
+
+Summary
+Mechatronics student with embedded systems project experience.
+
+Skills
+C++
+Arduino
+Proteus
+Circuit Design
+
+Projects
+Built an Arduino line follower using sensors and BLDC motors.`,
 };
+
+/** Hand-labelled matching ground truth; protects exact, related, and credential cases. */
+export const requirementMatchingFixtures = [
+  {
+    name: 'verbatim technical skill',
+    resume: 'Skills\nArduino\n\nProjects\nBuilt an Arduino sensor controller.',
+    requirement: 'Arduino',
+    tier: 'Strong Match',
+    section: 'Skills',
+  },
+  {
+    name: 'normalized credential abbreviation',
+    resume: 'Certifications\nPADI AOW Diver',
+    requirement: 'PADI Advanced Open Water',
+    tier: 'Strong Match',
+    section: 'Certifications',
+  },
+  {
+    name: 'higher education degree subsumes bachelor requirement',
+    resume: 'Education\nM.S. in Marine Biology',
+    requirement: "Bachelor's in Marine Biology or related field",
+    tier: 'Exceeded Requirement',
+    section: 'Education',
+  },
+  {
+    name: 'related hardware tool stays partial',
+    resume: 'Skills\nArduino\n\nProjects\nBuilt a microcontroller-based navigation prototype.',
+    requirement: 'ESP32',
+    tier: 'Related Match',
+    section: 'Skills',
+  },
+  {
+    name: 'unrelated requirement is missing',
+    resume: 'Experience\nProvided Mathematics tutoring.\n\nSkills\nPython',
+    requirement: 'CAD',
+    tier: 'Missing',
+    section: null,
+  },
+  {
+    name: 'project technology is normalized into the global skills index',
+    resume: 'Projects\nMechanical Workbench\n- Designed components using SolidWorks.',
+    requirement: 'SolidWorks',
+    tier: 'Strong Match',
+    // Deterministic extraction exposes this discrete technology in Skills.
+    // The global evidence priority correctly cites Skills before Projects.
+    section: 'Skills',
+  },
+] as const;
 
 /** Photo extraction is intentionally an expected unsupported capability today. */
 export const capabilityExpectations = {

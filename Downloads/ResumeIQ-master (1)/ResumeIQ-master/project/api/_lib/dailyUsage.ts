@@ -1,10 +1,8 @@
 import { getSupabaseAdmin } from './supabaseAdmin.js';
-import { getProfileBilling, profileHasProAccess } from './billing.js';
-import { isPaymentsEnabled } from './payments.js';
 
-/** Server-side daily caps (abuse protection — independent of client paywall flag). */
-export const FREE_DAILY_RESUME_LIMIT = 3;
-export const FREE_DAILY_INTERVIEW_LIMIT = 3;
+/** Server-side daily caps. The database applies them atomically in UTC. */
+export const FREE_DAILY_RESUME_LIMIT = 2;
+export const FREE_DAILY_INTERVIEW_LIMIT = 2;
 
 export const FEATURE_TYPES = {
   RESUME_ANALYSIS: 'resume_analysis',
@@ -19,79 +17,62 @@ function getLimitForFeature(featureType: FeatureType): number {
     : FREE_DAILY_INTERVIEW_LIMIT;
 }
 
-function getTodayUtcRange() {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { startIso: start.toISOString(), endIso: end.toISOString() };
-}
-
-async function isUserPro(userId: string): Promise<boolean> {
-  const billing = await getProfileBilling(userId);
-  return profileHasProAccess(billing);
-}
-
-export async function getTodayUsageCount(
-  userId: string,
-  featureType: FeatureType,
-): Promise<number> {
-  const { startIso, endIso } = getTodayUtcRange();
-  const admin = getSupabaseAdmin();
-
-  const { count, error } = await admin
-    .from('usage_tracking')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .eq('feature_type', featureType)
-    .gte('created_at', startIso)
-    .lt('created_at', endIso);
-
-  if (error) {
-    console.error('[dailyUsage] count failed', error.message);
-    return 0;
-  }
-
-  return count ?? 0;
-}
-
-export async function checkDailyUsageLimit(
+/**
+ * Read-only preflight. It never reserves or increments a daily allowance.
+ */
+export async function checkDailyUsage(
   userId: string,
   featureType: FeatureType,
 ): Promise<{ allowed: boolean; used: number; limit: number }> {
   const limit = getLimitForFeature(featureType);
 
-  if (!isPaymentsEnabled()) {
-    return { allowed: true, used: 0, limit };
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.from('profiles')
+    .select('resume_analysis_count_today, interview_prep_count_today, last_usage_reset_date')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    console.error('[dailyUsage] preflight check failed', error.message);
+    return { allowed: false, used: limit, limit };
   }
-
-  if (await isUserPro(userId)) {
-    return { allowed: true, used: 0, limit };
-  }
-
-  const used = await getTodayUsageCount(userId, featureType);
+  const today = new Date().toISOString().slice(0, 10);
+  const used = data?.last_usage_reset_date === today
+    ? Number(featureType === FEATURE_TYPES.RESUME_ANALYSIS ? data.resume_analysis_count_today : data.interview_prep_count_today) || 0
+    : 0;
   return { allowed: used < limit, used, limit };
 }
 
-export async function recordDailyUsage(
-  userId: string,
-  featureType: FeatureType,
-): Promise<void> {
+/** Atomically increments only after a complete successful operation. */
+export async function commitSuccessfulDailyUsage(userId: string, featureType: FeatureType): Promise<{ committed: boolean; used: number; limit: number }> {
+  const limit = getLimitForFeature(featureType);
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc('complete_free_ai_usage', {
+    p_user_id: userId,
+    p_feature_type: featureType,
+  });
+  const row = Array.isArray(data) ? data[0] : data;
+  if (error || !row || typeof row.allowed !== 'boolean') {
+    console.error('[dailyUsage] completion commit failed', error?.message || 'invalid RPC response');
+    return { committed: false, used: limit, limit };
+  }
+  return { committed: row.allowed, used: typeof row.used === 'number' ? row.used : limit, limit: typeof row.daily_limit === 'number' ? row.daily_limit : limit };
+}
+
+/** Retain request events for observability; profile counters are authoritative. */
+export async function recordDailyUsage(userId: string, featureType: FeatureType): Promise<void> {
   const admin = getSupabaseAdmin();
   const { error } = await admin.from('usage_tracking').insert({
     user_id: userId,
     feature_type: featureType,
   });
-
   if (error) {
-    console.error('[dailyUsage] insert failed', error.message);
+    console.error('[dailyUsage] event insert failed', error.message);
   }
 }
 
-export function dailyLimitMessage(featureType: FeatureType, limit: number): string {
-  const label =
-    featureType === FEATURE_TYPES.RESUME_ANALYSIS
-      ? 'resume analyses'
-      : 'interview prep sessions';
-  return `Daily limit reached: ${limit} ${label} per day. Try again tomorrow.`;
+export function dailyLimitMessage(featureType: FeatureType, _limit: number): string {
+  if (featureType === FEATURE_TYPES.RESUME_ANALYSIS) {
+    return "You've reached today's free resume analysis limit. Your limit resets tomorrow or you can upgrade to Pro for unlimited analyses.";
+  }
+  return "You've reached today's free interview preparation limit. Your limit resets tomorrow or upgrade to Pro for unlimited interview preparation.";
 }

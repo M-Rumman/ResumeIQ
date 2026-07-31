@@ -4,8 +4,6 @@
 
 export const FREE_DAILY_RESUME_LIMIT = 2;
 export const FREE_DAILY_INTERVIEW_LIMIT = 2;
-/** Lifetime full-access reports per type for free users (no blur / paywall). */
-export const FREE_TRIAL_REPORT_LIMIT = 2;
 export const FREE_HISTORY_LIMIT = 5;
 export const FREE_INTERVIEW_QUESTIONS_PER_CATEGORY = 3;
 
@@ -19,12 +17,10 @@ export const PRICING_PLANS = [
     cta: 'Get Started Free',
     highlight: false,
     features: [
-      { text: '2 full Resume Analyses', included: true },
-      { text: '2 full Interview Prep reports', included: true },
-      { text: 'Basic ATS Score', included: true },
-      { text: 'Resume section analysis', included: true },
-      { text: 'Keyword detection', included: true },
-      { text: 'Basic interview questions', included: true },
+      { text: '2 Resume Analyses per day', included: true },
+      { text: '2 Interview Prep sessions per day', included: true },
+      { text: 'Resume parsing', included: true },
+      { text: 'Basic ATS feedback', included: true },
       { text: 'Limited saved history', included: true },
       { text: 'Dashboard access', included: true },
       { text: 'No PDF export', included: false },
@@ -42,15 +38,30 @@ export const PRICING_PLANS = [
     features: [
       { text: 'Unlimited Resume Analyses', included: true },
       { text: 'Unlimited Interview Prep Sessions', included: true },
-      { text: 'PDF Export of Reports', included: true },
-      { text: 'Advanced Resume Insights', included: true },
-      { text: 'Premium Interview Question Sets', included: true },
-      { text: 'Full Resume History', included: true },
-      { text: 'Enhanced Dashboard Analytics', included: true },
-      { text: 'Priority Access to New Features', included: true },
+      { text: 'Unlimited AI Job Match (Coming Soon)', included: true },
+      { text: 'Priority AI processing', included: true },
+      { text: 'Early feature access', included: true },
     ],
   },
 ];
+
+export const REPORT_UNLOCK_PLAN = {
+  id: 'report-unlock',
+  name: 'Resume Report Unlock',
+  price: '$2',
+  period: '/report',
+  description: 'Unlock one complete premium resume report when you need it.',
+  cta: 'Unlock a Report',
+  highlight: false,
+  features: [
+    { text: 'Complete ATS report', included: true },
+    { text: 'Full hiring manager assessment', included: true },
+    { text: 'Full bullet improvements', included: true },
+    { text: 'Complete missing skills analysis', included: true },
+    { text: 'Job-specific improvements', included: true },
+    { text: 'PDF export', included: true },
+  ],
+};
 
 /** Short feature lists for home page pricing preview */
 export const HOME_PRICING_PREVIEW = {

@@ -5,13 +5,11 @@ import {
   getCustomerId,
   getOrderStatus,
   getResourceId,
-  getSubscriptionExpiresAt,
   readRawBody,
   verifyWebhookSignature,
   type LemonWebhookPayload,
 } from '../_lib/lemonSqueezy.js';
 import {
-  deactivateProSubscription,
   findUserIdForOrderRefund,
   getAmountCents,
   getCurrency,
@@ -31,6 +29,9 @@ const SUBSCRIPTION_EVENTS = new Set([
   'subscription_payment_success',
   'subscription_payment_failed',
   'subscription_payment_refunded',
+  'subscription_payment_recovered',
+  'subscription_paused',
+  'subscription_resumed',
 ]);
 
 function webhookLog(
@@ -157,13 +158,9 @@ async function handleSubscriptionEvent(
     checkout_type: 'pro',
   });
 
-  if (eventName === 'subscription_expired' || eventName === 'subscription_payment_failed') {
-    await deactivateProSubscription(userId, getSubscriptionExpiresAt(payload));
-  } else if (eventName === 'subscription_payment_refunded') {
-    await deactivateProSubscription(userId, getSubscriptionExpiresAt(payload));
-  } else {
-    await syncSubscriptionFromPayload(userId, payload);
-  }
+  // The payload status determines the lifecycle state. Cancellation keeps the
+  // paid period active; only an expired subscription is downgraded to Free.
+  await syncSubscriptionFromPayload(userId, payload);
 
   await recordPurchaseEvent({
     eventKey,

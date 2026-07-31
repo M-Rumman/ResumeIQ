@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUserFromRequest } from './_lib/auth.js';
-import { getProfileBilling, profileHasProAccess } from './_lib/billing.js';
+import { getReconciledProfileBilling, profileHasProAccess } from './_lib/billing.js';
 import { getCustomerPortalUrl } from './_lib/lemonSqueezy.js';
 import { isPaymentsEnabled, PAYMENTS_DISABLED_MESSAGE } from './_lib/payments.js';
 import { applyBillingRateLimit } from './_lib/billingRateLimit.js';
@@ -30,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const billing = await getProfileBilling(user.id);
+    const billing = await getReconciledProfileBilling(user.id);
 
     if (!profileHasProAccess(billing)) {
       return res.status(404).json({

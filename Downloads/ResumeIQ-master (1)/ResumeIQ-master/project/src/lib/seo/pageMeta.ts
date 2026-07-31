@@ -18,6 +18,7 @@ export type SeoPageKey =
   | 'terms'
   | 'contact'
   | 'about'
+  | 'blog'
   | 'refund-policy'
   | 'resume-analyzer'
   | 'resume-keyword-optimizer'
@@ -35,6 +36,7 @@ export type PageSeoMeta = {
   description: string;
   canonicalPath: string;
   noindex: boolean;
+  image?: string;
 };
 
 const PAGE_SEO: Record<SeoPageKey, PageSeoMeta> = {
@@ -108,6 +110,12 @@ const PAGE_SEO: Record<SeoPageKey, PageSeoMeta> = {
     description:
       'Learn about ResuV — an AI-powered career platform for resume optimization, ATS compatibility, and interview preparation.',
     canonicalPath: '/about',
+    noindex: false,
+  },
+  blog: {
+    title: 'Career Resources | ResuV',
+    description: 'Practical resume writing, ATS optimization, interview preparation, and job-search resources from ResuV.',
+    canonicalPath: '/blog',
     noindex: false,
   },
   'refund-policy': {
@@ -202,7 +210,7 @@ export function getOpenGraphPayload(meta: PageSeoMeta) {
     title: meta.title,
     description: meta.description,
     url,
-    image: SEO_OG_IMAGE_URL,
+    image: meta.image || SEO_OG_IMAGE_URL,
     siteName: SEO_SITE_NAME,
     type: 'website',
   };

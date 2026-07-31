@@ -15,13 +15,15 @@ export type ProfileBillingRow = {
   subscription_status: string;
   is_pro: boolean;
   subscription_expires_at: string | null;
+  cancelled_at: string | null;
+  last_sync: string | null;
   lemonsqueezy_customer_id: string | null;
   lemonsqueezy_subscription_id: string | null;
   unlocked_reports: unknown;
 };
 
 const BILLING_SELECT =
-  'plan, subscription_status, is_pro, subscription_expires_at, lemonsqueezy_customer_id, lemonsqueezy_subscription_id, unlocked_reports';
+  'plan, subscription_status, is_pro, subscription_expires_at, cancelled_at, last_sync, lemonsqueezy_customer_id, lemonsqueezy_subscription_id, unlocked_reports';
 
 function serializeLog(
   ctx: BillingLogContext,
@@ -83,6 +85,8 @@ export async function readProfileBilling(userId: string): Promise<ProfileBilling
     is_pro: Boolean(data.is_pro),
     subscription_expires_at:
       typeof data.subscription_expires_at === 'string' ? data.subscription_expires_at : null,
+    cancelled_at: typeof data.cancelled_at === 'string' ? data.cancelled_at : null,
+    last_sync: typeof data.last_sync === 'string' ? data.last_sync : null,
     lemonsqueezy_customer_id:
       typeof data.lemonsqueezy_customer_id === 'string' ? data.lemonsqueezy_customer_id : null,
     lemonsqueezy_subscription_id:
@@ -238,6 +242,33 @@ export async function updateUnlockedReports(
     ctx,
     { unlocked_reports: unlockedReports },
   );
+}
+
+/** Records metadata from a successful authoritative Lemon Squeezy lookup. */
+export async function updateSubscriptionReconciliationMetadata(
+  userId: string,
+  input: { cancelledAt: string | null; lastSync: string },
+  ctx: BillingLogContext,
+): Promise<ProfileBillingRow> {
+  const admin = getSupabaseAdmin();
+  const { error } = await admin
+    .from('profiles')
+    .update({
+      cancelled_at: input.cancelledAt,
+      last_sync: input.lastSync,
+      updated_at: input.lastSync,
+    })
+    .eq('user_id', userId);
+
+  if (error) {
+    billingError(ctx, 'reconciliation_metadata_write_failed', { error: error.message });
+    throw new Error(`Failed to store subscription reconciliation metadata: ${error.message}`);
+  }
+
+  return verifyProfileBilling(userId, {
+    cancelled_at: input.cancelledAt,
+    last_sync: input.lastSync,
+  }, ctx);
 }
 
 export { PROFILE_LEMON_COLUMNS };

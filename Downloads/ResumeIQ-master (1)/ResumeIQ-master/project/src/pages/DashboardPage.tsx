@@ -85,7 +85,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             <LayoutDashboard className="w-5 h-5 text-[#3c4a59]" />
             <h2 className="text-lg font-bold text-gray-900">Subscription</h2>
           </div>
-          <UserSubscriptionSummary refreshKey={refreshKey} />
+          <UserSubscriptionSummary refreshKey={refreshKey} userId={userId} onUpgrade={handleUpgrade} />
         </section>
 
         {!planLoading && (

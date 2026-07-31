@@ -1,52 +1,32 @@
-/**
- * ResuV — Free plan usage limits
- * ---------------------------------
- * Lifetime free-trial caps (2 full reports per type) are derived from saved
- * `resume_analysis` / `interview_prep` rows. Server-side daily caps in
- * `usage_tracking` remain for abuse prevention only.
- */
-
+/** Free-plan usage display. The API remains authoritative for enforcement. */
 import { supabase } from './supabase.js';
 import { PAYMENTS_ENABLED } from './paymentsConfig.js';
-import { FREE_TRIAL_REPORT_LIMIT } from './planConfig.js';
+import { FREE_DAILY_RESUME_LIMIT, FREE_DAILY_INTERVIEW_LIMIT } from './planConfig.js';
 import { deriveIsPro, fetchBillingStatus } from './billingStatus.js';
 
-/** Feature identifiers stored in usage_tracking.feature_type */
 export const FEATURE_TYPES = {
   RESUME_ANALYSIS: 'resume_analysis',
   INTERVIEW_PREP: 'interview_prep',
 };
 
-const FEATURE_TABLES = {
-  [FEATURE_TYPES.RESUME_ANALYSIS]: 'resume_analysis',
-  [FEATURE_TYPES.INTERVIEW_PREP]: 'interview_prep',
-};
-
 const PRO_PLAN_ALIASES = new Set(['pro', 'premium', 'paid']);
 
-/**
- * UTC start/end of "today" for consistent daily reset regardless of client TZ display.
- */
-export function getTodayUtcRange() {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { startIso: start.toISOString(), endIso: end.toISOString() };
+export function getTodayUtcDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-/**
- * @param {string | null | undefined} plan
- */
+function getLimitForFeature(featureType) {
+  return featureType === FEATURE_TYPES.RESUME_ANALYSIS
+    ? FREE_DAILY_RESUME_LIMIT
+    : FREE_DAILY_INTERVIEW_LIMIT;
+}
+
+/** @param {string | null | undefined} plan */
 export function isProPlan(plan) {
   return PRO_PLAN_ALIASES.has((plan || '').toLowerCase().trim());
 }
 
-/**
- * Load the user's plan from profiles.
- * @param {string} userId
- * @returns {Promise<{ plan: string, isPro: boolean, error: string | null }>}
- */
+/** @param {string} userId */
 export async function getUserPlan(userId) {
   if (PAYMENTS_ENABLED) {
     try {
@@ -60,7 +40,7 @@ export async function getUserPlan(userId) {
       );
       return { plan, isPro, error: null };
     } catch {
-      // Fall through to direct profile read.
+      // Fall through to the profile read for local/beta deployments.
     }
   }
 
@@ -69,168 +49,62 @@ export async function getUserPlan(userId) {
     .select('plan, subscription_status, is_pro, subscription_expires_at')
     .eq('user_id', userId)
     .maybeSingle();
+  if (error) return { plan: 'free', isPro: false, error: 'Could not verify your subscription plan.' };
 
-  if (error) {
-    return { plan: 'free', isPro: false, error: 'Could not verify your subscription plan.' };
-  }
-
-  const plan = (data?.plan || 'free').toLowerCase();
-  const subscriptionStatus = (data?.subscription_status || 'inactive').toLowerCase();
-  const isPro = deriveIsPro(
-    plan,
-    subscriptionStatus,
-    Boolean(data?.is_pro),
-    data?.subscription_expires_at ?? null,
-  );
-
-  return { plan, isPro, error: null };
+  return {
+    plan: (data?.plan || 'free').toLowerCase(),
+    isPro: deriveIsPro(
+      data?.plan || 'free',
+      data?.subscription_status || 'inactive',
+      Boolean(data?.is_pro),
+      data?.subscription_expires_at ?? null,
+    ),
+    error: null,
+  };
 }
 
-/**
- * Count saved reports for a feature (lifetime, not daily).
- * @param {string} userId
- * @param {string} featureType
- */
-export async function getLifetimeReportCount(userId, featureType) {
-  const table = FEATURE_TABLES[featureType];
-  if (!table) {
-    return { count: 0, error: 'Unknown feature type.' };
-  }
-
-  const { count, error } = await supabase
-    .from(table)
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId);
-
-  if (error) {
-    return { count: 0, error: 'Could not check usage. Please try again.' };
-  }
-
-  return { count: count ?? 0, error: null };
-}
-
-/**
- * Count how many times the user used a feature since UTC midnight.
- * @param {string} userId
- * @param {string} featureType
- */
-export async function getTodayUsageCount(userId, featureType) {
-  const { startIso, endIso } = getTodayUtcRange();
-
-  const { count, error } = await supabase
-    .from('usage_tracking')
-    .select('id', { count: 'exact', head: true })
+/** Reads daily counters. A stale UTC date is displayed as a reset even before the next API request. */
+export async function getDailyUsageCounters(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('resume_analysis_count_today, interview_prep_count_today, last_usage_reset_date')
     .eq('user_id', userId)
-    .eq('feature_type', featureType)
-    .gte('created_at', startIso)
-    .lt('created_at', endIso);
+    .maybeSingle();
+  if (error) return { resumeAnalysisCountToday: 0, interviewPrepCountToday: 0, error: 'Could not check daily usage. Please try again.' };
 
-  if (error) {
-    return { count: 0, error: 'Could not check usage limits. Please try again.' };
-  }
-
-  return { count: count ?? 0, error: null };
+  const current = data?.last_usage_reset_date === getTodayUtcDate();
+  return {
+    resumeAnalysisCountToday: current ? Number(data?.resume_analysis_count_today || 0) : 0,
+    interviewPrepCountToday: current ? Number(data?.interview_prep_count_today || 0) : 0,
+    error: null,
+  };
 }
 
-/**
- * Human-readable label for UI messages.
- * @param {string} featureType
- */
 export function getFeatureLabel(featureType) {
-  if (featureType === FEATURE_TYPES.RESUME_ANALYSIS) return 'Resume Analyses';
-  if (featureType === FEATURE_TYPES.INTERVIEW_PREP) return 'Interview Prep reports';
-  return 'reports';
+  return featureType === FEATURE_TYPES.RESUME_ANALYSIS ? 'Resume Analysis' : 'Interview Preparation';
 }
 
-/**
- * Check feature usage for banners. Free users may always generate reports;
- * paywall gating on the result page is handled by paywallAccess.
- * @param {string} userId
- * @param {string} featureType
- * @returns {Promise<{
- *   allowed: boolean;
- *   isPro: boolean;
- *   used: number;
- *   limit: number;
- *   remaining: number;
- *   error: string | null;
- *   upgradeMessage: string | null;
- * }>}
- */
+/** Client-side display/preflight only; the server makes the atomic decision. */
 export async function checkFeatureAccess(userId, featureType) {
-  const limit = FREE_TRIAL_REPORT_LIMIT;
-
+  const limit = getLimitForFeature(featureType);
   if (!PAYMENTS_ENABLED) {
-    return {
-      allowed: true,
-      isPro: false,
-      used: 0,
-      limit: Infinity,
-      remaining: Infinity,
-      error: null,
-      upgradeMessage: null,
-    };
+    return { allowed: true, isPro: false, used: 0, limit: Infinity, remaining: Infinity, error: null, upgradeMessage: null };
   }
 
   const planResult = await getUserPlan(userId);
   if (planResult.error) {
-    return {
-      allowed: false,
-      isPro: false,
-      used: 0,
-      limit,
-      remaining: 0,
-      error: planResult.error,
-      upgradeMessage: null,
-    };
+    return { allowed: false, isPro: false, used: 0, limit, remaining: 0, error: planResult.error, upgradeMessage: null };
   }
-
   if (planResult.isPro) {
-    return {
-      allowed: true,
-      isPro: true,
-      used: 0,
-      limit: Infinity,
-      remaining: Infinity,
-      error: null,
-      upgradeMessage: null,
-    };
+    return { allowed: true, isPro: true, used: 0, limit: Infinity, remaining: Infinity, error: null, upgradeMessage: null };
   }
 
-  const usageResult = await getLifetimeReportCount(userId, featureType);
-  if (usageResult.error) {
-    return {
-      allowed: false,
-      isPro: false,
-      used: 0,
-      limit,
-      remaining: 0,
-      error: usageResult.error,
-      upgradeMessage: null,
-    };
+  const counters = await getDailyUsageCounters(userId);
+  if (counters.error) {
+    return { allowed: false, isPro: false, used: 0, limit, remaining: 0, error: counters.error, upgradeMessage: null };
   }
-
-  const used = usageResult.count;
-  const remaining = Math.max(0, limit - used);
-
-  return {
-    allowed: true,
-    isPro: false,
-    used,
-    limit,
-    remaining,
-    error: null,
-    upgradeMessage: null,
-  };
-}
-
-/**
- * Record one successful feature use (call after the action completes).
- * Usage rows are inserted server-side by /api/analyze-resume and /api/interview-prep.
- * Client inserts are blocked by RLS (service role only).
- * @param {string} userId
- * @param {string} featureType
- */
-export async function recordFeatureUsage(_userId, _featureType) {
-  return { ok: true, error: null };
+  const used = featureType === FEATURE_TYPES.RESUME_ANALYSIS
+    ? counters.resumeAnalysisCountToday
+    : counters.interviewPrepCountToday;
+  return { allowed: used < limit, isPro: false, used, limit, remaining: Math.max(0, limit - used), error: null, upgradeMessage: null };
 }

@@ -2,22 +2,19 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import {
   checkFeatureAccess,
-  recordFeatureUsage,
   FEATURE_TYPES,
-  getFeatureLabel,
 } from '../lib/usageLimits.js';
 import UpgradePrompt from '../components/UpgradePrompt';
-import UsageLimitBanner from '../components/UsageLimitBanner';
 import PaywallBlurGate from '../components/PaywallBlurGate';
-import BetaBanner from '../components/BetaBanner';
 import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
-import { FREE_TRIAL_REPORT_LIMIT } from '../lib/planConfig.js';
-import { buildReportId } from '../lib/monetizationConfig.js';
+import { FREE_DAILY_INTERVIEW_LIMIT } from '../lib/planConfig.js';
+import { ApiRequestError } from '../lib/api/client.js';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
+import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
 import { fetchAiInterviewPrep } from '../lib/api/interviewPrepApi.js';
-import { mapAiInterviewToDisplayWithContext, mapLocalInterviewToDisplay } from '../lib/api/mapInterviewAi.js';
+import { mapAiInterviewToDisplayWithContext } from '../lib/api/mapInterviewAi.js';
 import {
   MessageSquare,
   ChevronDown,
@@ -111,10 +108,6 @@ function AccordionItem({
   );
 }
 
-function serializeStarTips(tips: string[]) {
-  return tips.map((tip) => `- ${tip}`).join('\n');
-}
-
 interface InterviewPrepPageProps {
   onNavigate: (page: string) => void;
 }
@@ -128,12 +121,14 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
+  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
   const [usageInfo, setUsageInfo] = useState({
     used: 0,
-    limit: FREE_TRIAL_REPORT_LIMIT,
+    limit: FREE_DAILY_INTERVIEW_LIMIT,
     isPro: false,
     loading: true,
   });
+  void usageInfo;
 
   const [reportId, setReportId] = useState<string | null>(null);
 
@@ -148,7 +143,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     reportId,
   });
 
-  const featureLabel = getFeatureLabel(FEATURE_TYPES.INTERVIEW_PREP);
   const hasFullAccess = !PAYMENTS_ENABLED || reportUnlocked;
 
   async function refreshUsageStatus() {
@@ -157,14 +151,14 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     } = await supabase.auth.getUser();
 
     if (!user) {
-      setUsageInfo({ used: 0, limit: FREE_TRIAL_REPORT_LIMIT, isPro: false, loading: false });
+      setUsageInfo({ used: 0, limit: FREE_DAILY_INTERVIEW_LIMIT, isPro: false, loading: false });
       return;
     }
 
     const access = await checkFeatureAccess(user.id, FEATURE_TYPES.INTERVIEW_PREP);
     setUsageInfo({
       used: access.used,
-      limit: access.limit === Infinity ? FREE_TRIAL_REPORT_LIMIT : access.limit,
+      limit: access.limit === Infinity ? FREE_DAILY_INTERVIEW_LIMIT : access.limit,
       isPro: access.isPro,
       loading: false,
     });
@@ -201,6 +195,11 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
       setSaveError(access.error);
       return;
     }
+    if (!access.allowed) {
+      setLoading(false);
+      setShowDailyLimitModal(true);
+      return;
+    }
 
     let prepResults: InterviewData;
 
@@ -212,40 +211,23 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
         experienceLevel,
         skills,
       ) as InterviewData;
-    } catch {
-      prepResults = mapLocalInterviewToDisplay(
-        jobRole.trim(),
-        experienceLevel,
-        skills,
-      ) as InterviewData;
-    }
-
-    const { data: inserted, error: insertError } = await supabase
-      .from('interview_prep')
-      .insert({
-        user_id: user.id,
-        job_role: jobRole.trim(),
-        hr_questions: JSON.stringify(prepResults.hr),
-        technical_questions: JSON.stringify(prepResults.technical),
-        behavioral_questions: JSON.stringify(prepResults.behavioral),
-        star_tips: serializeStarTips(prepResults.starTips),
-      })
-      .select('id')
-      .single();
-
-    setLoading(false);
-
-    if (insertError) {
-      setSaveError('Questions generated but could not be saved. Please try again.');
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 429 && /today's free interview preparation limit/i.test(error.message)) {
+        setLoading(false);
+        setShowDailyLimitModal(true);
+        await refreshUsageStatus();
+        return;
+      }
+      setLoading(false);
+      setSaveError('Interview preparation is temporarily unavailable. Please try again in a few moments.');
+      await refreshUsageStatus();
       return;
     }
 
-    if (PAYMENTS_ENABLED && !access.isPro) {
-      await recordFeatureUsage(user.id, FEATURE_TYPES.INTERVIEW_PREP);
-    }
+    setLoading(false);
 
-    if (inserted?.id) {
-      setReportId(buildReportId('interview_prep', inserted.id));
+    if (typeof (prepResults as { reportId?: string | null }).reportId === 'string' && (prepResults as { reportId?: string | null }).reportId) {
+      setReportId((prepResults as { reportId?: string | null }).reportId ?? null);
     }
 
     setResults(prepResults);
@@ -384,16 +366,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
           <p className="text-xs text-primary mt-3">
             Role-specific HR, technical, and behavioral questions plus communication and prep tips.
           </p>
-          {!usageInfo.loading && (
-            <div className="mt-4">
-              <UsageLimitBanner
-                used={usageInfo.used}
-                limit={usageInfo.limit}
-                featureLabel={featureLabel}
-                isPro={usageInfo.isPro}
-              />
-            </div>
-          )}
           {upgradeMessage && (
             <div className="mt-6">
               <UpgradePrompt
@@ -410,9 +382,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
         {/* Results */}
         {results && (
           <div id="interview-results" className="mt-10 space-y-8">
-            {!PAYMENTS_ENABLED && (
-              <BetaBanner onPricingSoon={() => onNavigate('pricing')} />
-            )}
             <div className="flex items-center gap-2">
               <div className="h-px flex-1 bg-gray-200" />
               <h2 className="font-extrabold text-gray-900 text-xl px-4">
@@ -466,6 +435,14 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
           </div>
         )}
       </div>
+      {showDailyLimitModal && (
+        <DailyUsageLimitModal
+          featureLabel="Interview Prep"
+          onUpgrade={() => paywallCheckout.subscribePro()}
+          onUnlockReport={() => onNavigate('pricing')}
+          onDismiss={() => setShowDailyLimitModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -489,6 +466,7 @@ function InterviewCategoryCard({
   border,
   questions,
 }: InterviewCategory) {
+  void id;
   return (
     <div className="glass-card glass-card-interactive overflow-hidden">
       <div className={`px-6 py-5 border-b ${border} ${bg}`}>

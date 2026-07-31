@@ -1,10 +1,6 @@
-import { getProfileBilling, profileHasProAccess } from './billing.js';
+import { getReconciledProfileBilling, profileHasProAccess } from './billing.js';
 import { isPaymentsEnabled } from './payments.js';
-import {
-  checkDailyUsageLimit,
-  dailyLimitMessage,
-  type FeatureType,
-} from './dailyUsage.js';
+import { checkDailyUsage, dailyLimitMessage, type FeatureType } from './dailyUsage.js';
 
 export type AiFeatureAccessResult =
   | { allowed: true; hasPro: boolean }
@@ -18,7 +14,7 @@ export async function verifyAiFeatureAccess(
   userId: string,
   featureType: FeatureType,
 ): Promise<AiFeatureAccessResult> {
-  const billing = await getProfileBilling(userId);
+  const billing = await getReconciledProfileBilling(userId);
   const hasPro = profileHasProAccess(billing);
 
   if (!isPaymentsEnabled()) {
@@ -29,7 +25,7 @@ export async function verifyAiFeatureAccess(
     return { allowed: true, hasPro: true };
   }
 
-  const daily = await checkDailyUsageLimit(userId, featureType);
+  const daily = await checkDailyUsage(userId, featureType);
   if (!daily.allowed) {
     return {
       allowed: false,

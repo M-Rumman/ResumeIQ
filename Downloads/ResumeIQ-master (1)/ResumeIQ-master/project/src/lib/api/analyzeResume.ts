@@ -1,5 +1,19 @@
 import { apiPost } from './client.js';
 
+// Resume analysis is a three-stage AI pipeline. Keep the browser alive long
+// enough for a paid provider to complete it, while retaining a finite cap.
+// Vercel allows this route to run for 300 seconds. Leave a small transport
+// margin, but do not abort a valid multi-stage model response at 240 seconds.
+const DEFAULT_ANALYSIS_TIMEOUT_MS = 290_000;
+const MIN_ANALYSIS_TIMEOUT_MS = 240_000;
+const MAX_ANALYSIS_TIMEOUT_MS = 295_000;
+
+function analysisTimeoutMs(): number {
+  const configured = Number(import.meta.env.VITE_AI_ANALYSIS_TIMEOUT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_ANALYSIS_TIMEOUT_MS;
+  return Math.min(MAX_ANALYSIS_TIMEOUT_MS, Math.max(MIN_ANALYSIS_TIMEOUT_MS, configured));
+}
+
 export interface ParsedResume {
   name: string;
   email: string;
@@ -12,22 +26,36 @@ export interface ParsedResume {
   certifications: string[];
 }
 
-export interface AiResumeAnalysis {
+export interface AiResumeAnalysisPremium {
+  tier: 'premium';
   parsed: ParsedResume;
   atsScore: number;
   matchScore: number;
   existingSkills: string[];
   missingSkills: string[];
   missingKeywords: string[];
+  keywordRecommendations: {
+    keyword: string;
+    priority: 'Critical' | 'Important' | 'Nice-to-Have';
+    whyItMatters: string;
+    recommendedSection: 'Skills' | 'Experience' | 'Projects';
+  }[];
   keywordSuggestions: string[];
   keywordGaps: string[];
   missingRequiredSkills: string[];
+  educationAlignment: {
+    requirement: string;
+    status: 'Direct Match' | 'Related Match' | 'Missing';
+    evidence: { section: string; text: string }[];
+    confidence: number;
+    reason: string;
+  }[];
   detectedSections: string[];
   missingSections: string[];
   formattingSuggestions: string[];
   formattingIssues: string[];
   weakBullets: string[];
-  improvedBulletPoints: { before: string; after: string }[];
+  improvedBulletPoints: { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' }[];
   improvementSuggestions: string[];
   optimizationRecommendations: string[];
   atsIssues: string[];
@@ -36,13 +64,56 @@ export interface AiResumeAnalysis {
     missingElements: string[];
     formattingIssues: string[];
     keywordIssues: string[];
+    whatIncreasedScore: string[];
+    whatReducedScore: string[];
+    topImprovements: string[];
+    estimatedScoreImprovement: number;
+    potentialAtsScore: number;
   };
   jobMatchExplanation: {
     strongMatches: string[];
     partialMatches: string[];
     missingSkills: string[];
   };
+  keywordCompatibility: {
+    overallMatch: number;
+    strongMatches: string[];
+    partialMatches: string[];
+    missing: string[];
+  };
+  coachingReport: {
+    category: 'Summary' | 'Experience' | 'Projects' | 'Skills' | 'Education' | 'ATS Formatting'
+      | 'Keyword Usage' | 'Technical Depth' | 'Action Verbs' | 'Quantification' | 'Missing Evidence' | 'Job Alignment';
+    recommendations: string[];
+  }[];
+  atsBreakdown: {
+    label: 'Resume Structure' | 'Keyword Coverage' | 'Experience Relevance' | 'Formatting' | 'Readability' | 'Evidence Strength';
+    score: number;
+    maximum: number;
+    explanation: string;
+  }[];
+  roleStrengths: string[];
+  hiringManagerAssessment: {
+    overallDecision: 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
+    recruiterSummary: string;
+    topReasonsToInterview: string[];
+    topReasonsForRejection: string[];
+    estimatedInterviewProbability: number;
+    biggestImprovements: { text: string; estimatedImpact: number }[];
+    confidence: 'High' | 'Medium' | 'Low';
+  };
 }
+
+export interface AiResumeAnalysisFree {
+  tier: 'free';
+  parsed: ParsedResume;
+  atsScore: number;
+  detectedSections: string[];
+  missingSections: string[];
+  basicFeedback: string[];
+}
+
+export type AiResumeAnalysis = AiResumeAnalysisPremium | AiResumeAnalysisFree;
 
 export async function fetchAiResumeAnalysis(
   resumeText: string,
@@ -52,5 +123,5 @@ export async function fetchAiResumeAnalysis(
     resumeText,
     jobDescription,
     jobRole: jobDescription,
-  }, { timeoutMs: 45_000 });
+  }, { timeoutMs: analysisTimeoutMs() });
 }
