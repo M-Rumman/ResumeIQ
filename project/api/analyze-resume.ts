@@ -91,15 +91,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability, includePremium });
 
     const strengths = result.tier === 'premium'
-      ? result.improvements
-        .filter((item) => item.type === 'success')
-        .map((item) => item.text)
-        .join('\n')
+      ? result.atsScoreExplanation.strengths.join('\n')
       : result.basicFeedback.join('\n');
     const improvements = result.tier === 'premium'
-      ? result.improvements
-        .filter((item) => item.type !== 'success')
-        .map((item) => `- ${item.text}`)
+      ? [...result.improvementSuggestions, ...result.optimizationRecommendations]
+        .map((item) => `- ${item}`)
         .join('\n')
       : result.basicFeedback.map((item) => `- ${item}`).join('\n');
 
