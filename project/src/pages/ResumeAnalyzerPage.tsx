@@ -397,36 +397,55 @@ export function AtsScoreExplanation({ explanation }: { explanation: PremiumResul
   );
 }
 
-function AtsBreakdown({
-  breakdown,
-  overallScore,
-}: {
-  breakdown: PremiumResults['engine']['atsBreakdown'];
-  overallScore: number;
-}) {
-  if (breakdown.length === 0) return null;
 
+function ResumeQualityCard({ breakdown }: { breakdown: PremiumResults['engine']['atsBreakdown'] }) {
+  const qualityItems = breakdown.filter(i => i.label !== 'Section Recognition' && i.label !== 'Readability & Formatting');
+  if (qualityItems.length === 0) return null;
   return (
-    <section className="mt-5 pt-5 border-t border-gray-100">
-      <h4 className="text-sm font-bold text-gray-900 mb-3">ATS Breakdown</h4>
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-5">
+        <FileText className="w-5 h-5 text-[#3c4a59]" />
+        <h3 className="font-bold text-gray-900">Resume Quality</h3>
+      </div>
       <div className="space-y-3">
-        {breakdown.map((item) => (
-          <div key={item.label} className="rounded-lg bg-gray-50 px-3 py-2.5">
+        {qualityItems.map((item) => (
+          <div key={item.label} className="rounded-lg bg-gray-50 px-4 py-3 border border-gray-100">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-bold text-gray-900">{item.label}</p>
+              <p className="text-sm font-bold text-gray-900">{item.label}</p>
               <span className="text-xs font-extrabold text-[#3c4a59]">{item.score} / {item.maximum}</span>
             </div>
-            <p className="mt-1 text-xs leading-5 text-gray-700">{item.explanation}</p>
+            <p className="mt-1 text-xs leading-5 text-gray-700 whitespace-pre-line">{item.explanation}</p>
           </div>
         ))}
-      </div>
-      <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-3">
-        <span className="text-sm font-bold text-gray-900">Overall ATS</span>
-        <span className="text-lg font-extrabold text-[#3c4a59]">{overallScore}%</span>
       </div>
     </section>
   );
 }
+
+function AtsHealthCard({ breakdown }: { breakdown: PremiumResults['engine']['atsBreakdown'] }) {
+  const healthItems = breakdown.filter(i => i.label === 'Section Recognition' || i.label === 'Readability & Formatting');
+  if (healthItems.length === 0) return null;
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-5">
+        <Target className="w-5 h-5 text-emerald-600" />
+        <h3 className="font-bold text-gray-900">ATS Health</h3>
+      </div>
+      <div className="space-y-3">
+        {healthItems.map((item) => (
+          <div key={item.label} className="rounded-lg bg-emerald-50 px-4 py-3 border border-emerald-100">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-bold text-emerald-900">{item.label}</p>
+              <span className="text-xs font-extrabold text-emerald-800">{item.score} / {item.maximum}</span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-emerald-800 whitespace-pre-line">{item.explanation}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 
 function JobMatchExplanation({ explanation }: { explanation: PremiumResults['engine']['jobMatchExplanation'] }) {
   const hasDetails = explanation.strongMatches.length || explanation.partialMatches.length || explanation.missingSkills.length;
@@ -458,9 +477,10 @@ function JobMatchExplanation({ explanation }: { explanation: PremiumResults['eng
 
 function KeywordCompatibilityCard({ compatibility }: { compatibility: PremiumResults['engine']['keywordCompatibility'] }) {
   const groups = [
-    { title: 'Strong Match', icon: '✓', items: compatibility.strongMatches, className: 'border-emerald-100 bg-emerald-50 text-emerald-900', iconClassName: 'text-emerald-700' },
-    { title: 'Partial Match', icon: '~', items: compatibility.partialMatches, className: 'border-amber-100 bg-amber-50 text-amber-900', iconClassName: 'text-amber-700' },
-    { title: 'Missing', icon: '✗', items: compatibility.missing, className: 'border-red-100 bg-red-50 text-red-900', iconClassName: 'text-red-700' },
+    { title: 'Exact Match', icon: '✓', items: compatibility.exactMatches || [], className: 'border-emerald-100 bg-emerald-50 text-emerald-900', iconClassName: 'text-emerald-700' },
+    { title: 'Semantic Match', icon: '~', items: compatibility.semanticMatches || [], className: 'border-blue-100 bg-blue-50 text-blue-900', iconClassName: 'text-blue-700' },
+    { title: 'Under-Expressed', icon: '!', items: compatibility.underExpressed || [], className: 'border-amber-100 bg-amber-50 text-amber-900', iconClassName: 'text-amber-700' },
+    { title: 'Missing', icon: '✗', items: compatibility.missing || [], className: 'border-red-100 bg-red-50 text-red-900', iconClassName: 'text-red-700' },
   ];
 
   return (
@@ -495,8 +515,9 @@ function KeywordCompatibilityCard({ compatibility }: { compatibility: PremiumRes
       </div>
 
       <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-gray-100 pt-4 text-sm text-gray-800">
-        <span><strong>Matched:</strong> {compatibility.strongMatches.length}</span>
-        <span><strong>Partial:</strong> {compatibility.partialMatches.length}</span>
+        <span><strong>Exact:</strong> {compatibility.exactMatches?.length || 0}</span>
+        <span><strong>Semantic:</strong> {compatibility.semanticMatches?.length || 0}</span>
+        <span><strong>Under-Expressed:</strong> {compatibility.underExpressed?.length || 0}</span>
         <span><strong>Missing:</strong> {compatibility.missing.length}</span>
       </div>
     </section>
@@ -529,34 +550,30 @@ function EducationAlignmentCard({ items }: { items: PremiumResults['engine']['ed
   );
 }
 
-function KeywordRecommendations({ recommendations }: { recommendations: PremiumResults['keywordRecommendations'] }) {
-  if (recommendations.length === 0) return null;
-  const priorities = ['Critical', 'Important', 'Nice-to-Have'] as const;
-  const priorityStyle = {
-    Critical: 'text-red-700 border-red-100 bg-red-50',
-    Important: 'text-amber-700 border-amber-100 bg-amber-50',
-    'Nice-to-Have': 'text-[#3c4a59] border-gray-200 bg-gray-50',
-  } as const;
+function KeywordRecommendations({ priorities }: { priorities: PremiumResults['engine']['recommendationPriorities'] }) {
+  if (!priorities) return null;
+  const levels = [
+    { label: 'Critical', items: priorities.critical, color: 'text-red-700 border-red-100 bg-red-50' },
+    { label: 'Important', items: priorities.important, color: 'text-amber-700 border-amber-100 bg-amber-50' },
+    { label: 'Optional', items: priorities.optional, color: 'text-[#3c4a59] border-gray-200 bg-gray-50' }
+  ];
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-5">
-        <AlertCircle className="w-5 h-5 text-red-500" />
-        <h3 className="font-bold text-gray-900">Missing Skills</h3>
+        <AlertCircle className="w-5 h-5 text-amber-600" />
+        <h3 className="font-bold text-gray-900">Recommended Changes</h3>
       </div>
       <div className="space-y-5">
-        {priorities.map((priority) => {
-          const items = recommendations.filter((item) => item.priority === priority);
-          if (items.length === 0) return null;
+        {levels.map((level) => {
+          if (!level.items || level.items.length === 0) return null;
           return (
-            <div key={priority}>
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">{priority}</p>
+            <div key={level.label}>
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">{level.label}</p>
               <div className="space-y-2">
-                {items.map((item) => (
-                  <div key={`${item.priority}-${item.keyword}`} className={`rounded-xl border px-3 py-2.5 ${priorityStyle[priority]}`}>
-                    <p className="text-sm font-bold">{item.keyword}</p>
-                    <p className="mt-1 text-xs text-gray-700">{item.whyItMatters}</p>
-                    <p className="mt-1.5 text-xs font-semibold text-gray-700">Natural place to mention it: {item.recommendedSection}</p>
+                {level.items.map((item, i) => (
+                  <div key={i} className={`rounded-xl border px-4 py-3 ${level.color}`}>
+                    <p className="text-sm text-gray-800 whitespace-pre-line leading-relaxed">{item}</p>
                   </div>
                 ))}
               </div>
@@ -619,19 +636,27 @@ function HiringManagerAssessmentCard({ assessment }: { assessment: PremiumResult
   );
 }
 
-function StrengthsMatchingRoleCard({ strengths }: { strengths: PremiumResults['engine']['roleStrengths'] }) {
+
+function TopStrengthsCard({ breakdown }: { breakdown: any[] }) {
+  const strengths = breakdown?.filter(b => b.classification === 'EXACT_MATCH' || b.classification === 'STRONG_SEMANTIC_MATCH') || [];
   if (strengths.length === 0) return null;
+  
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-5">
         <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-        <h3 className="font-bold text-gray-900">Strengths Matching This Role</h3>
+        <h3 className="font-bold text-gray-900">Top Strengths</h3>
       </div>
       <ul className="space-y-3">
-        {strengths.map((strength) => (
-          <li key={strength} className="flex items-start gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-            <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
-            <p className="text-sm text-emerald-950">{strength}</p>
+        {strengths.slice(0, 10).map((strength: any, i: number) => (
+          <li key={i} className="flex flex-col gap-1 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
+              <p className="text-sm font-bold text-emerald-950">{strength.requirement?.normalized_name}</p>
+            </div>
+            {strength.evidence?.[0] && (
+               <p className="text-xs text-emerald-800 ml-7">Evidence: "{strength.evidence[0].source_text}"</p>
+            )}
           </li>
         ))}
       </ul>
@@ -639,31 +664,93 @@ function StrengthsMatchingRoleCard({ strengths }: { strengths: PremiumResults['e
   );
 }
 
+function BiggestOpportunitiesCard({ opportunities }: { opportunities: string[] }) {
+  if (!opportunities || opportunities.length === 0) return null;
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-5">
+        <Lightbulb className="w-5 h-5 text-amber-500" />
+        <h3 className="font-bold text-gray-900">Biggest Opportunities</h3>
+      </div>
+      <ul className="space-y-3">
+        {opportunities.map((opp, i) => (
+          <li key={i} className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+            <Lightbulb className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+            <p className="text-sm text-amber-950 whitespace-pre-line leading-relaxed">{opp}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RequirementBreakdownCard({ breakdown }: { breakdown: any[] }) {
+  if (!breakdown || breakdown.length === 0) return null;
+  
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-5">
+        <Target className="w-5 h-5 text-[#3c4a59]" />
+        <h3 className="font-bold text-gray-900">Requirement Breakdown</h3>
+      </div>
+      <div className="space-y-4">
+        {breakdown.map((item, i) => (
+          <div key={i} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+            <div className="flex justify-between items-start mb-2">
+               <div>
+                 <p className="font-bold text-gray-900">{item.requirement?.normalized_name}</p>
+                 <p className="text-xs text-gray-500 uppercase tracking-wide">{item.requirement?.priority} • {item.requirement?.category}</p>
+               </div>
+               <span className="text-xs font-bold px-2 py-1 bg-white border border-gray-200 rounded text-gray-700">
+                 {item.classification}
+               </span>
+            </div>
+            {item.evidence && item.evidence.length > 0 ? (
+               <div className="mt-2 text-sm text-gray-700">
+                 <strong>Evidence ({item.evidence[0].source_section}):</strong> "{item.evidence[0].source_text}"
+               </div>
+            ) : (
+               <div className="mt-2 text-sm text-red-600">No evidence found in resume.</div>
+            )}
+            {item.explanation && (
+               <div className="mt-2 text-xs text-gray-600 italic">
+                 {item.explanation}
+               </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Final, API-backed verdict shown after every analysis section. */
 function OverallAssessmentCard({ results }: { results: PremiumResults }) {
-  const readiness = Math.max(0, Math.min(100, Math.round(results.engine.hiringManagerAssessment.estimatedInterviewProbability)));
-  const explanation = readiness >= 75
-    ? 'Your resume demonstrates strong alignment with this position. Addressing the remaining role-specific gaps could further improve your competitiveness.'
-    : 'This AI estimate reflects how well your resume aligns with the employer\'s requirements. Improving the recommended areas above can strengthen your competitiveness for this specific role.';
+  const match = results.matchScore;
+  const classification = results.engine.hiringManagerAssessment.overallDecision;
+  const atsScore = results.atsScore;
 
   return (
-    <section className="w-full rounded-3xl border-2 border-[#3c4a59] bg-[#f4f7f9] p-7 shadow-md sm:p-10">
+    <section className="w-full rounded-3xl border-2 border-[#3c4a59] bg-[#f4f7f9] p-7 shadow-md sm:p-10 mb-8">
       <div className="mx-auto max-w-4xl text-center">
         <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#3c4a59]/20 bg-white px-4 py-2 text-sm font-bold text-[#3c4a59]">
           <Target className="h-4 w-4" />
-          Overall Assessment
+          Overall Result
         </div>
-        <p className="text-xl font-semibold leading-relaxed text-gray-900 sm:text-2xl">
-          Your resume has <span className="text-4xl font-extrabold text-[#3c4a59] sm:text-5xl">{results.matchScore}%</span> alignment with this Job Description.
-        </p>
-        <p className="mt-5 text-lg font-medium leading-relaxed text-gray-800 sm:text-xl">
-          Based on your current resume, our AI estimates that you have approximately{' '}
-          <span className="text-4xl font-extrabold text-emerald-700 sm:text-5xl">{readiness}%</span>{' '}
-          interview potential for this role.
-        </p>
-        <p className="mx-auto mt-7 max-w-3xl text-sm font-medium leading-6 sm:text-base" style={{ color: '#000000' }}>
-          {explanation} This is an AI estimate based solely on this resume analysis, not a guarantee of an interview invitation.
-        </p>
+        <div className="grid sm:grid-cols-3 gap-6 text-center mt-4">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Job Match</p>
+            <p className="text-4xl font-extrabold text-emerald-700">{match}%</p>
+          </div>
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Classification</p>
+            <p className="text-xl font-extrabold text-[#3c4a59] mt-2">{classification}</p>
+          </div>
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">ATS Parseability</p>
+            <p className="text-4xl font-extrabold text-[#3c4a59]">{atsScore}%</p>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -1038,7 +1125,8 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
                   <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
                 </div>
                 <ProgressBar value={results.atsScore} color="bg-gradient-to-r from-[#4a5a6a] to-[#3c4a59]" />
-                <AtsBreakdown breakdown={results.engine.atsBreakdown} overallScore={results.atsScore} />
+                <AtsHealthCard breakdown={results.engine.atsBreakdown} />
+                <ResumeQualityCard breakdown={results.engine.atsBreakdown} />
               </div>
 
               <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
@@ -1060,7 +1148,9 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
             <KeywordCompatibilityCard compatibility={results.engine.keywordCompatibility} />
             <EducationAlignmentCard items={results.engine.educationAlignment} />
             <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
-            <StrengthsMatchingRoleCard strengths={results.engine.roleStrengths} />
+            <TopStrengthsCard breakdown={results.requirementBreakdown} />
+            <BiggestOpportunitiesCard opportunities={results.engine.optimizationRecommendations || []} />
+            <RequirementBreakdownCard breakdown={results.requirementBreakdown} />
 
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-2 mb-5">
@@ -1105,16 +1195,16 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
               </div>
             </div>
 
-            <KeywordRecommendations recommendations={results.keywordRecommendations} />
+            <KeywordRecommendations priorities={results.engine.recommendationPriorities} />
 
             <ResumeCoachingReport results={results} />
 
             <BulletImprovementGuide
               items={results.bulletSuggestions}
               targetKeywords={[
-                ...results.engine.keywordCompatibility.strongMatches,
-                ...results.engine.keywordCompatibility.partialMatches,
-                ...results.engine.keywordCompatibility.missing,
+                ...(results.engine.keywordCompatibility.exactMatches || []),
+                ...(results.engine.keywordCompatibility.semanticMatches || []),
+                ...(results.engine.keywordCompatibility.missing || []),
               ]}
             />
     </>

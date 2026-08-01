@@ -12,6 +12,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.api.json",
     "check": "npm run typecheck",
     "test:resume-pipeline": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/run.ts",
+    "test:jd-parser": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/jdParser.test.ts",
+    "test:resume-extraction": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/resumeExtraction.test.ts",
+    "test:matcher": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/matcher.test.ts",
+    "test:evaluator": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/evaluator.test.ts",
     "audit:seo": "tsx scripts/audit-seo.ts"
   },
   "dependencies": {

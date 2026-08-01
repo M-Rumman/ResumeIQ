@@ -23,6 +23,7 @@ export type PremiumResumeDisplayResults = {
   tier: 'premium';
   source: 'ai';
   engine: AiResumeAnalysisPremium;
+  requirementBreakdown: any[];
 };
 
 export type FreeResumeDisplayResults = {
@@ -122,6 +123,7 @@ function mapAiResumeCore(ai: AiResumeAnalysisPremium): PremiumResumeDisplayResul
     tier: 'premium' as const,
     source: 'ai' as const,
     engine: ai,
+    requirementBreakdown: ai.requirementBreakdown || [],
   };
 }
 

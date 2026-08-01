@@ -77,8 +77,9 @@ export interface AiResumeAnalysisPremium {
   };
   keywordCompatibility: {
     overallMatch: number;
-    strongMatches: string[];
-    partialMatches: string[];
+    exactMatches: string[];
+    semanticMatches: string[];
+    underExpressed: string[];
     missing: string[];
   };
   coachingReport: {
@@ -87,7 +88,7 @@ export interface AiResumeAnalysisPremium {
     recommendations: string[];
   }[];
   atsBreakdown: {
-    label: 'Resume Structure' | 'Keyword Coverage' | 'Experience Relevance' | 'Formatting' | 'Readability' | 'Evidence Strength';
+    label: 'Section Recognition' | 'Readability & Formatting' | 'Impact & Metrics' | 'Resume Quality';
     score: number;
     maximum: number;
     explanation: string;
@@ -99,8 +100,14 @@ export interface AiResumeAnalysisPremium {
     topReasonsToInterview: string[];
     topReasonsForRejection: string[];
     estimatedInterviewProbability: number;
-    biggestImprovements: { text: string; estimatedImpact: number }[];
+    biggestImprovements: string[];
     confidence: 'High' | 'Medium' | 'Low';
+  };
+  requirementBreakdown?: any[];
+  recommendationPriorities?: {
+    critical: string[];
+    important: string[];
+    optional: string[];
   };
 }
 

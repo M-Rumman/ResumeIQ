@@ -160,20 +160,21 @@ export interface AiResumeAnalysisFull {
     missingSkills: string[];
   };
   keywordCompatibility: KeywordCompatibility;
+  requirementBreakdown: any[];
   coachingReport: CoachingReportSection[];
   atsBreakdown: AtsDisplayBreakdownItem[];
   roleStrengths: string[];
   hiringManagerAssessment: HiringManagerAssessment;
 }
 
-export type HiringDecision = 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
+export type HiringDecision = 'Excellent Match' | 'Strong Match' | 'Moderate Match' | 'Weak Match';
 
 export interface HiringManagerAssessment {
   overallDecision: HiringDecision;
   recruiterSummary: string;
   topReasonsToInterview: string[];
   topReasonsForRejection: string[];
-  estimatedInterviewProbability: number;
+  estimatedInterviewProbability?: number;
   biggestImprovements: { text: string; estimatedImpact: number }[];
   confidence: 'High' | 'Medium' | 'Low';
 }
@@ -755,7 +756,7 @@ export type AtsDimensionBreakdown = {
 };
 
 export type AtsDisplayBreakdownItem = {
-  label: 'Resume Structure' | 'Keyword Coverage' | 'Experience Relevance' | 'Formatting' | 'Readability' | 'Evidence Strength';
+  label: 'Section Recognition' | 'Readability & Formatting' | 'Impact & Metrics' | 'Resume Quality';
   score: number;
   maximum: number;
   explanation: string;
@@ -795,8 +796,9 @@ export type KeywordRecommendation = {
 /** ATS-facing keyword coverage, deliberately separate from ATS and Job Match scores. */
 export type KeywordCompatibility = {
   overallMatch: number;
-  strongMatches: string[];
-  partialMatches: string[];
+  exactMatches: string[];
+  semanticMatches: string[];
+  underExpressed: string[];
   missing: string[];
 };
 
@@ -1714,7 +1716,7 @@ export function buildKeywordCompatibility(
   const overallMatch = items.length === 0 ? 0 : Math.round(
     (strongMatches.length + partialMatches.length * 0.5) / items.length * 100,
   );
-  return { overallMatch, strongMatches, partialMatches, missing };
+  return { overallMatch, exactMatches: strongMatches, semanticMatches: partialMatches, underExpressed: [], missing };
 }
 
 /**
@@ -1885,12 +1887,10 @@ export function calculateJobSpecificAtsScore(
 function buildAtsDisplayBreakdown(breakdown: AtsDimensionBreakdown): AtsDisplayBreakdownItem[] {
   const explain = (reasons: string[], fallback: string) => reasons.length ? reasons.slice(0, 2).join('; ') : fallback;
   return [
-    { label: 'Resume Structure', score: breakdown.structure.score, maximum: 25, explanation: explain(breakdown.structure.reasons, 'Standard resume sections need more detail.') },
-    { label: 'Keyword Coverage', score: breakdown.technicalSkillCoverage.score, maximum: 30, explanation: explain(breakdown.technicalSkillCoverage.reasons, 'Required job keywords are not sufficiently represented.') },
-    { label: 'Experience Relevance', score: breakdown.experienceRelevance.score, maximum: 20, explanation: explain(breakdown.experienceRelevance.reasons, 'Practical evidence does not yet clearly map to the role.') },
-    { label: 'Formatting', score: breakdown.sectionQuality.score, maximum: 10, explanation: explain(breakdown.sectionQuality.reasons, 'Section detail and organization can be strengthened.') },
-    { label: 'Readability', score: breakdown.readability.score, maximum: 10, explanation: explain(breakdown.readability.reasons, 'Use clearer ATS-readable wording for documented skills.') },
-    { label: 'Evidence Strength', score: breakdown.evidenceStrength.score, maximum: 5, explanation: explain(breakdown.evidenceStrength.reasons, 'Add direct, resume-supported evidence for required skills.') },
+    { label: 'Section Recognition', score: breakdown.structure.score, maximum: 25, explanation: explain(breakdown.structure.reasons, 'Standard resume sections need more detail.') },
+    { label: 'Readability & Formatting', score: breakdown.technicalSkillCoverage.score, maximum: 25, explanation: explain(breakdown.technicalSkillCoverage.reasons, 'Formatting artifacts detected.') },
+    { label: 'Impact & Metrics', score: breakdown.experienceRelevance.score, maximum: 25, explanation: explain(breakdown.experienceRelevance.reasons, 'Lack of quantified metrics.') },
+    { label: 'Resume Quality', score: breakdown.sectionQuality.score, maximum: 25, explanation: explain(breakdown.sectionQuality.reasons, 'Action verbs and clarity could be improved.') }
   ];
 }
 
@@ -1912,9 +1912,9 @@ function evidenceGroundAtsBreakdown(
   const evidenceFor = (items: JobGapItem[]) => requirementEvidenceCitationList(items, 1)[0] || structuralEvidence;
 
   return breakdown.map((item) => {
-    const evidence = item.label === 'Keyword Coverage' || item.label === 'Evidence Strength'
+    const evidence = item.label === 'Readability & Formatting' || item.label === 'Impact & Metrics'
       ? evidenceFor([...matched, ...partial, ...missing])
-      : item.label === 'Experience Relevance'
+      : item.label === 'Resume Quality'
         ? evidenceFor([...matched, ...partial])
         : structuralEvidence;
     return { ...item, explanation: `${item.explanation} Evidence: ${evidence}` };
@@ -2571,8 +2571,9 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
   const rawKeywordCompatibility = o.keywordCompatibility || {};
   const keywordCompatibility: KeywordCompatibility = {
     overallMatch: Math.max(0, Math.min(100, Number(rawKeywordCompatibility.overallMatch) || 0)),
-    strongMatches: validateAndCleanKeywords(arr(rawKeywordCompatibility.strongMatches)),
-    partialMatches: validateAndCleanKeywords(arr(rawKeywordCompatibility.partialMatches)),
+    exactMatches: validateAndCleanKeywords(arr(rawKeywordCompatibility.exactMatches)),
+    semanticMatches: validateAndCleanKeywords(arr(rawKeywordCompatibility.semanticMatches)),
+    underExpressed: validateAndCleanKeywords(arr(rawKeywordCompatibility.underExpressed)),
     missing: validateAndCleanKeywords(arr(rawKeywordCompatibility.missing)),
   };
   const coachingReport: CoachingReportSection[] = Array.isArray(o.coachingReport)
@@ -2593,7 +2594,7 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
       const maximum = Number(candidate.maximum);
       const score = Number(candidate.score);
       const explanation = typeof candidate.explanation === 'string' ? candidate.explanation.trim() : '';
-      const labels: AtsDisplayBreakdownItem['label'][] = ['Resume Structure', 'Keyword Coverage', 'Experience Relevance', 'Formatting', 'Readability', 'Evidence Strength'];
+      const labels: AtsDisplayBreakdownItem['label'][] = ['Section Recognition', 'Readability & Formatting', 'Impact & Metrics', 'Resume Quality'];
       return labels.includes(label) && Number.isFinite(score) && Number.isFinite(maximum) && explanation
         ? [{ label, score: Math.max(0, Math.min(maximum, score)), maximum, explanation }]
         : [];
@@ -2705,6 +2706,7 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
     atsBreakdown,
     roleStrengths: arr(o.roleStrengths),
     hiringManagerAssessment: o.hiringManagerAssessment as HiringManagerAssessment,
+    requirementBreakdown: o.requirementBreakdown || [],
   };
 
   if (result.atsScoreExplanation.strengths.length === 0) {

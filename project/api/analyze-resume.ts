@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomUUID } from 'node:crypto';
 import { getUserFromRequest } from './_lib/auth.js';
-import { AiPipelineError, analyzeResumeWithAi } from './_lib/openrouter.js';
+import { AiPipelineError } from './_lib/openrouter.js';
+import { runAnalysisPipeline } from './_lib/analysis-engine/pipeline.js';
 import {
   createAiObservabilityContext,
   logAiEvent,
@@ -88,16 +89,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const includePremium = true;
 
   try {
-    const result = await analyzeResumeWithAi(resumeText, jobDescription, { observability, includePremium });
+    const engineResult = await runAnalysisPipeline(
+      {
+        resumeText,
+        jobDescriptionText: jobDescription,
+        includePremium
+      },
+      { observability }
+    );
+    const result = engineResult.legacyReport;
 
-    const strengths = result.tier === 'premium'
+    const strengths = engineResult.tier === 'premium'
       ? result.atsScoreExplanation.strengths.join('\n')
       : result.basicFeedback.join('\n');
-    const improvements = result.tier === 'premium'
+    const improvements = engineResult.tier === 'premium'
       ? [...result.improvementSuggestions, ...result.optimizationRecommendations]
-        .map((item) => `- ${item}`)
+        .map((item: string) => `- ${item}`)
         .join('\n')
-      : result.basicFeedback.map((item) => `- ${item}`).join('\n');
+      : result.basicFeedback.map((item: string) => `- ${item}`).join('\n');
 
     let reportId: string | null = null;
     try {
