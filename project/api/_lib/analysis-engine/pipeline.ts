@@ -36,14 +36,24 @@ export async function runAnalysisPipeline(
     publications: candidateProfile.rawStructure.languages, // mapped for compat
   };
 
+  const standardExpectedSections = ['summary', 'experience', 'projects', 'skills', 'education'];
+  const allDetectedKeys = Object.keys(candidateProfile.rawStructure).filter(
+    k => Array.isArray((candidateProfile.rawStructure as any)[k]) 
+      ? (candidateProfile.rawStructure as any)[k].length > 0 
+      : !!(candidateProfile.rawStructure as any)[k]
+  );
+  
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const detectedSections = standardExpectedSections
+    .filter(s => allDetectedKeys.includes(s))
+    .map(capitalize);
+  const missingSections = standardExpectedSections
+    .filter(s => !allDetectedKeys.includes(s))
+    .map(capitalize);
+
   // 2. Free Tier Fast-Path
   // Free users only get basic parsing and structure check.
   if (!context.includePremium) {
-    const detectedSections = Object.keys(candidateProfile.rawStructure).filter(
-      k => Array.isArray((candidateProfile.rawStructure as any)[k]) 
-        ? (candidateProfile.rawStructure as any)[k].length > 0 
-        : !!(candidateProfile.rawStructure as any)[k]
-    );
 
     return {
       tier: 'free',
@@ -52,7 +62,7 @@ export async function runAnalysisPipeline(
         parsed: parsedResume,
         atsScore: 0, // Placeholder
         detectedSections,
-        missingSections: [],
+        missingSections,
         basicFeedback: ['Unlock Pro for deep analysis and ATS scoring.']
       }
     };
@@ -94,7 +104,8 @@ export async function runAnalysisPipeline(
   const allMissingSkills = [...missingCoreSkills, ...missingPreferredSkills];
   const allStrongSkills = [...exactSkills, ...semanticSkills];
 
-  const improvements = recommendationResult.recommendations.map(r => r.suggestion);
+  const formatSuggestion = (r: any) => `**What**: Explicitly add ${r.requirement}.\n**Why**: ${r.whyItMatters}\n**Where**: ${r.whereToAdd}\n**Evidence**: ${r.evidenceStatus}\n**Note**: ${r.fabricationWarning}`;
+  const improvements = recommendationResult.recommendations.map(formatSuggestion);
 
   const legacyReport: AiResumeAnalysisFull = {
     tier: 'premium',
@@ -108,8 +119,8 @@ export async function runAnalysisPipeline(
     keywordGaps: allMissingSkills,
     missingRequiredSkills: missingCoreSkills,
     educationAlignment: [],
-    detectedSections: [],
-    missingSections: [],
+    detectedSections,
+    missingSections,
     formattingIssues: [],
     formattingSuggestions: [],
     weakBullets: [],
@@ -119,10 +130,11 @@ export async function runAnalysisPipeline(
     keywordSuggestions: allMissingSkills,
     atsIssues: [],
     recommendationPriorities: {
-      critical: recommendationResult.recommendations.filter(r => r.priority === 'critical').map(r => r.suggestion),
-      important: recommendationResult.recommendations.filter(r => r.priority === 'important').map(r => r.suggestion),
-      optional: recommendationResult.recommendations.filter(r => r.priority === 'optional').map(r => r.suggestion),
+      critical: recommendationResult.recommendations.filter(r => r.priority === 'critical').map(formatSuggestion),
+      important: recommendationResult.recommendations.filter(r => r.priority === 'important').map(formatSuggestion),
+      optional: recommendationResult.recommendations.filter(r => r.priority === 'optional').map(formatSuggestion),
     },
+    actionPlan: recommendationResult.recommendations,
     atsScoreExplanation: {
       strengths: evaluationResult.scoreExplanations.whatIncreasedScore,
       missingElements: evaluationResult.scoreExplanations.whatReducedScore,

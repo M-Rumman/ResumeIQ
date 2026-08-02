@@ -70,7 +70,7 @@ export type MatchClassification =
   | 'STRONG_SEMANTIC_MATCH' 
   | 'PARTIAL_MATCH' 
   | 'RELATED_MATCH' 
-  | 'UNDER_EXPLICIT'
+  | 'UNDER_EXPRESSED'
   | 'MISSING';
 
 export interface MatchEvidence {
@@ -115,7 +115,11 @@ export interface Recommendation {
   id: string;
   type: 'missing_skill' | 'weak_bullet' | 'formatting' | 'missing_section';
   priority: 'critical' | 'important' | 'optional';
-  suggestion: string;
+  requirement: string;
+  whyItMatters: string;
+  whereToAdd: string;
+  evidenceStatus: string;
+  fabricationWarning: string;
   // If it's a weak bullet, this provides the rewrite based ONLY on existing facts
   originalText?: string;
   improvedText?: string;

@@ -150,7 +150,7 @@ const tests: TestCase[] = [
                  || prompt.match(/\[ID:\s*([^\]]+)\][^\[]*\[Section:[^\]]*\]\s*B\.A\.\s*Psychology/i);
           supportingFactId = m ? m[1] : (prompt.match(/\[ID: ([^\]]+)\]/)?.[1] || null);
         } else if (reqName.includes('storytelling')) {
-          classification = 'UNDER_EXPLICIT';
+          classification = 'UNDER_EXPRESSED';
           const m = prompt.match(/\[ID:\s*([^\]]+)\][^\[]*\[Section:[^\]]*\]\s*presented research/i);
           supportingFactId = m ? m[1] : null;
         } else if (reqName.includes('participant panels')) {
@@ -289,7 +289,7 @@ const tests: TestCase[] = [
       const storytellingReq = finalReport.requirementBreakdown.find(m => m.requirement.normalized_name === 'storytelling');
       assert.ok(storytellingReq, 'storytelling requirement should exist');
       assert.notEqual(storytellingReq.classification, 'MISSING', 'Storytelling should not be strictly MISSING');
-      assert.ok(['UNDER_EXPLICIT', 'RELATED_MATCH'].includes(storytellingReq.classification), 'Storytelling should be under-explicit or related');
+      assert.ok(['UNDER_EXPRESSED', 'RELATED_MATCH'].includes(storytellingReq.classification), 'Storytelling should be under-expressed or related');
 
       // 15 & SECTION DETECTION: Projects MUST NOT be detected as an explicit section because there is no Projects heading.
       const hasProjects = finalReport.detectedSections.some(s => s.toLowerCase() === 'projects');

@@ -54,6 +54,20 @@ export function validateAndSanitizeReport(
     report.recommendationPriorities.optional = report.recommendationPriorities.optional.map(enforceWarning);
   }
 
+  if (report.actionPlan) {
+    report.actionPlan = report.actionPlan.map(gap => {
+      const lower = gap.fabricationWarning.toLowerCase();
+      const hasWarning = warningClauses.some(clause => lower.includes(clause));
+      if (!hasWarning) {
+        return {
+          ...gap,
+          fabricationWarning: `${gap.fabricationWarning} Only add this if accurate and supported by your actual experience.`
+        };
+      }
+      return gap;
+    });
+  }
+
   // 3. Duplicate Validation
   const dedupe = (arr: string[]) => Array.from(new Set(arr));
   

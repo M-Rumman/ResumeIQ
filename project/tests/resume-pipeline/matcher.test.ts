@@ -84,9 +84,121 @@ const tests: TestCase[] = [
 
       // We actually want the LLM to run and fail safely if we had a mock, 
       // but since we don't have a mocked OpenRouter in this simple test runner, 
-      // it will throw and our error handler catches it, returning MISSING.
-      const result = await matchRequirements(job, candidate);
-      assert.equal(result.matches[0].classification, 'MISSING');
+      // it will hit the LLM. If the LLM behaves correctly, it should output MISSING.
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ classification: 'MISSING' }) } }]
+        })
+      }) as any;
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'MISSING');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Under-expressed requirement resolves correctly',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Analyst',
+        requirements: [{
+          id: '1',
+          category: 'soft skill',
+          normalized_name: 'data science collaboration',
+          original_text: 'Experience with data science collaboration',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'data science collaboration',
+          priority: 'required',
+          requirement_type: 'skill',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'f1',
+          type: 'experience',
+          normalizedName: 'Data collaboration',
+          rawText: 'Partnered with data science to triangulate clickstream analytics with qualitative insights',
+          sourceSection: 'Experience',
+          evidence: 'Partnered with data science to triangulate clickstream analytics with qualitative insights'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ classification: 'UNDER_EXPRESSED', supportingFactId: 'f1' }) } }]
+        })
+      }) as any;
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
+        assert.equal(result.matches[0].evidence.length > 0, true, 'Should attach the evidence');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'True negative resolves to MISSING',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Analyst',
+        requirements: [{
+          id: '1',
+          category: 'hard skill',
+          normalized_name: 'quantum computing algorithms',
+          original_text: 'Expertise in quantum computing algorithms',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'quantum computing algorithms',
+          priority: 'required',
+          requirement_type: 'skill',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'f1',
+          type: 'experience',
+          normalizedName: 'Web Development',
+          rawText: 'Built simple HTML websites and designed CSS templates',
+          sourceSection: 'Experience',
+          evidence: 'Built simple HTML websites and designed CSS templates'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ classification: 'MISSING' }) } }]
+        })
+      }) as any;
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'MISSING');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     }
   }
 ];

@@ -26,6 +26,17 @@ export interface ParsedResume {
   certifications: string[];
 }
 
+export interface Gap {
+  id: string;
+  requirement: string;
+  whyItMatters: string;
+  whereToAdd: string;
+  evidenceStatus: string;
+  fabricationWarning: string;
+  priority: 'critical' | 'important' | 'optional';
+  type: 'missing_skill' | 'weak_bullet';
+}
+
 export interface AiResumeAnalysisPremium {
   tier: 'premium';
   parsed: ParsedResume;
@@ -58,6 +69,7 @@ export interface AiResumeAnalysisPremium {
   improvedBulletPoints: { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' }[];
   improvementSuggestions: string[];
   optimizationRecommendations: string[];
+  actionPlan: Gap[];
   atsIssues: string[];
   atsScoreExplanation: {
     strengths: string[];

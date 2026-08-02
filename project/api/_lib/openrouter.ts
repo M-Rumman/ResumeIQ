@@ -116,6 +116,17 @@ export interface ParsedResume {
   links?: { url: string; anchorText: string }[];
 }
 
+export interface Gap {
+  id: string;
+  requirement: string;
+  whyItMatters: string;
+  whereToAdd: string;
+  evidenceStatus: string;
+  fabricationWarning: string;
+  priority: 'critical' | 'important' | 'optional';
+  type: 'missing_skill' | 'weak_bullet';
+}
+
 export interface AiResumeAnalysisFull {
   tier: 'premium';
   parsed: ParsedResume;
@@ -143,6 +154,7 @@ export interface AiResumeAnalysisFull {
     important: string[];
     optional: string[];
   };
+  actionPlan: Gap[];
   atsScoreExplanation: {
     strengths: string[];
     missingElements: string[];

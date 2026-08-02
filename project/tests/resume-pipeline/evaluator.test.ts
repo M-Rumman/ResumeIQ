@@ -65,6 +65,84 @@ const tests: TestCase[] = [
       const structBreakdown = evalResult.atsBreakdown.find(b => b.label === 'Section Recognition');
       assert.equal(structBreakdown?.score, 0);
     }
+  },
+  {
+    name: 'Action verb check awards full marks and no critique when bullets use strong verbs',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [], priorities: [] };
+      const matchingResult: MatchingResult = { matches: [] };
+      
+      const strongCandidate: CandidateProfile = {
+        ...baseCandidate,
+        rawStructure: {
+          ...baseCandidate.rawStructure,
+          experience: ['Led the team to success.', 'Built a new scalable backend.', 'Ran operations.', 'Mentored juniors.'],
+          projects: ['Designed a novel system.', 'Engineered a highly available database.']
+        }
+      };
+      
+      const evalResult = evaluateScores(job, strongCandidate, matchingResult);
+      const qualityBreakdown = evalResult.atsBreakdown.find(b => b.label === 'Resume Quality');
+      
+      assert.equal(qualityBreakdown?.score, 25);
+      assert.equal(qualityBreakdown?.explanation.includes('Many bullets do not start with strong action verbs.'), false);
+    }
+  },
+  {
+    name: 'Action verb check deducts marks and generates critique when bullets use weak verbs',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [], priorities: [] };
+      const matchingResult: MatchingResult = { matches: [] };
+      
+      const weakCandidate: CandidateProfile = {
+        ...baseCandidate,
+        rawStructure: {
+          ...baseCandidate.rawStructure,
+          experience: ['Responsible for the team.', 'Worked on a new backend.'],
+          projects: ['Helped with a novel system.', 'Assisted with a database.']
+        }
+      };
+      
+      const evalResult = evaluateScores(job, weakCandidate, matchingResult);
+      const qualityBreakdown = evalResult.atsBreakdown.find(b => b.label === 'Resume Quality');
+      
+      assert.equal(qualityBreakdown?.score, 7);
+      assert.equal(qualityBreakdown?.explanation.includes('Many bullets do not start with strong action verbs.'), true);
+    }
+  },
+  {
+    name: 'Action verb check correctly identifies strong verbs and ignores leading adverbs (Regression Test)',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [], priorities: [] };
+      const matchingResult: MatchingResult = { matches: [] };
+      
+      const regressionCandidate: CandidateProfile = {
+        ...baseCandidate,
+        rawStructure: {
+          ...baseCandidate.rawStructure,
+          experience: [
+            'Led the team.',
+            'Built a new system.',
+            'Ran operations.',
+            'Mentored juniors.',
+            'Regularly presented research.',
+            'Partnered with data science.',
+            'Conducted tests.',
+            'Designed architecture.',
+            'Supported users.',
+            'Synthesized findings.'
+          ],
+          projects: []
+        }
+      };
+      
+      const evalResult = evaluateScores(job, regressionCandidate, matchingResult);
+      const qualityBreakdown = evalResult.atsBreakdown.find(b => b.label === 'Resume Quality');
+      
+      assert.equal(qualityBreakdown?.score, 25, 'Score should not be penalized');
+      assert.equal(qualityBreakdown?.explanation.includes('Many bullets do not start with strong action verbs.'), false, 'Critique should not be present');
+      assert.equal(qualityBreakdown?.explanation.includes('Bullets start with strong action verbs and avoid passive language.'), true, 'Positive feedback should be present');
+    }
   }
 ];
 

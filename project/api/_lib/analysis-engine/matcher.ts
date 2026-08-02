@@ -28,20 +28,20 @@ Classify the match exactly into one of these states:
 - STRONG_SEMANTIC_MATCH: Different wording, but evidence clearly demonstrates the identical capability.
 - PARTIAL_MATCH: Some evidence exists, but lacks full depth/breadth.
 - RELATED_MATCH: Adjacent/tangential evidence exists but doesn't prove the specific requirement.
-- UNDER_EXPLICIT: The capability is strongly implied but not explicitly stated using standard terminology.
-- MISSING: No credible evidence exists in the supplied resume. NEVER invent evidence.
+- UNDER_EXPRESSED: Relevant evidence EXISTS anywhere in the resume but does not use matching terminology or isn't framed as directly satisfying this specific requirement.
+- MISSING: No reasonable evidence exists anywhere in the resume, even loosely. You MUST search across ALL provided resume content before assigning this.
 
 Output JSON exactly like this:
 {
-  "classification": "EXACT_MATCH" | "STRONG_SEMANTIC_MATCH" | "PARTIAL_MATCH" | "RELATED_MATCH" | "UNDER_EXPLICIT" | "MISSING",
+  "classification": "EXACT_MATCH" | "STRONG_SEMANTIC_MATCH" | "PARTIAL_MATCH" | "RELATED_MATCH" | "UNDER_EXPRESSED" | "MISSING",
   "supportingFactId": "id1", // Leave null or empty if MISSING
   "explanation": "Explain why this classification was chosen and how the evidence proves it."
 }
 
 CRITICAL RULES:
-- Never hallucinate facts. If there's no evidence, output MISSING.
-- If a JD requires a tool (e.g., ROS, MATLAB) and there is no evidence, output MISSING.
-- Do not let semantic similarity manufacture evidence.
+- Never hallucinate facts. If there's truly no related evidence, output MISSING.
+- If a JD requires a very specific tool (e.g., ROS, MATLAB) and there is absolutely no evidence, output MISSING.
+- You may use logical deduction to assign UNDER_EXPRESSED if the evidence strongly implies the capability (e.g., "collaborated with analysts" -> implies data science collaboration).
 - "B.A." vs "Bachelor's degree" is an EXACT_MATCH or STRONG_SEMANTIC_MATCH.
 `;
 

@@ -24,6 +24,7 @@ export type PremiumResumeDisplayResults = {
   source: 'ai';
   engine: AiResumeAnalysisPremium;
   requirementBreakdown: any[];
+  actionPlan: import('./analyzeResume.js').Gap[];
 };
 
 export type FreeResumeDisplayResults = {
@@ -124,6 +125,7 @@ function mapAiResumeCore(ai: AiResumeAnalysisPremium): PremiumResumeDisplayResul
     source: 'ai' as const,
     engine: ai,
     requirementBreakdown: ai.requirementBreakdown || [],
+    actionPlan: ai.actionPlan || [],
   };
 }
 

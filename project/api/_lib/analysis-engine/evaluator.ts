@@ -106,7 +106,37 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
     let actionVerbCount = 0;
     let vagueCount = 0;
 
-    const actionVerbsRegex = /^(developed|led|managed|created|designed|implemented|increased|reduced|achieved|built|delivered|engineered|orchestrated|spearheaded|launched)/i;
+    const actionVerbs = new Set([
+      'accelerated', 'achieved', 'adapted', 'addressed', 'administered', 'advised', 'advocated', 'analyzed',
+      'architected', 'assembled', 'assessed', 'audited', 'authored', 'automated', 'balanced', 'budgeted',
+      'built', 'calculated', 'calibrated', 'cataloged', 'certified', 'championed', 'clarified', 'classified',
+      'coached', 'collaborated', 'collected', 'communicated', 'compiled', 'completed', 'composed', 'computed',
+      'conceptualized', 'conducted', 'configured', 'consolidated', 'constructed', 'consulted', 'controlled',
+      'converted', 'coordinated', 'counseled', 'crafted', 'created', 'critiqued', 'customized', 'debugged',
+      'decided', 'defined', 'delegated', 'delivered', 'demonstrated', 'deployed', 'designed', 'detected',
+      'determined', 'developed', 'devised', 'diagnosed', 'directed', 'discovered', 'dispatched', 'displayed',
+      'distributed', 'documented', 'drafted', 'drove', 'edited', 'educated', 'eliminated', 'enabled',
+      'engineered', 'enhanced', 'ensured', 'established', 'estimated', 'evaluated', 'examined', 'executed',
+      'expanded', 'expedited', 'experimented', 'explained', 'extracted', 'facilitated', 'figured', 'financed',
+      'forecasted', 'formulated', 'founded', 'gathered', 'generated', 'guided', 'handled', 'headed', 'helped',
+      'identified', 'illustrated', 'implemented', 'improved', 'increased', 'influenced', 'informed', 'initiated',
+      'innovated', 'inspected', 'installed', 'instituted', 'instructed', 'integrated', 'interpreted', 'interviewed',
+      'introduced', 'invented', 'investigated', 'launched', 'led', 'maintained', 'managed', 'mapped', 'marketed',
+      'measured', 'mentored', 'modeled', 'modified', 'monitored', 'motivated', 'navigated', 'negotiated',
+      'operated', 'optimized', 'orchestrated', 'organized', 'originated', 'overhauled', 'oversaw', 'participated',
+      'partnered', 'performed', 'persuaded', 'piloted', 'pioneered', 'pitched', 'planned', 'predicted', 'prepared',
+      'presented', 'prioritized', 'produced', 'programmed', 'projected', 'promoted', 'proposed', 'provided',
+      'published', 'purchased', 'quantified', 'ran', 'recommended', 'reconciled', 'recorded', 'recruited',
+      'redesigned', 'reduced', 'regulated', 'rehabilitated', 'remodeled', 'reorganized', 'repaired', 'replaced',
+      'reported', 'represented', 'researched', 'resolved', 'restored', 'restructured', 'retrieved', 'reviewed',
+      'revised', 'revitalized', 'routed', 'saved', 'scheduled', 'screened', 'secured', 'selected', 'served',
+      'shaped', 'simplified', 'simulated', 'solved', 'sparked', 'spearheaded', 'specified', 'standardized',
+      'steered', 'strategized', 'streamlined', 'strengthened', 'structured', 'studied', 'succeeded', 'suggested',
+      'summarized', 'supervised', 'supported', 'surpassed', 'synthesized', 'systematized', 'tailored', 'taught',
+      'tested', 'tracked', 'trained', 'transformed', 'translated', 'troubleshot', 'tutored', 'unified', 'updated',
+      'upgraded', 'used', 'utilized', 'validated', 'verified', 'visualized', 'volunteered', 'won', 'wrote'
+    ]);
+    const adverbs = new Set(['successfully', 'regularly', 'consistently', 'continually', 'frequently', 'proactively', 'effectively', 'efficiently', 'strategically', 'significantly', 'actively', 'carefully', 'expertly', 'proficiently', 'competently']);
     const metricRegex = /(\d+%|\$\d+|\d+x|\d+k|\d+ million|\d+ thousand|\d+\+)/i;
     const vagueRegex = /(helped with|worked on|responsible for|duties included|assisted with)/i;
 
@@ -114,7 +144,18 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
       if (metricRegex.test(bullet)) quantifiedCount++;
       
       const words = bullet.trim().split(/\s+/);
-      if (words.length > 0 && actionVerbsRegex.test(words[0])) actionVerbCount++;
+      if (words.length > 0) {
+        let firstWord = words[0].replace(/[^a-zA-Z]/g, '').toLowerCase();
+        let targetWord = firstWord;
+        
+        if (adverbs.has(firstWord) && words.length > 1) {
+          targetWord = words[1].replace(/[^a-zA-Z]/g, '').toLowerCase();
+        }
+        
+        if (actionVerbs.has(targetWord)) {
+          actionVerbCount++;
+        }
+      }
       if (vagueRegex.test(bullet)) vagueCount++;
     }
 
@@ -137,10 +178,15 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
       qualityScore = 25;
       qualityReasons.push('Bullets start with strong action verbs and avoid passive language.');
     } else {
-      qualityScore -= (vagueCount * 2);
+      if (vagueCount > 0) {
+        qualityScore -= (vagueCount * 2);
+        qualityReasons.push(`Found vague phrases (e.g., 'responsible for') in ${vagueCount} bullet(s).`);
+      }
+      if (percentAction <= 0.5) {
+        qualityScore -= 10;
+        qualityReasons.push('Many bullets do not start with strong action verbs.');
+      }
       qualityScore = Math.max(5, qualityScore);
-      if (vagueCount > 0) qualityReasons.push(`Found vague phrases (e.g., 'responsible for') in ${vagueCount} bullet(s).`);
-      if (percentAction <= 0.5) qualityReasons.push('Many bullets do not start with strong action verbs.');
     }
     if (qualityReasons.length === 0) qualityReasons.push('High overall bullet clarity and active voice.');
   }

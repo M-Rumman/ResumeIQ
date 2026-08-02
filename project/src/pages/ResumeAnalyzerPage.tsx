@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import LogoMark from '../components/LogoMark';
 import { supabase } from '../lib/supabase.js';
-import { fetchAiResumeAnalysis } from '../lib/api/analyzeResume.js';
+import { fetchAiResumeAnalysis, type Gap } from '../lib/api/analyzeResume.js';
 import { ApiRequestError, apiPost } from '../lib/api/client.js';
 import {
   mapAiResumeToDisplay,
@@ -308,59 +308,7 @@ function BulletImprovementGuide({
   );
 }
 
-function ResumeCoachingReport({ results }: { results: PremiumResults }) {
-  const fallbackReport: PremiumResults['engine']['coachingReport'] = [
-    {
-      category: 'Job Alignment',
-      recommendations: results.jobSpecificImprovements.map((item) => item.text).slice(0, 3),
-    },
-    {
-      category: 'ATS Formatting',
-      recommendations: results.generalResumeImprovements.map((item) => item.text).slice(0, 3),
-    },
-  ].filter((section) => section.recommendations.length > 0) as PremiumResults['engine']['coachingReport'];
-  const sections = results.engine.coachingReport.length > 0
-    ? results.engine.coachingReport
-    : fallbackReport;
 
-  return (
-    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-      <div className="flex items-start gap-3 mb-2">
-        <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-          <Lightbulb className="w-5 h-5 text-amber-600" />
-        </div>
-        <div>
-          <h3 className="font-bold text-gray-900">Resume Improvements</h3>
-          <p className="text-sm text-gray-700 mt-1">
-            Recruiter-style coaching grounded in your resume and this specific job description.
-          </p>
-        </div>
-      </div>
-
-      {sections.length > 0 ? (
-        <div className="grid gap-4 mt-6 lg:grid-cols-2">
-          {sections.map((section) => (
-            <article key={section.category} className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
-              <h4 className="font-bold text-gray-900 mb-3">{section.category}</h4>
-              <ul className="space-y-3">
-                {section.recommendations.map((recommendation) => (
-                  <li key={recommendation} className="flex items-start gap-2.5 text-sm leading-6 text-gray-800">
-                    <ArrowRight className="w-4 h-4 text-[#3c4a59] mt-1 flex-shrink-0" />
-                    <span>{recommendation}</span>
-                  </li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-5 text-sm text-gray-700">
-          Add more project or experience detail to receive role-specific coaching.
-        </p>
-      )}
-    </section>
-  );
-}
 
 export function AtsScoreExplanation({ explanation }: { explanation: PremiumResults['engine']['atsScoreExplanation'] }) {
   const hasDetails = explanation.whatIncreasedScore.length
@@ -550,19 +498,20 @@ function EducationAlignmentCard({ items }: { items: PremiumResults['engine']['ed
   );
 }
 
-function KeywordRecommendations({ priorities }: { priorities: PremiumResults['engine']['recommendationPriorities'] }) {
-  if (!priorities) return null;
+function ActionPlanCard({ actionPlan }: { actionPlan: Gap[] }) {
+  if (!actionPlan || actionPlan.length === 0) return null;
+  
   const levels = [
-    { label: 'Critical', items: priorities.critical, color: 'text-red-700 border-red-100 bg-red-50' },
-    { label: 'Important', items: priorities.important, color: 'text-amber-700 border-amber-100 bg-amber-50' },
-    { label: 'Optional', items: priorities.optional, color: 'text-[#3c4a59] border-gray-200 bg-gray-50' }
+    { label: 'Critical', items: actionPlan.filter(g => g.priority === 'critical'), color: 'text-red-700 border-red-100 bg-red-50' },
+    { label: 'Important', items: actionPlan.filter(g => g.priority === 'important'), color: 'text-amber-700 border-amber-100 bg-amber-50' },
+    { label: 'Optional', items: actionPlan.filter(g => g.priority === 'optional'), color: 'text-[#3c4a59] border-gray-200 bg-gray-50' }
   ];
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-5">
         <AlertCircle className="w-5 h-5 text-amber-600" />
-        <h3 className="font-bold text-gray-900">Recommended Changes</h3>
+        <h3 className="font-bold text-gray-900">Action Plan</h3>
       </div>
       <div className="space-y-5">
         {levels.map((level) => {
@@ -571,9 +520,18 @@ function KeywordRecommendations({ priorities }: { priorities: PremiumResults['en
             <div key={level.label}>
               <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">{level.label}</p>
               <div className="space-y-2">
-                {level.items.map((item, i) => (
+                {level.items.map((gap, i) => (
                   <div key={i} className={`rounded-xl border px-4 py-3 ${level.color}`}>
-                    <p className="text-sm text-gray-800 whitespace-pre-line leading-relaxed">{item}</p>
+                    <p className="text-sm font-bold">{gap.requirement}</p>
+                    <p className="text-sm leading-relaxed mt-1">
+                      {gap.whyItMatters} Add this to your {gap.whereToAdd.toLowerCase().replace('.', '')}.
+                    </p>
+                    <a 
+                      href={`#req-${gap.requirement.replace(/\s+/g, '-').toLowerCase()}`} 
+                      className="text-xs font-medium underline mt-2 inline-block opacity-80 hover:opacity-100"
+                    >
+                      View full detail
+                    </a>
                   </div>
                 ))}
               </div>
@@ -664,8 +622,8 @@ function TopStrengthsCard({ breakdown }: { breakdown: any[] }) {
   );
 }
 
-function BiggestOpportunitiesCard({ opportunities }: { opportunities: string[] }) {
-  if (!opportunities || opportunities.length === 0) return null;
+function BiggestOpportunitiesCard({ actionPlan }: { actionPlan: Gap[] }) {
+  if (!actionPlan || actionPlan.length === 0) return null;
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-5">
@@ -673,10 +631,15 @@ function BiggestOpportunitiesCard({ opportunities }: { opportunities: string[] }
         <h3 className="font-bold text-gray-900">Biggest Opportunities</h3>
       </div>
       <ul className="space-y-3">
-        {opportunities.map((opp, i) => (
+        {actionPlan.slice(0, 5).map((gap, i) => (
           <li key={i} className="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
             <Lightbulb className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
-            <p className="text-sm text-amber-950 whitespace-pre-line leading-relaxed">{opp}</p>
+            <a 
+              href={`#req-${gap.requirement.replace(/\s+/g, '-').toLowerCase()}`} 
+              className="text-sm text-amber-950 hover:underline font-medium"
+            >
+              Add {gap.requirement} to your {gap.whereToAdd.toLowerCase().replace('.', '')}
+            </a>
           </li>
         ))}
       </ul>
@@ -684,7 +647,7 @@ function BiggestOpportunitiesCard({ opportunities }: { opportunities: string[] }
   );
 }
 
-function RequirementBreakdownCard({ breakdown }: { breakdown: any[] }) {
+function RequirementBreakdownCard({ breakdown, actionPlan }: { breakdown: any[]; actionPlan: Gap[] }) {
   if (!breakdown || breakdown.length === 0) return null;
   
   return (
@@ -694,8 +657,11 @@ function RequirementBreakdownCard({ breakdown }: { breakdown: any[] }) {
         <h3 className="font-bold text-gray-900">Requirement Breakdown</h3>
       </div>
       <div className="space-y-4">
-        {breakdown.map((item, i) => (
-          <div key={i} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+        {breakdown.map((item, i) => {
+          const gap = actionPlan.find(g => g.requirement === item.requirement?.normalized_name);
+          const reqId = `req-${item.requirement?.normalized_name.replace(/\s+/g, '-').toLowerCase()}`;
+          return (
+          <div key={i} id={reqId} className="border border-gray-200 rounded-xl p-4 bg-gray-50 scroll-mt-20">
             <div className="flex justify-between items-start mb-2">
                <div>
                  <p className="font-bold text-gray-900">{item.requirement?.normalized_name}</p>
@@ -705,20 +671,40 @@ function RequirementBreakdownCard({ breakdown }: { breakdown: any[] }) {
                  {item.classification}
                </span>
             </div>
-            {item.evidence && item.evidence.length > 0 ? (
-               <div className="mt-2 text-sm text-gray-700">
-                 <strong>Evidence ({item.evidence[0].source_section}):</strong> "{item.evidence[0].source_text}"
-               </div>
+            
+            {gap ? (
+              <div className="mt-4 space-y-3 text-sm">
+                <div>
+                  <span className="font-bold text-gray-900">Why it matters: </span>
+                  <span className="text-gray-700">{gap.whyItMatters}</span>
+                </div>
+                <div>
+                  <span className="font-bold text-gray-900">Evidence: </span>
+                  <span className="text-gray-700">{gap.evidenceStatus}</span>
+                </div>
+                <div className="bg-amber-50 text-amber-800 p-3 rounded-lg border border-amber-100 text-xs">
+                  <span className="font-bold">⚠️ Important: </span>
+                  {gap.fabricationWarning}
+                </div>
+              </div>
             ) : (
-               <div className="mt-2 text-sm text-red-600">No evidence found in resume.</div>
-            )}
-            {item.explanation && (
-               <div className="mt-2 text-xs text-gray-600 italic">
-                 {item.explanation}
-               </div>
+              <>
+                {item.evidence && item.evidence.length > 0 ? (
+                   <div className="mt-2 text-sm text-gray-700">
+                     <strong>Evidence ({item.evidence[0].source_section}):</strong> "{item.evidence[0].source_text}"
+                   </div>
+                ) : (
+                   <div className="mt-2 text-sm text-red-600">No evidence found in resume.</div>
+                )}
+                {item.explanation && (
+                   <div className="mt-2 text-xs text-gray-600 italic">
+                     {item.explanation}
+                   </div>
+                )}
+              </>
             )}
           </div>
-        ))}
+        )})}
       </div>
     </div>
   );
@@ -1152,8 +1138,8 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
             <EducationAlignmentCard items={results.engine.educationAlignment} />
             <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />
             <TopStrengthsCard breakdown={results.requirementBreakdown} />
-            <BiggestOpportunitiesCard opportunities={results.engine.optimizationRecommendations || []} />
-            <RequirementBreakdownCard breakdown={results.requirementBreakdown} />
+            <BiggestOpportunitiesCard actionPlan={results.actionPlan} />
+            <RequirementBreakdownCard breakdown={results.requirementBreakdown} actionPlan={results.actionPlan} />
 
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <div className="flex items-center gap-2 mb-5">
@@ -1191,7 +1177,7 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
                         </span>
                       ))
                     ) : (
-                      <span className="text-sm text-gray-700">All standard sections found</span>
+                      <span className="text-sm text-gray-700">✓ All standard sections present</span>
                     )}
                   </div>
                 </div>
