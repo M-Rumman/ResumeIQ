@@ -764,6 +764,9 @@ function analysisErrorMessage(error: unknown): string {
   if (error.pipelineError) {
     switch (error.pipelineError.stage) {
       case 'parser':
+        if (error.pipelineError.code === 'JD_PARSING_FAILED') {
+          return 'We could not extract job requirements from the provided job description. Please review the job description text and try again.';
+        }
         return 'We could not read the resume structure. Please review the extracted resume text and try again.';
       case 'analyzer':
         return 'The resume analysis service returned an incomplete analysis. Please try again in a few moments.';
