@@ -18,7 +18,7 @@ function getMatchContribution(classification: MatchClassification): number {
     case 'STRONG_SEMANTIC_MATCH': return 0.85;
     case 'PARTIAL_MATCH': return 0.5;
     case 'RELATED_MATCH':
-    case 'UNDER_EXPLICIT': return 0.25;
+    case 'UNDER_EXPRESSED': return 0.25;
     case 'MISSING': return 0.0;
     default: return 0.0;
   }

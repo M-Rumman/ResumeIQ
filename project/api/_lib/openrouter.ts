@@ -124,7 +124,7 @@ export interface Gap {
   evidenceStatus: string;
   fabricationWarning: string;
   priority: 'critical' | 'important' | 'optional';
-  type: 'missing_skill' | 'weak_bullet';
+  type: 'missing_skill' | 'weak_bullet' | 'formatting' | 'missing_section';
 }
 
 export interface AiResumeAnalysisFull {
@@ -179,7 +179,7 @@ export interface AiResumeAnalysisFull {
   hiringManagerAssessment: HiringManagerAssessment;
 }
 
-export type HiringDecision = 'Excellent Match' | 'Strong Match' | 'Moderate Match' | 'Weak Match';
+export type HiringDecision = 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
 
 export interface HiringManagerAssessment {
   overallDecision: HiringDecision;
@@ -2697,6 +2697,7 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
       important: priorityItems(priorityGroups.important),
       optional: priorityItems(priorityGroups.optional),
     },
+    actionPlan: Array.isArray(o.actionPlan) ? o.actionPlan : [],
     atsScoreExplanation: {
       strengths: arr(scoreExplanation.strengths),
       missingElements: arr(scoreExplanation.missingElements),

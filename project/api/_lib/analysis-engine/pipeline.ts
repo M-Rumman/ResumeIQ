@@ -163,9 +163,9 @@ export async function runAnalysisPipeline(
     atsBreakdown: evaluationResult.atsBreakdown,
     roleStrengths: allStrongSkills,
     hiringManagerAssessment: {
-      overallDecision: evaluationResult.matchScore >= 90 ? 'Excellent Match' : 
-                       evaluationResult.matchScore >= 75 ? 'Strong Match' : 
-                       evaluationResult.matchScore >= 50 ? 'Moderate Match' : 'Weak Match',
+      overallDecision: evaluationResult.matchScore >= 90 ? 'Strong Match' : 
+                       evaluationResult.matchScore >= 75 ? 'Good Match' : 
+                       evaluationResult.matchScore >= 50 ? 'Potential Match' : 'Weak Match',
       recruiterSummary: 'Deterministically evaluated candidate profile against requirements.',
       topReasonsToInterview: allStrongSkills.slice(0, 3),
       topReasonsForRejection: missingCoreSkills.slice(0, 3),

@@ -498,51 +498,6 @@ function EducationAlignmentCard({ items }: { items: PremiumResults['engine']['ed
   );
 }
 
-function ActionPlanCard({ actionPlan }: { actionPlan: Gap[] }) {
-  if (!actionPlan || actionPlan.length === 0) return null;
-  
-  const levels = [
-    { label: 'Critical', items: actionPlan.filter(g => g.priority === 'critical'), color: 'text-red-700 border-red-100 bg-red-50' },
-    { label: 'Important', items: actionPlan.filter(g => g.priority === 'important'), color: 'text-amber-700 border-amber-100 bg-amber-50' },
-    { label: 'Optional', items: actionPlan.filter(g => g.priority === 'optional'), color: 'text-[#3c4a59] border-gray-200 bg-gray-50' }
-  ];
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-      <div className="flex items-center gap-2 mb-5">
-        <AlertCircle className="w-5 h-5 text-amber-600" />
-        <h3 className="font-bold text-gray-900">Action Plan</h3>
-      </div>
-      <div className="space-y-5">
-        {levels.map((level) => {
-          if (!level.items || level.items.length === 0) return null;
-          return (
-            <div key={level.label}>
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">{level.label}</p>
-              <div className="space-y-2">
-                {level.items.map((gap, i) => (
-                  <div key={i} className={`rounded-xl border px-4 py-3 ${level.color}`}>
-                    <p className="text-sm font-bold">{gap.requirement}</p>
-                    <p className="text-sm leading-relaxed mt-1">
-                      {gap.whyItMatters} Add this to your {gap.whereToAdd.toLowerCase().replace('.', '')}.
-                    </p>
-                    <a 
-                      href={`#req-${gap.requirement.replace(/\s+/g, '-').toLowerCase()}`} 
-                      className="text-xs font-medium underline mt-2 inline-block opacity-80 hover:opacity-100"
-                    >
-                      View full detail
-                    </a>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function HiringManagerAssessmentCard({ assessment }: { assessment: PremiumResults['engine']['hiringManagerAssessment'] }) {
   const decisionStyle = {
     'Strong Match': 'bg-emerald-100 text-emerald-800',
@@ -1183,10 +1138,6 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
                 </div>
               </div>
             </div>
-
-            <KeywordRecommendations priorities={results.engine.recommendationPriorities} />
-
-            <ResumeCoachingReport results={results} />
 
             <BulletImprovementGuide
               items={results.bulletSuggestions}
