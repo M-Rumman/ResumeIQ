@@ -697,6 +697,64 @@ function OverallAssessmentCard({ results }: { results: PremiumResults }) {
   );
 }
 
+function MatchScoreCalculationCard({ details }: { details: PremiumResults['matchScoreDetails'] }) {
+  if (!details || !details.details) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 border-b border-gray-50 pb-4">
+        <div className="flex items-center gap-2">
+          <Zap className="w-5 h-5 text-emerald-600" />
+          <h3 className="font-bold text-gray-900">Match Score Calculation</h3>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-bold text-gray-900">
+            {Math.round(details.totalAchievedScore)} / {Math.round(details.totalMaxScore)} Points
+          </p>
+          <p className="text-xs text-gray-500">Achieved Score vs. Maximum Score</p>
+        </div>
+      </div>
+      
+      <div className="mb-4">
+        <p className="text-xs text-gray-600 mb-2 font-medium">How points are awarded:</p>
+        <ul className="text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1 list-disc list-inside">
+          <li><strong>Required Core:</strong> 10 pts max</li>
+          <li><strong>Preferred Core:</strong> 5 pts max</li>
+          <li><strong>Non-core:</strong> fewer pts max</li>
+          <li><strong>Exact Match:</strong> 100% of max pts</li>
+          <li><strong>Semantic Match:</strong> 85% of max pts</li>
+          <li><strong>Partial Match:</strong> 50% of max pts</li>
+        </ul>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm text-gray-700">
+          <thead className="bg-gray-50 text-xs uppercase font-bold text-gray-500">
+            <tr>
+              <th className="px-4 py-2 rounded-tl-lg">Requirement</th>
+              <th className="px-4 py-2">Priority</th>
+              <th className="px-4 py-2">Match Type</th>
+              <th className="px-4 py-2 text-right rounded-tr-lg">Points</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {details.details.map((req: any, i: number) => (
+              <tr key={i} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-medium text-gray-900">{req.requirement}</td>
+                <td className="px-4 py-2 text-xs">{req.priority}</td>
+                <td className="px-4 py-2 text-xs">{req.classification}</td>
+                <td className="px-4 py-2 text-right font-bold text-[#3c4a59]">
+                  {Math.round(req.achievedPoints * 10) / 10} <span className="text-gray-400 font-normal">/ {req.maxPoints}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function analysisErrorMessage(error: unknown): string {
   if (!(error instanceof ApiRequestError)) {
     return 'Resume analysis could not be completed. Please try again in a few moments.';
@@ -1089,6 +1147,7 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
               </div>
             </div>
 
+            <MatchScoreCalculationCard details={results.matchScoreDetails} />
             <KeywordCompatibilityCard compatibility={results.engine.keywordCompatibility} />
             <EducationAlignmentCard items={results.engine.educationAlignment} />
             <HiringManagerAssessmentCard assessment={results.engine.hiringManagerAssessment} />

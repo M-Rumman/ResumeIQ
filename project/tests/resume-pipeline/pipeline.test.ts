@@ -57,6 +57,65 @@ const tests: TestCase[] = [
         globalThis.fetch = originalFetch;
       }
     }
+  },
+  {
+    name: 'auto-populates bullet improvements using extracted resume data without duplicate input',
+    run: async () => {
+      // Mock fetch
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (url: any, init: any) => {
+        const body = JSON.parse(init.body);
+        const content = body.messages[body.messages.length - 1].content;
+        
+        // Return Bullet Rewriter result if we see jobGapFocus
+        if (content.includes('jobGapFocus') && content.includes('experience')) {
+          assert.equal(content.includes('Developed software.'), true, 'Did not receive the extracted experience');
+          return {
+            ok: true,
+            json: async () => ({
+              choices: [{ message: { content: JSON.stringify({
+                weakBullets: ['Developed software.'],
+                improvedBulletPoints: [{
+                  before: 'Developed software.',
+                  after: 'Developed software that increased revenue by 10%.',
+                  confidence: 'High'
+                }]
+              }) } }]
+            })
+          } as any;
+        }
+
+        // Return JD parse result (default)
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: JSON.stringify({ title: 'Engineer', requirements: [], responsibilities: [], preferredSkills: [] }) } }]
+          })
+        } as any;
+      };
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+      try {
+        const result = await runAnalysisPipeline({
+          resumeText: 'Summary\nGreat.\nExperience\nDeveloped software.\nProjects\nDid stuff.\nSkills\nJava\nEducation\nBS',
+          jobDescriptionText: 'Engineer',
+          includePremium: true
+        });
+
+        if (!('legacyReport' in result) || !result.legacyReport) {
+          throw new Error('legacyReport is missing');
+        }
+
+        assert.deepEqual(result.legacyReport.weakBullets, ['Developed software.']);
+        assert.deepEqual(result.legacyReport.improvedBulletPoints, [{
+          before: 'Developed software.',
+          after: 'Developed software that increased revenue by 10%.',
+          confidence: 'High'
+        }]);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
   }
 ];
 

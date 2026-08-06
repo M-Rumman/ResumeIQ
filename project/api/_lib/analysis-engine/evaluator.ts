@@ -30,6 +30,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
   let totalAchievedScore = 0;
   const strengths: string[] = [];
   const weaknesses: string[] = [];
+  const scoreDetails = [];
 
   for (const match of matchingResult.matches) {
     const weight = getRequirementWeight(match.requirement);
@@ -41,6 +42,16 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
 
     totalMaxScore += maxPoints;
     totalAchievedScore += achievedPoints;
+    
+    scoreDetails.push({
+      requirement: match.requirement.normalized_name,
+      priority: match.requirement.priority,
+      classification: match.classification,
+      maxPoints,
+      contributionMultiplier: contribution,
+      confidenceMultiplier: confidence,
+      achievedPoints
+    });
 
     if (contribution >= 0.85) {
       strengths.push(`Matched ${match.requirement.category}: ${match.requirement.normalized_name}`);
@@ -52,6 +63,13 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
   }
 
   const matchScore = totalMaxScore > 0 ? Math.round((totalAchievedScore / totalMaxScore) * 100) : 100;
+  
+  const matchScoreDetails = {
+    totalMaxScore,
+    totalAchievedScore,
+    rawMatchScore: matchScore,
+    details: scoreDetails
+  };
 
   // 2. ATS Formatting & Parsing Health (Completely Decoupled from Job Match)
   
@@ -227,6 +245,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
     scoreExplanations: {
       whatIncreasedScore: strengths.slice(0, 5),
       whatReducedScore: weaknesses.slice(0, 5)
-    }
+    },
+    matchScoreDetails
   };
 }

@@ -7,6 +7,7 @@ import { validateAndSanitizeReport } from './validator.js';
 import type { PipelineContext, EngineResult, AiResumeAnalysisFull } from './types.js';
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { ParsedResume, KeywordCompatibility } from '../openrouter.js';
+import { generateBulletRewritesWithAi } from '../openrouter.js';
 
 export async function runAnalysisPipeline(
   context: PipelineContext,
@@ -73,6 +74,24 @@ export async function runAnalysisPipeline(
   const evaluationResult = evaluateScores(jobProfile, candidateProfile, matchingResult);
   const recommendationResult = generateRecommendations(matchingResult);
 
+  const bulletRewrites = await generateBulletRewritesWithAi(
+    parsedResume.experience,
+    parsedResume.projects,
+    {
+      title: jobProfile.title,
+      requiredSkills: jobProfile.requiredSkills,
+      preferredSkills: jobProfile.preferredSkills,
+      responsibilities: jobProfile.responsibilities
+    },
+    jobProfile.priorities,
+    matchingResult.matches.map(m => ({
+      skill: m.requirement.normalized_name,
+      status: m.classification,
+      evidence: m.evidence.map(e => e.source_text)
+    })),
+    options.observability
+  );
+
   // 4. Keyword & Skill Categorization
   // Sort requirements so core/required items appear first
   const sortedMatches = [...matchingResult.matches].sort((a, b) => {
@@ -123,8 +142,8 @@ export async function runAnalysisPipeline(
     missingSections,
     formattingIssues: [],
     formattingSuggestions: [],
-    weakBullets: [],
-    improvedBulletPoints: [],
+    weakBullets: bulletRewrites.weakBullets,
+    improvedBulletPoints: bulletRewrites.improvedBulletPoints,
     improvementSuggestions: improvements,
     optimizationRecommendations: improvements,
     keywordSuggestions: allMissingSkills,
@@ -171,7 +190,8 @@ export async function runAnalysisPipeline(
       topReasonsForRejection: missingCoreSkills.slice(0, 3),
       biggestImprovements: improvements.slice(0, 3).map(text => ({ text, estimatedImpact: 5 })),
       confidence: 'High'
-    }
+    },
+    matchScoreDetails: evaluationResult.matchScoreDetails
   };
 
   const validatedReport = validateAndSanitizeReport(legacyReport, jobProfile, candidateProfile);

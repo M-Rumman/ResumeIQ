@@ -115,6 +115,7 @@ export interface AiResumeAnalysisPremium {
     biggestImprovements: string[];
     confidence: 'High' | 'Medium' | 'Low';
   };
+  matchScoreDetails?: any;
   requirementBreakdown?: any[];
   recommendationPriorities?: {
     critical: string[];

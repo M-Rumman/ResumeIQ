@@ -978,8 +978,8 @@ Embedded Systems Monitor
         requiredSkills: ['Arduino', 'Mechanical Design', 'PCB Design', 'Firmware Development', 'STM32'],
         preferredSkills: [],
       });
-      assert.deepEqual(compatibility.strongMatches, ['Arduino', 'Mechanical Design']);
-      assert.deepEqual(compatibility.partialMatches, ['PCB Design', 'Firmware Development', 'STM32']);
+      assert.deepEqual(compatibility.exactMatches, ['Arduino', 'Mechanical Design']);
+      assert.deepEqual(compatibility.semanticMatches, ['PCB Design', 'Firmware Development', 'STM32']);
       assert.deepEqual(compatibility.missing, []);
       assert.equal(compatibility.overallMatch, 70);
     },
@@ -1195,8 +1195,8 @@ Embedded Monitoring Prototype
         preferredSkills: [],
       });
       assert.equal(compatibility.missing.includes(requirement), false);
-      assert.equal(compatibility.strongMatches.includes(requirement), false);
-      assert.equal([...compatibility.strongMatches, ...compatibility.partialMatches, ...compatibility.missing].includes(requirement), false);
+      assert.equal(compatibility.exactMatches.includes(requirement), false);
+      assert.equal([...compatibility.exactMatches, ...compatibility.semanticMatches, ...compatibility.missing].includes(requirement), false);
     },
   },
   {

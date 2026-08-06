@@ -25,6 +25,7 @@ export type PremiumResumeDisplayResults = {
   engine: AiResumeAnalysisPremium;
   requirementBreakdown: any[];
   actionPlan: import('./analyzeResume.js').Gap[];
+  matchScoreDetails?: any;
 };
 
 export type FreeResumeDisplayResults = {
@@ -126,6 +127,7 @@ function mapAiResumeCore(ai: AiResumeAnalysisPremium): PremiumResumeDisplayResul
     engine: ai,
     requirementBreakdown: ai.requirementBreakdown || [],
     actionPlan: ai.actionPlan || [],
+    matchScoreDetails: ai.matchScoreDetails,
   };
 }
 

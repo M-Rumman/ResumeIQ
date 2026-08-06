@@ -97,6 +97,21 @@ export interface MatchingResult {
 // 3. EVALUATION LAYER (Scoring & ATS)
 // ==========================================
 
+export interface MatchScoreDetails {
+  totalMaxScore: number;
+  totalAchievedScore: number;
+  rawMatchScore: number;
+  details: {
+    requirement: string;
+    priority: string;
+    classification: string;
+    maxPoints: number;
+    contributionMultiplier: number;
+    confidenceMultiplier: number;
+    achievedPoints: number;
+  }[];
+}
+
 export interface EvaluationResult {
   atsScore: number;
   matchScore: number;
@@ -105,6 +120,7 @@ export interface EvaluationResult {
     whatIncreasedScore: string[];
     whatReducedScore: string[];
   };
+  matchScoreDetails: MatchScoreDetails;
 }
 
 // ==========================================

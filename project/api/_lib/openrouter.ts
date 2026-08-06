@@ -177,6 +177,7 @@ export interface AiResumeAnalysisFull {
   atsBreakdown: AtsDisplayBreakdownItem[];
   roleStrengths: string[];
   hiringManagerAssessment: HiringManagerAssessment;
+  matchScoreDetails?: any;
 }
 
 export type HiringDecision = 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
@@ -3265,6 +3266,41 @@ export async function analyzeResumeWithAi(
     totalDurationMs: observability ? Date.now() - observability.startedAt : null,
   });
   return result;
+}
+
+export async function generateBulletRewritesWithAi(
+  experience: string[],
+  projects: string[],
+  targetJob: { title: string; requiredSkills: string[]; preferredSkills: string[]; responsibilities: string[] },
+  rewritePriorities: string[],
+  jobGapFocus: { skill: string; status: string; evidence: string[] }[],
+  observability?: AiObservabilityContext
+): Promise<{ improvedBulletPoints: { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' }[], weakBullets: string[] }> {
+  const rewriterUserContent = JSON.stringify({
+    experience,
+    projects,
+    targetJob,
+    rewritePriorities,
+    jobGapFocus,
+  }, null, 2);
+
+  try {
+    const rewriterJson = await callStructuredStage(
+      'rewriter',
+      [
+        { role: 'system', content: REWRITER_SYSTEM_PROMPT },
+        { role: 'user', content: rewriterUserContent }
+      ],
+      { maxTokens: 2200, temperature: 0.3, observability }
+    );
+    return {
+      improvedBulletPoints: Array.isArray(rewriterJson?.improvedBulletPoints) ? rewriterJson.improvedBulletPoints : [],
+      weakBullets: Array.isArray(rewriterJson?.weakBullets) ? rewriterJson.weakBullets : []
+    };
+  } catch (err) {
+    console.error('[openrouter] Rewriter stage failed', err);
+    return { improvedBulletPoints: [], weakBullets: [] };
+  }
 }
 
 export async function generateInterviewPrepWithAi(
