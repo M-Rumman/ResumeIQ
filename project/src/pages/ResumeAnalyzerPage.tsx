@@ -55,23 +55,10 @@ function hasQuantification(text: string) {
 const GENERIC_BULLET_OPENERS = new Set([
   'assisted', 'helped', 'participated', 'responsible', 'supported', 'worked',
 ]);
-const TECHNICAL_BULLET_TERMS = [
-  'api', 'arduino', 'ansys', 'assembly', 'autocad', 'cad', 'circuit', 'c++', 'c#',
-  'data structure', 'debug', 'embedded', 'esp32', 'firmware', 'hardware', 'lidar',
-  'ltspice', 'microcontroller', 'motor', 'pcb', 'pid', 'plc', 'proteus', 'protocol',
-  'python', 'sensor', 'simulation', 'solidworks', 'stm32', 'testing', 'validation',
-];
-const ENGINEERING_DETAIL_TERMS = [
-  'analy', 'architect', 'automat', 'calibrat', 'debug', 'design', 'develop', 'integrat',
-  'implement', 'interface', 'optim', 'prototype', 'test', 'validat',
-];
-
 type BulletQuality = {
   total: number;
   actionVerb: number;
-  technicalSpecificity: number;
   keywordRichness: number;
-  engineeringDetail: number;
   measurableImpact: number;
   sentenceClarity: number;
   ownershipStructure: number;
@@ -95,29 +82,23 @@ function supportsTargetKeyword(text: string, keyword: string): boolean {
 function scoreBulletQuality(text: string, targetKeywords: string[]): BulletQuality {
   const words = text.trim().match(/[A-Za-z0-9+#]+/g) || [];
   const opener = firstWord(text);
-  const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 24 : GENERIC_BULLET_OPENERS.has(opener) ? 2 : 8;
-  const technicalSpecificity = Math.min(18, TECHNICAL_BULLET_TERMS.filter((term) => containsTerm(text, term)).length * 4.5);
-  const keywordRichness = Math.min(13, [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
-    .filter((term) => supportsTargetKeyword(text, term)).length * 6.5);
-  const engineeringDetail = Math.min(15, ENGINEERING_DETAIL_TERMS
-    .filter((term) => text.toLowerCase().includes(term)).length * 3);
-  const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 7 : 10) : 0;
-  const sentenceClarity = words.length >= 12 && words.length <= 42 ? 10 : words.length >= 7 && words.length <= 55 ? 6 : 2;
+  const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 30 : GENERIC_BULLET_OPENERS.has(opener) ? 5 : 15;
+  const keywordRichness = Math.min(25, [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
+    .filter((term) => supportsTargetKeyword(text, term)).length * 8.5);
+  const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 12 : 20) : 0;
+  const sentenceClarity = words.length >= 12 && words.length <= 42 ? 15 : words.length >= 7 && words.length <= 55 ? 8 : 4;
   const ownershipStructure = STRONG_BULLET_ACTION_VERBS.has(opener)
-    && (technicalSpecificity >= 4.5 || engineeringDetail >= 3)
     && words.length >= 10
     ? 10
     : 0;
-  const total = Math.round(actionVerb + technicalSpecificity + keywordRichness + engineeringDetail + measurableImpact + sentenceClarity + ownershipStructure);
-  return { total, actionVerb, technicalSpecificity, keywordRichness, engineeringDetail, measurableImpact, sentenceClarity, ownershipStructure };
+  const total = Math.round(actionVerb + keywordRichness + measurableImpact + sentenceClarity + ownershipStructure);
+  return { total, actionVerb, keywordRichness, measurableImpact, sentenceClarity, ownershipStructure };
 }
 
 function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) {
   const improvements = [
     [after.actionVerb > before.actionVerb, 'Stronger action verb'],
     [after.keywordRichness > before.keywordRichness, 'Better ATS keywords for this role'],
-    [after.technicalSpecificity > before.technicalSpecificity, 'More technical specificity'],
-    [after.engineeringDetail > before.engineeringDetail, 'More engineering detail'],
     [after.measurableImpact > before.measurableImpact, 'More measurable impact'],
     [after.sentenceClarity > before.sentenceClarity, 'Clearer sentence structure'],
     [after.ownershipStructure > before.ownershipStructure, 'Clearer ownership and contribution structure'],
@@ -167,18 +148,11 @@ export function buildBulletTeachingGuide({ before, after }: PremiumResults['bull
   return { whyWeak, missingInformation, whyStronger };
 }
 
-function technicalTermsIn(text: string) {
-  return TECHNICAL_BULLET_TERMS.filter((term) => containsTerm(text, term));
-}
-
 /** Bullet-specific coaching derived from the validated source/rewrite pair only. */
 function buildDetailedBulletTeachingGuide(
   { before, after }: PremiumResults['bulletSuggestions'][number],
   targetKeywords: string[],
 ) {
-  const beforeTerms = technicalTermsIn(before);
-  const afterTerms = technicalTermsIn(after);
-  const addedTerms = afterTerms.filter((term) => !beforeTerms.includes(term));
   const targetTerms = targetKeywords.filter((term) => containsTerm(after, term) && !containsTerm(before, term));
   const purpose = after.match(/\bto\s+([^.;]+)/i)?.[1]?.trim();
   const genericOpening = GENERIC_BULLET_OPENERS.has(firstWord(before));
@@ -186,22 +160,22 @@ function buildDetailedBulletTeachingGuide(
   const whyWeak = [
     genericOpening
       ? `Opens with “${firstWord(before)},” which does not clearly show ownership of the work.`
-      : `Does not clearly connect the documented ${beforeTerms.slice(0, 2).join(' and ') || 'engineering work'} to an engineering objective.`,
-    beforeTerms.length === 0
-      ? 'This bullet does not name the components, technology, or engineering method involved.'
-      : `Names ${beforeTerms.slice(0, 3).join(', ')} but gives limited context about how they were used.`,
+      : `Does not clearly connect the documented work to a specific professional objective.`,
+    targetTerms.length > 0
+      ? 'This bullet does not name the specific tools, technologies, or methodologies involved.'
+      : 'Uses generic phrasing but gives limited context about how skills were applied.',
     hasQuantification(before)
       ? 'This bullet does not clearly explain the purpose or practical result of the work.'
       : 'This bullet does not state a supported outcome, scope, or measurable result.',
   ];
 
   const missingInformation = [
-    addedTerms.length
-      ? `Detected in the source bullet: ${addedTerms.slice(0, 3).join(', ')}.`
-      : 'Not explicitly stated in this bullet: components, technology, or method used. Check other resume sections before treating this as missing.',
+    targetTerms.length
+      ? `Detected in the source bullet: ${targetTerms.slice(0, 3).join(', ')}.`
+      : 'Not explicitly stated in this bullet: tools, technologies, or methodologies used. Check other resume sections before treating this as missing.',
     purpose
-      ? `Detected engineering objective: ${purpose}.`
-      : 'Not explicitly stated in this bullet: the engineering purpose. Do not assume it is missing from the rest of the resume.',
+      ? `Detected professional objective: ${purpose}.`
+      : 'Not explicitly stated in this bullet: the professional purpose. Do not assume it is missing from the rest of the resume.',
     hasQuantification(before)
       ? 'Detected: a clear link between the documented work and its practical outcome.'
       : 'Unsupported in this bullet: a metric, test result, scope, or performance outcome. Add one only if documented elsewhere.',
@@ -209,11 +183,11 @@ function buildDetailedBulletTeachingGuide(
 
   const whyStronger = [
     `Makes ownership explicit with the action “${firstWord(after).replace(/^./, (letter) => letter.toUpperCase())}.”`,
-    addedTerms.length
-      ? `Adds resume-supported technical context: ${addedTerms.slice(0, 3).join(', ')}.`
-      : 'Makes the documented technical work easier for a recruiter to understand.',
+    targetTerms.length
+      ? `Adds resume-supported professional context: ${targetTerms.slice(0, 3).join(', ')}.`
+      : 'Makes the documented work easier for a recruiter to understand.',
     purpose
-      ? `Clarifies the engineering objective: ${purpose}.`
+      ? `Clarifies the professional objective: ${purpose}.`
       : 'Uses a clearer action-to-contribution structure without adding unsupported results.',
     targetTerms.length
       ? `Improves alignment with this role through supported job terminology: ${targetTerms.slice(0, 2).join(', ')}.`
