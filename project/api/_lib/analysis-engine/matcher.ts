@@ -31,14 +31,20 @@ Classify the match for EACH requirement exactly into one of these states:
 - UNDER_EXPRESSED: Relevant evidence EXISTS anywhere in the resume but does not use matching terminology or isn't framed as directly satisfying this specific requirement.
 - MISSING: No reasonable evidence exists anywhere in the resume, even loosely. You MUST search across ALL provided resume content before assigning this.
 
-Output JSON exactly like this:
+Output a JSON array of match objects. Each object must have:
+- requirementId: The exact ID string of the requirement.
+- classification: One of EXACT_MATCH, STRONG_SEMANTIC_MATCH, PARTIAL_MATCH, RELATED_MATCH, UNDER_EXPRESSED, MISSING.
+- supportingFactId: The exact ID string of the Candidate Fact, or null.
+- explanation: A string explaining the match.
+
+Example JSON structure:
 {
   "matches": [
     {
-      "requirementId": "e.g. 123e4567-e89b-12d3-a456-426614174000",
-      "classification": "EXACT_MATCH" | "STRONG_SEMANTIC_MATCH" | "PARTIAL_MATCH" | "RELATED_MATCH" | "UNDER_EXPRESSED" | "MISSING",
-      "supportingFactId": "e.g. 123e4567-e89b-12d3-a456-426614174000 (or null if MISSING)",
-      "explanation": "Explain why this classification was chosen and how the evidence proves it."
+      "requirementId": "req-uuid-1",
+      "classification": "EXACT_MATCH",
+      "supportingFactId": "fact-uuid-1",
+      "explanation": "The candidate has..."
     }
   ]
 }
@@ -122,7 +128,13 @@ export async function matchRequirements(
   // 2. LLM Verification Pass - BATCHED
   if (unmatchedRequirements.length > 0) {
     try {
-      const factListStr = prioritizedFacts.map(f => `[ID: ${f.id}] [Section: ${f.sourceSection}] ${f.rawText}`).join('\n');
+      const factListStr = prioritizedFacts.map(f => {
+        let meta = `[ID: ${f.id}] [Section: ${f.sourceSection}]`;
+        if (f.employment_duration_years) {
+          meta += ` [Years: ${f.employment_duration_years}]`;
+        }
+        return `${meta} ${f.rawText}`;
+      }).join('\n');
       const reqListStr = unmatchedRequirements.map(r => `[ID: ${r.id}] Name: ${r.normalized_name} (Category: ${r.category})\nOriginal Text: ${r.original_text}`).join('\n\n');
       const prompt = `Requirements:\n${reqListStr}\n\nCandidate Facts (Prioritized):\n${factListStr}`;
 

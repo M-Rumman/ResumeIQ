@@ -204,6 +204,16 @@ const tests: TestCase[] = [
                 classification = 'EXACT_MATCH';
                 const m = prompt.match(/\[ID:\s*([^\]]+)\][^\[]*\[Section:[^\]]*\]\s*Senior UX Researcher with 7 years/i);
                 supportingFactId = m ? m[1] : null;
+              } else if (reqName.includes('fintech/banking')) {
+                classification = 'STRONG_SEMANTIC_MATCH';
+                supportingFactId = findFactId('fintech and consumer banking');
+              } else if (reqName.includes('mixed-methods')) {
+                classification = 'EXACT_MATCH';
+                supportingFactId = findFactId('mixed-methods research');
+              } else if (reqName.includes('Master\'s preferred')) {
+                classification = 'EXACT_MATCH';
+                const m = prompt.match(/\[ID:\s*([^\]]+)\][^\[]*\[Section:[^\]]*\][^\n]*M\.S\./i);
+                supportingFactId = m ? m[1] : null;
               } else if (reqName === 'Python') {
                 classification = 'MISSING';
               } else if (reqName === 'Chicago, IL (Hybrid — 3 days onsite)') {
@@ -249,6 +259,18 @@ const tests: TestCase[] = [
 
       assert.ok(reqMap['6+ years UX research'], '6+ years requirement should exist');
       assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH', 'PARTIAL_MATCH'].includes(reqMap['6+ years UX research'].classification), '6+ years should be satisfied'); 
+
+      const fintechReq = reqMap['fintech/banking'];
+      assert.ok(fintechReq, 'fintech requirement should exist');
+      assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(fintechReq.classification), 'fintech should be satisfied');
+
+      const mixedMethodsReq = reqMap['mixed-methods'];
+      assert.ok(mixedMethodsReq, 'mixed-methods requirement should exist');
+      assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(mixedMethodsReq.classification), 'mixed-methods should be satisfied');
+
+      const masterReq = reqMap['Master\'s preferred'];
+      assert.ok(masterReq, 'Master\'s requirement should exist');
+      assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(masterReq.classification), 'Master\'s should be satisfied');
 
       assert.ok(reqMap['participant panels'], 'participant panels requirement should exist');
       assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(reqMap['participant panels'].classification));
@@ -402,7 +424,9 @@ Experience includes:
           } as any;
         }
 
-        return { ok: true, json: async () => ({}) } as any;
+        return { ok: true, json: async () => ({
+          choices: [{ message: { content: JSON.stringify({ rewrites: [] }) } }]
+        }) } as any;
       };
 
       try {
