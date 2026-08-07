@@ -132,6 +132,70 @@ const tests: TestCase[] = [
       assert.equal(result.length, 1); // GraphQL should be dropped
       assert.equal(result[0].normalized_name, 'Node.js');
     }
+  },
+  {
+    name: 'handles punctuation at start/end of LLM extracted text (regression fix)',
+    run: () => {
+      const rawJd = "Requirements:\n- Bachelor's degree in Computer Science.\n- 5+ years of experience in backend development.\n- Strong proficiency in Node.js and TypeScript.";
+      const parsed = [
+        {
+          category: 'education',
+          normalized_name: 'Bachelors in CS',
+          original_text: "- Bachelor's degree in Computer Science.", // Contains leading bullet and trailing period
+        },
+        {
+          category: 'experience',
+          normalized_name: 'Backend Experience',
+          original_text: "- 5+ years of experience in backend development.",
+        },
+        {
+          category: 'hard skill',
+          normalized_name: 'Node.js',
+          original_text: "Strong proficiency in Node.js and TypeScript.",
+        }
+      ];
+      const result = validateAndProcessRequirements(parsed, rawJd);
+      // All 3 should be successfully extracted despite the punctuation.
+      assert.equal(result.length, 3);
+      assert.equal(result[0].normalized_name, 'Bachelors in CS');
+      assert.equal(result[1].normalized_name, 'Backend Experience');
+      assert.equal(result[2].normalized_name, 'Node.js');
+    }
+  },
+  {
+    name: 'handles short extracted requirements with punctuation',
+    run: () => {
+      const rawJd = "Must know: Git, Docker, CI/CD.";
+      const parsed = [
+        {
+          category: 'tool',
+          normalized_name: 'Git',
+          original_text: "Git,", // LLM extracted with comma
+        },
+        {
+          category: 'tool',
+          normalized_name: 'CI/CD',
+          original_text: "CI/CD.", // LLM extracted with period
+        }
+      ];
+      const result = validateAndProcessRequirements(parsed, rawJd);
+      assert.equal(result.length, 2);
+    }
+  },
+  {
+    name: 'properly discards hallucinated requirement even with fallback',
+    run: () => {
+      const rawJd = "- TypeScript\n- Next.js";
+      const parsed = [
+        {
+          category: 'skill',
+          normalized_name: 'React',
+          original_text: "- React.", // Hallucinated with punctuation
+        }
+      ];
+      const result = validateAndProcessRequirements(parsed, rawJd);
+      assert.equal(result.length, 0);
+    }
   }
 ];
 

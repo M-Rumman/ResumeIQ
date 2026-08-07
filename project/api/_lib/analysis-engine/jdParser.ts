@@ -46,10 +46,17 @@ export function validateAndProcessRequirements(parsedRequirements: any[], jobDes
     
     let sourceSpan: [number, number] = [-1, -1];
     
-    // Use word boundaries to prevent substring matching (e.g. "git" inside "longitudinal")
     const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const sourceRegex = sourceLower ? new RegExp(`\\b${escapeRegex(sourceLower)}\\b`, 'i') : null;
-    const origRegex = origLower ? new RegExp(`\\b${escapeRegex(origLower)}\\b`, 'i') : null;
+    const getRegex = (text: string) => {
+        if (!text) return null;
+        // Only apply word boundary if it starts/ends with alphanumeric characters
+        const prefix = /^[a-z0-9]/i.test(text) ? '\\b' : '';
+        const suffix = /[a-z0-9]$/i.test(text) ? '\\b' : '';
+        return new RegExp(`${prefix}${escapeRegex(text)}${suffix}`, 'i');
+    };
+
+    const sourceRegex = getRegex(sourceLower);
+    const origRegex = getRegex(origLower);
 
     if (sourceRegex && sourceRegex.test(rawLower)) {
        const match = rawLower.match(sourceRegex)!;
@@ -58,9 +65,24 @@ export function validateAndProcessRequirements(parsedRequirements: any[], jobDes
        const match = rawLower.match(origRegex)!;
        sourceSpan = [match.index!, match.index! + origLower.length];
     } else {
-       // Fails provenance validation - discard it to prevent hallucination!
-       console.warn(`[jdParser] Dropping hallucinated requirement: ${req.normalized_name}`);
-       continue;
+       // Fallback: Try matching after stripping leading/trailing non-alphanumeric characters
+       const cleanSource = sourceLower.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '').trim();
+       const cleanOrig = origLower.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '').trim();
+       
+       const cleanSourceRegex = cleanSource && cleanSource.length > 3 ? getRegex(cleanSource) : null;
+       const cleanOrigRegex = cleanOrig && cleanOrig.length > 3 ? getRegex(cleanOrig) : null;
+
+       if (cleanSourceRegex && cleanSourceRegex.test(rawLower)) {
+         const match = rawLower.match(cleanSourceRegex)!;
+         sourceSpan = [match.index!, match.index! + cleanSource.length];
+       } else if (cleanOrigRegex && cleanOrigRegex.test(rawLower)) {
+         const match = rawLower.match(cleanOrigRegex)!;
+         sourceSpan = [match.index!, match.index! + cleanOrig.length];
+       } else {
+         // Fails provenance validation - discard it to prevent hallucination!
+         console.warn(`[jdParser] Dropping hallucinated requirement: ${req.normalized_name}`);
+         continue;
+       }
     }
 
     validRequirements.push({
