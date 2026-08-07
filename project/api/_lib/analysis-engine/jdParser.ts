@@ -121,6 +121,12 @@ export async function parseJobDescription(
 
   } catch (error) {
     console.error('[jdParser] Failed to parse Job Description', error);
+    if (error instanceof Error && error.message.includes('401')) {
+      throw new AiPipelineError('parser', 'UNAUTHORIZED_API_KEY', error.message);
+    }
+    if (error instanceof AiPipelineError) {
+      throw error;
+    }
     throw new AiPipelineError('parser', 'JD_PARSING_FAILED', 'Failed to extract structured requirements from the job description.');
   }
 }

@@ -740,6 +740,9 @@ function analysisErrorMessage(error: unknown): string {
         if (error.pipelineError.code === 'JD_PARSING_FAILED') {
           return 'We could not extract job requirements from the provided job description. Please review the job description text and try again.';
         }
+        if (error.pipelineError.code === 'UNAUTHORIZED_API_KEY') {
+          return 'OpenRouter rejected your API key. Please check your environment variables or create a new key at openrouter.ai/keys.';
+        }
         return 'We could not read the resume structure. Please review the extracted resume text and try again.';
       case 'analyzer':
         return 'The resume analysis service returned an incomplete analysis. Please try again in a few moments.';

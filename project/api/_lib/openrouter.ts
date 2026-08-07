@@ -273,7 +273,6 @@ export async function callOpenRouter(
         body: JSON.stringify({
           model,
           messages,
-          response_format: { type: 'json_object' },
           max_tokens: options.maxTokens ?? 4096,
           temperature: options.temperature ?? 0.25,
         }),
