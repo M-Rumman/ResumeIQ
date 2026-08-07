@@ -86,6 +86,7 @@ function getModelCandidates(preferred?: string): string[] {
 /** Try the next model when a provider is missing or temporarily overloaded. */
 function isRetryableProviderError(status: number, body: string): boolean {
   const lower = body.toLowerCase();
+  if (status === 400) return true; // Retry on 400 (e.g., deprecated model, context length limit on specific model)
   if (status === 404 && /no endpoints found/i.test(body)) return true;
   if (status === 429) return true;
   if (status === 503) return true;
