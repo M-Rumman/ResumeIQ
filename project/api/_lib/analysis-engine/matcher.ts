@@ -1,4 +1,4 @@
-import { callOpenRouter } from '../openrouter.js';
+import { callOpenRouter, extractJsonFromText } from '../openrouter.js';
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { CandidateProfile, JobProfile, MatchingResult, RequirementMatch, MatchClassification, CandidateFact, MatchEvidence } from './types.js';
 
@@ -134,8 +134,7 @@ export async function matchRequirements(
         { maxTokens: 2000, temperature: 0.1, observability: options.observability, stage: 'analyzer' }
       );
 
-      const cleanedJson = rawJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-      const parsed = JSON.parse(cleanedJson);
+      const parsed = extractJsonFromText(rawJson) as Record<string, any>;
 
       const llmMatches = Array.isArray(parsed.matches) ? parsed.matches : [];
 

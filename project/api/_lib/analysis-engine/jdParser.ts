@@ -1,4 +1,4 @@
-import { callOpenRouter, AiPipelineError } from '../openrouter.js';
+import { callOpenRouter, AiPipelineError, extractJsonFromText } from '../openrouter.js';
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { JobProfile, JobRequirement } from './types.js';
 import { randomUUID } from 'node:crypto';
@@ -105,8 +105,7 @@ export async function parseJobDescription(
       }
     );
 
-    const cleanedJson = rawJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-    const parsed = JSON.parse(cleanedJson);
+    const parsed = extractJsonFromText(rawJson) as Record<string, any>;
 
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.requirements)) {
       throw new Error('Invalid JSON structure returned by LLM.');
