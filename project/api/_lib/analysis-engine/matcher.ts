@@ -35,9 +35,9 @@ Output JSON exactly like this:
 {
   "matches": [
     {
-      "requirementId": "<insert exact requirement ID here>",
+      "requirementId": "e.g. 123e4567-e89b-12d3-a456-426614174000",
       "classification": "EXACT_MATCH" | "STRONG_SEMANTIC_MATCH" | "PARTIAL_MATCH" | "RELATED_MATCH" | "UNDER_EXPRESSED" | "MISSING",
-      "supportingFactId": "<insert exact supporting fact ID here, or null if MISSING>",
+      "supportingFactId": "e.g. 123e4567-e89b-12d3-a456-426614174000 (or null if MISSING)",
       "explanation": "Explain why this classification was chosen and how the evidence proves it."
     }
   ]
@@ -48,6 +48,7 @@ CRITICAL RULES:
 - If a JD requires a very specific tool (e.g., ROS, MATLAB) and there is absolutely no evidence, output MISSING.
 - You may use logical deduction to assign UNDER_EXPRESSED if the evidence strongly implies the capability (e.g., "collaborated with analysts" -> implies data science collaboration).
 - "B.A." vs "Bachelor's degree" is an EXACT_MATCH or STRONG_SEMANTIC_MATCH.
+- If a location matches but the work mode (e.g. remote, hybrid) is unverified in the resume, classify as PARTIAL_MATCH.
 `;
 
 export async function matchRequirements(
@@ -84,11 +85,10 @@ export async function matchRequirements(
       else if (reqNameLower && rawLower.endsWith(` ${reqNameLower}`)) isExact = true;
       else if (reqNameLower && rawLower === reqNameLower) isExact = true;
 
-      // Special education heuristics
       if (req.category === 'education' && req.degree_level && fact.type === 'education' && fact.degree_level === req.degree_level) {
         if (!req.fields || req.fields.length === 0) {
           isExact = true;
-        } else if (fact.fields && fact.fields.some(f => req.fields?.includes(f))) {
+        } else if (fact.fields && fact.fields.some(f => req.fields?.some(rf => rf.toLowerCase() === f.toLowerCase()))) {
           isExact = true;
         }
       }
