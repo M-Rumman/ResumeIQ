@@ -15,15 +15,15 @@ const FACT_PRIORITY: Record<string, number> = {
 };
 
 const MATCHER_SYSTEM_PROMPT = `You are an expert technical recruiter and evidence evaluator.
-Your job is to match a single Job Requirement against Candidate Facts.
+Your job is to match multiple Job Requirements against Candidate Facts.
 
 You will be given:
-1. A single requirement (Name, Category, Original Text).
+1. A list of requirements (ID, Name, Category, Original Text).
 2. Prioritized Candidate Facts (ID, Type, Section, Text). 
    - Facts are ordered by evidence strength (Experience > Education > Projects > Skills).
    - Prefer stronger evidence (Experience) over weaker evidence (Skills) if both satisfy the requirement.
 
-Classify the match exactly into one of these states:
+Classify the match for EACH requirement exactly into one of these states:
 - EXACT_MATCH: The resume explicitly contains the exact requirement.
 - STRONG_SEMANTIC_MATCH: Different wording, but evidence clearly demonstrates the identical capability.
 - PARTIAL_MATCH: Some evidence exists, but lacks full depth/breadth.
@@ -33,9 +33,14 @@ Classify the match exactly into one of these states:
 
 Output JSON exactly like this:
 {
-  "classification": "EXACT_MATCH" | "STRONG_SEMANTIC_MATCH" | "PARTIAL_MATCH" | "RELATED_MATCH" | "UNDER_EXPRESSED" | "MISSING",
-  "supportingFactId": "id1", // Leave null or empty if MISSING
-  "explanation": "Explain why this classification was chosen and how the evidence proves it."
+  "matches": [
+    {
+      "requirementId": "req1",
+      "classification": "EXACT_MATCH" | "STRONG_SEMANTIC_MATCH" | "PARTIAL_MATCH" | "RELATED_MATCH" | "UNDER_EXPRESSED" | "MISSING",
+      "supportingFactId": "id1", // Leave null or empty if MISSING
+      "explanation": "Explain why this classification was chosen and how the evidence proves it."
+    }
+  ]
 }
 
 CRITICAL RULES:
@@ -58,6 +63,8 @@ export async function matchRequirements(
     const pB = FACT_PRIORITY[b.type] || 99;
     return pA - pB;
   });
+
+  const unmatchedRequirements: typeof job.requirements = [];
 
   for (const req of job.requirements) {
     // 1. Lexical / Heuristic Exact Matching
@@ -109,63 +116,85 @@ export async function matchRequirements(
       continue;
     }
 
-    // 2. LLM Verification Pass
+    unmatchedRequirements.push(req);
+  }
+
+  // 2. LLM Verification Pass - BATCHED
+  if (unmatchedRequirements.length > 0) {
     try {
       const factListStr = prioritizedFacts.map(f => `[ID: ${f.id}] [Section: ${f.sourceSection}] ${f.rawText}`).join('\n');
-      const prompt = `Requirement:\nName: ${req.normalized_name}\nCategory: ${req.category}\nOriginal Text: ${req.original_text}\n\nCandidate Facts (Prioritized):\n${factListStr}`;
+      const reqListStr = unmatchedRequirements.map(r => `[ID: ${r.id}] Name: ${r.normalized_name} (Category: ${r.category})\nOriginal Text: ${r.original_text}`).join('\n\n');
+      const prompt = `Requirements:\n${reqListStr}\n\nCandidate Facts (Prioritized):\n${factListStr}`;
 
       const rawJson = await callOpenRouter(
         [
           { role: 'system', content: MATCHER_SYSTEM_PROMPT },
           { role: 'user', content: prompt }
         ],
-        { maxTokens: 800, temperature: 0.1, observability: options.observability, stage: 'analyzer' }
+        { maxTokens: 2000, temperature: 0.1, observability: options.observability, stage: 'analyzer' }
       );
 
       const cleanedJson = rawJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
       const parsed = JSON.parse(cleanedJson);
 
-      let classification: MatchClassification = parsed.classification || 'MISSING';
-      const citedFactId: string | null = parsed.supportingFactId || null;
-      let explanation: string = parsed.explanation || '';
+      const llmMatches = Array.isArray(parsed.matches) ? parsed.matches : [];
 
-      const validFact = citedFactId ? candidate.facts.find(f => f.id === citedFactId) : undefined;
+      for (const req of unmatchedRequirements) {
+        const parsedMatch = llmMatches.find((m: any) => m.requirementId === req.id);
+        if (!parsedMatch) {
+          matches.push({
+            requirement: req,
+            classification: 'MISSING',
+            confidence: 0,
+            explanation: 'Analysis skipped for this requirement.',
+            evidence: []
+          });
+          continue;
+        }
 
-      // ANTI-HALLUCINATION:
-      // If classification is positive but no valid fact is cited, force MISSING.
-      if (classification !== 'MISSING' && !validFact) {
-        classification = 'MISSING';
-        explanation = 'Fallback: System claimed a match but could not cite valid supporting evidence from the resume.';
-      }
+        let classification: MatchClassification = parsedMatch.classification || 'MISSING';
+        const citedFactId: string | null = parsedMatch.supportingFactId || null;
+        let explanation: string = parsedMatch.explanation || '';
 
-      let evidence: MatchEvidence[] = [];
-      if (validFact && classification !== 'MISSING') {
-        evidence.push({
-          source_section: validFact.sourceSection,
-          source_text: validFact.rawText,
-          fact_id: validFact.id,
-          relevance: 'semantic',
-          evidence_strength: FACT_PRIORITY[validFact.type] <= 3 ? 'primary' : 'secondary'
+        const validFact = citedFactId ? candidate.facts.find(f => f.id === citedFactId) : undefined;
+
+        // ANTI-HALLUCINATION:
+        if (classification !== 'MISSING' && !validFact) {
+          classification = 'MISSING';
+          explanation = 'Fallback: System claimed a match but could not cite valid supporting evidence from the resume.';
+        }
+
+        let evidence: MatchEvidence[] = [];
+        if (validFact && classification !== 'MISSING') {
+          evidence.push({
+            source_section: validFact.sourceSection,
+            source_text: validFact.rawText,
+            fact_id: validFact.id,
+            relevance: 'semantic',
+            evidence_strength: FACT_PRIORITY[validFact.type] <= 3 ? 'primary' : 'secondary'
+          });
+        }
+
+        matches.push({
+          requirement: req,
+          classification,
+          confidence: 0.85,
+          explanation,
+          evidence
         });
       }
 
-      matches.push({
-        requirement: req,
-        classification,
-        confidence: 0.85,
-        explanation,
-        evidence
-      });
-
     } catch (error) {
-      console.error(`[matcher] Failed to evaluate requirement: ${req.normalized_name}`, error);
-      matches.push({
-        requirement: req,
-        classification: 'MISSING',
-        confidence: 0,
-        explanation: 'Analysis failed for this requirement.',
-        evidence: []
-      });
+      console.error(`[matcher] Failed to evaluate batched requirements`, error);
+      for (const req of unmatchedRequirements) {
+        matches.push({
+          requirement: req,
+          classification: 'MISSING',
+          confidence: 0,
+          explanation: 'Analysis failed for this requirement.',
+          evidence: []
+        });
+      }
     }
   }
 
