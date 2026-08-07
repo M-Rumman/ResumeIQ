@@ -35,9 +35,9 @@ Output JSON exactly like this:
 {
   "matches": [
     {
-      "requirementId": "req1",
+      "requirementId": "<insert exact requirement ID here>",
       "classification": "EXACT_MATCH" | "STRONG_SEMANTIC_MATCH" | "PARTIAL_MATCH" | "RELATED_MATCH" | "UNDER_EXPRESSED" | "MISSING",
-      "supportingFactId": "id1", // Leave null or empty if MISSING
+      "supportingFactId": "<insert exact supporting fact ID here, or null if MISSING>",
       "explanation": "Explain why this classification was chosen and how the evidence proves it."
     }
   ]
@@ -139,7 +139,21 @@ export async function matchRequirements(
       const llmMatches = Array.isArray(parsed.matches) ? parsed.matches : [];
 
       for (const req of unmatchedRequirements) {
-        const parsedMatch = llmMatches.find((m: any) => m.requirementId === req.id);
+        // Robust Requirement Lookup: LLMs might truncate IDs, wrap them in brackets, or return the name instead.
+        const parsedMatch = llmMatches.find((m: any) => {
+          if (!m.requirementId) return false;
+          const reqIdStr = String(m.requirementId).toLowerCase();
+          const targetId = req.id.toLowerCase();
+          const targetName = req.normalized_name.toLowerCase();
+          const targetText = req.original_text.toLowerCase();
+          
+          return reqIdStr === targetId ||
+                 targetId.includes(reqIdStr) ||
+                 reqIdStr.includes(targetId) ||
+                 targetName.includes(reqIdStr) ||
+                 targetText.includes(reqIdStr);
+        });
+
         if (!parsedMatch) {
           matches.push({
             requirement: req,
@@ -152,10 +166,15 @@ export async function matchRequirements(
         }
 
         let classification: MatchClassification = parsedMatch.classification || 'MISSING';
-        const citedFactId: string | null = parsedMatch.supportingFactId || null;
+        const citedFactId: string | null = parsedMatch.supportingFactId ? String(parsedMatch.supportingFactId) : null;
         let explanation: string = parsedMatch.explanation || '';
 
-        const validFact = citedFactId ? candidate.facts.find(f => f.id === citedFactId) : undefined;
+        // Robust Fact Lookup
+        const validFact = citedFactId ? candidate.facts.find(f => {
+          const fId = f.id.toLowerCase();
+          const cId = citedFactId.toLowerCase();
+          return fId === cId || fId.includes(cId) || cId.includes(fId);
+        }) : undefined;
 
         // ANTI-HALLUCINATION:
         if (classification !== 'MISSING' && !validFact) {
