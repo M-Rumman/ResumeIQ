@@ -319,6 +319,82 @@ const tests: TestCase[] = [
         globalThis.fetch = originalFetch;
       }
     }
+  },
+  {
+    name: 'Degree + OR-field match: Construction Management vs Civil Engineering',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Project Manager',
+        requirements: [{
+          id: '1',
+          category: 'education',
+          normalized_name: 'Bachelor\'s Degree in Construction Management or Civil Engineering',
+          original_text: 'Bachelor\'s Degree in Construction Management or Civil Engineering',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Bachelor\'s',
+          priority: 'required',
+          requirement_type: 'education',
+          confidence: 1,
+          degree_level: 'bachelor',
+          fields: ['Construction Management', 'Civil Engineering']
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'f1',
+          type: 'education',
+          normalizedName: 'B.S. in Construction Management',
+          rawText: 'B.S. in Construction Management — Colorado State University',
+          sourceSection: 'Education',
+          evidence: 'B.S. in Construction Management — Colorado State University',
+          degree_level: 'bachelor',
+          fields: [] // Notice fields is empty from extractFieldsOfStudy
+        }],
+        rawStructure: {} as any
+      };
+
+      const result = await matchRequirements(job, candidate);
+      assert.equal(result.matches[0].classification, 'EXACT_MATCH', 'Should match via substring of rawText');
+    }
+  },
+  {
+    name: 'Exact certification match: PMP',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Project Manager',
+        requirements: [{
+          id: '1',
+          category: 'certification',
+          normalized_name: 'PMP',
+          original_text: 'PMP',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'PMP',
+          priority: 'required',
+          requirement_type: 'certification',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'f1',
+          type: 'certification',
+          normalizedName: 'PMP',
+          rawText: 'PMP (Project Management Professional)',
+          sourceSection: 'Certifications',
+          evidence: 'PMP (Project Management Professional)'
+        }],
+        rawStructure: {} as any
+      };
+
+      const result = await matchRequirements(job, candidate);
+      assert.equal(result.matches[0].classification, 'EXACT_MATCH', 'Should exact match PMP string');
+    }
   }
 ];
 

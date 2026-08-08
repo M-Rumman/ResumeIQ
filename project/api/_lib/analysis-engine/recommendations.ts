@@ -1,11 +1,26 @@
 import { randomUUID } from 'node:crypto';
 import type { MatchingResult, RecommendationResult, Recommendation } from './types.js';
 
+export const CATEGORY_PLURAL_MAP: Record<string, string> = {
+  'hard skill': 'hard skills',
+  'soft skill': 'soft skills',
+  'experience': 'experience',
+  'education': 'education credentials',
+  'domain': 'domains',
+  'responsibility': 'responsibilities',
+  'tool': 'tools',
+  'methodology': 'methodologies',
+  'seniority': 'seniority levels',
+  'years': 'years of experience',
+  'location': 'locations',
+  'certification': 'certifications',
+  'language': 'languages',
+  'other': 'skills'
+};
+
 export function generateRecommendations(matchingResult: MatchingResult): RecommendationResult {
   const pluralizeCategory = (cat: string) => {
-    if (cat.endsWith('y')) return cat.slice(0, -1) + 'ies';
-    if (cat.endsWith('s')) return cat + 'es';
-    return cat + 's';
+    return CATEGORY_PLURAL_MAP[cat] || cat + 's';
   };
   const recommendations: Recommendation[] = [];
 

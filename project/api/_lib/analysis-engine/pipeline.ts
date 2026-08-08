@@ -126,6 +126,41 @@ export async function runAnalysisPipeline(
   const formatSuggestion = (r: any) => `**What**: Explicitly add ${r.requirement}.\n**Why**: ${r.whyItMatters}\n**Where**: ${r.whereToAdd}\n**Evidence**: ${r.evidenceStatus}\n**Note**: ${r.fabricationWarning}`;
   const improvements = recommendationResult.recommendations.map(formatSuggestion);
 
+  const contextGaps = [];
+  const contextStrengths = [];
+  const contextPartial = [];
+
+  for (const match of matchingResult.matches) {
+    const detail = evaluationResult.matchScoreDetails.details.find(d => d.requirement === match.requirement.normalized_name);
+    if (!detail) continue;
+
+    const pointsLost = detail.maxPoints - detail.achievedPoints;
+    const item = {
+      requirement: match.requirement.normalized_name,
+      context: match.explanation,
+      tag: match.classification === 'UNDER_EXPRESSED' ? 'Addressable by rewording' as const : 
+           (match.classification === 'MISSING' ? 'Genuine gap' as const : undefined),
+      _pointsLost: pointsLost,
+      _achievedPoints: detail.achievedPoints
+    };
+
+    if (match.classification === 'MISSING' || match.classification === 'UNDER_EXPRESSED') {
+      contextGaps.push(item);
+    } else if (match.classification === 'EXACT_MATCH' || match.classification === 'STRONG_SEMANTIC_MATCH') {
+      contextStrengths.push(item);
+    } else {
+      contextPartial.push(item);
+    }
+  }
+
+  const cleanItem = (item: any) => ({ requirement: item.requirement, context: item.context, tag: item.tag });
+
+  const jobMatchExplanation = {
+    strongMatches: contextStrengths.sort((a, b) => b._achievedPoints - a._achievedPoints).slice(0, 5).map(cleanItem),
+    partialMatches: contextPartial.sort((a, b) => b._achievedPoints - a._achievedPoints).slice(0, 5).map(cleanItem),
+    missingSkills: contextGaps.sort((a, b) => b._pointsLost - a._pointsLost).slice(0, 5).map(cleanItem),
+  };
+
   const legacyReport: AiResumeAnalysisFull = {
     tier: 'premium',
     parsed: parsedResume,
@@ -165,11 +200,7 @@ export async function runAnalysisPipeline(
       estimatedScoreImprovement: 15,
       potentialAtsScore: Math.min(100, evaluationResult.atsScore + 15),
     },
-    jobMatchExplanation: {
-      strongMatches: allStrongSkills,
-      partialMatches: partialSkills,
-      missingSkills: allMissingSkills,
-    },
+    jobMatchExplanation,
     keywordCompatibility: { 
       overallMatch: evaluationResult.matchScore, 
       exactMatches: exactSkills,

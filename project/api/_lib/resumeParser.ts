@@ -253,6 +253,8 @@ function getSection(line: string): ResumeSection | null {
   // Semantic fallback for headings such as "Work Experience and Internships"
   // that combine known concepts without matching a single alias verbatim.
   if (/\d/.test(line)) return null;
+  // A heading containing a specific job title is almost certainly an inline role, not a section.
+  if (/\b(?:manager|director|vp|president|founder|co-founder|associate|analyst|coordinator|supervisor|specialist|developer|consultant|architect|administrator)\b/i.test(line)) return null;
   const words = heading.split(' ').filter(Boolean);
   if (words.length > 5) return null;
   const candidates = (Object.entries(SECTION_SIGNALS) as [ResumeSection, string[]][])
@@ -442,7 +444,7 @@ type ProjectLine = { raw: string; text: string };
 const PROJECT_TECHNOLOGY_HEADINGS = new Set([
   'tools and skills', 'technologies', 'technology', 'technologies used', 'software used', 'software',
 ]);
-const EXPERIENCE_ENTRY_PATTERN = /\b(?:intern(?:ship)?|engineer|research assistant|company|ltd|inc)\b/i;
+const EXPERIENCE_ENTRY_PATTERN = /\b(?:intern(?:ship)?|engineer|research assistant|company|ltd|inc|manager|director|vp|president|founder|co-founder|associate|analyst|coordinator|supervisor|lead|specialist|developer|consultant|architect|administrator)\b/i;
 const PROJECT_ENTRY_PATTERN = /\b(?:project|prototype|robot|design|simulation|capstone)\b/i;
 const LEADERSHIP_ACTIVITY_PATTERN = /\b(?:led|leadership|society|club|team|extracurricular|position of responsibility)\b/i;
 
@@ -450,6 +452,7 @@ const LEADERSHIP_ACTIVITY_PATTERN = /\b(?:led|leadership|society|club|team|extra
 function classifyPracticalEntry(value: string, fallback: 'experience' | 'projects'): 'experience' | 'projects' {
   if (EXPERIENCE_ENTRY_PATTERN.test(value)) return 'experience';
   if (fallback === 'experience' && LEADERSHIP_ACTIVITY_PATTERN.test(value)) return 'experience';
+  if (fallback === 'experience' && isProjectBullet(value)) return 'experience';
   if (PROJECT_ENTRY_PATTERN.test(value)) return 'projects';
   return fallback;
 }

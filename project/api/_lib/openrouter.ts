@@ -128,6 +128,12 @@ export interface Gap {
   type: 'missing_skill' | 'weak_bullet' | 'formatting' | 'missing_section';
 }
 
+export interface JobMatchContextItem {
+  requirement: string;
+  context: string;
+  tag?: 'Addressable by rewording' | 'Genuine gap';
+}
+
 export interface AiResumeAnalysisFull {
   tier: 'premium';
   parsed: ParsedResume;
@@ -168,9 +174,9 @@ export interface AiResumeAnalysisFull {
     potentialAtsScore: number;
   };
   jobMatchExplanation: {
-    strongMatches: string[];
-    partialMatches: string[];
-    missingSkills: string[];
+    strongMatches: JobMatchContextItem[];
+    partialMatches: JobMatchContextItem[];
+    missingSkills: JobMatchContextItem[];
   };
   keywordCompatibility: KeywordCompatibility;
   requirementBreakdown: any[];

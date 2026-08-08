@@ -96,6 +96,8 @@ export async function matchRequirements(
           isExact = true;
         } else if (fact.fields && fact.fields.some(f => req.fields?.some(rf => rf.toLowerCase() === f.toLowerCase()))) {
           isExact = true;
+        } else if (req.fields && req.fields.some(rf => rawLower.includes(rf.toLowerCase()))) {
+          isExact = true;
         }
       }
 

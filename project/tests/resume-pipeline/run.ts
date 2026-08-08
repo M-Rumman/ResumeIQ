@@ -8,6 +8,7 @@ import { buildJobGapAnalysis, buildJobProfile, buildKeywordCompatibility, buildK
 import { getLocationProviderPlan, getPakistanPublicFeeds, mergeAndNormalizeJobs, relevantAshbyBoards, relevantGreenhouseBoards, relevantLeverBoards, resumeRelevanceScore } from '../../api/_lib/jobMatch.js';
 import { extractResumeIntelligence } from '../../api/_lib/resumeIntelligence.js';
 import { generateJobSearchIntent } from '../../api/_lib/jobSearchIntent.js';
+import { generateRecommendations, CATEGORY_PLURAL_MAP } from '../../api/_lib/analysis-engine/recommendations.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -1241,6 +1242,105 @@ PADI Advanced Open Water Diver`);
       assert.equal(resume.understanding.educationDetails[0]?.status, 'Current');
     },
   },
+  {
+    name: 'extracts Experience section without confusing multi-word job titles for inline sections',
+    run: () => {
+      const resume = parseResumeText(`Marcus Delgado
+Denver, CO | marcus.delgado@email.com | (303) 555-0142
+
+Summary
+Construction Project Manager with 8 years of experience.
+
+Experience
+
+Senior Project Manager — Ridgepoint Construction Group (Denver, CO) | 2020–Present
+- Managed 6 concurrent commercial projects ranging from $2M to $12M, delivering all on schedule and within 3% of budget
+- Negotiated subcontractor and vendor contracts, reducing material costs by 8% through competitive bidding
+- Led weekly stakeholder meetings with clients, architects, and engineers to align on scope, timeline, and change orders
+- Maintained project schedules in Procore, reducing schedule slippage by 20% through proactive milestone tracking
+- Oversaw OSHA compliance across all job sites, maintaining a zero-lost-time-incident record for 3 consecutive years
+- Mentored 2 assistant project managers, both promoted to PM roles within 18 months
+
+Project Manager — Summit Commercial Builders (Denver, CO) | 2017–2020
+- Managed ground-up construction of a $6.5M retail center from permitting through closeout
+- Processed and tracked 150+ change orders using Bluebeam, maintaining accurate budget forecasts
+- Conducted weekly site inspections for quality control and safety compliance
+- Coordinated with architects and engineers to resolve design conflicts during construction
+
+Assistant Project Manager — Frontier Development Co. (Boulder, CO) | 2018–2017
+- Supported project scheduling and subcontractor coordination on a $3.5M office renovation
+- Assisted in preparing bid packages and reviewing subcontractor proposals
+
+Education
+B.S. in Construction Management — Colorado State University, 2016`);
+
+      assert.equal(resume.experience.length, 15);
+      assert.equal(resume.projects.length, 0);
+      assert.equal(resume.experience.some(line => line.includes('Senior Project Manager')), true);
+      assert.equal(resume.experience.some(line => line.includes('Assistant Project Manager')), true);
+    },
+  },
+  {
+    name: 'detects varied Experience headers reliably',
+    run: () => {
+      const texts = [
+        `Professional Experience\nManager at Company X\n- Did something`,
+        `Work History:\nDeveloper at XYZ\n- Built things`,
+        `EXPERIENCE\nAnalyst at ABC\n- Data stuff`,
+        `Employment\nIntern at EFG\n- Learned things`
+      ];
+
+      for (const text of texts) {
+        const resume = parseResumeText(text);
+        assert.equal(resume.experience.length > 0, true, `Failed on: ${text}`);
+      }
+    },
+  },
+  {
+    name: 'generator pluralizes all known requirement types correctly without naive string concatenation',
+    run: () => {
+      // List of all valid requirement types in the schema
+      const allTypes: Array<'hard skill' | 'soft skill' | 'experience' | 'education' | 'domain' | 'responsibility' | 'tool' | 'methodology' | 'seniority' | 'years' | 'location' | 'certification' | 'language' | 'other'> = [
+        'hard skill', 'soft skill', 'experience', 'education', 'domain', 'responsibility', 'tool',
+        'methodology', 'seniority', 'years', 'location', 'certification', 'language', 'other'
+      ];
+
+      for (const reqType of allTypes) {
+        // Construct a mock matching result
+        const matchingResult = {
+          matches: [{
+            classification: 'MISSING' as const,
+            requirement: {
+              id: '1',
+              normalized_name: 'test req',
+              priority: 'required' as const,
+              category: reqType,
+              original_text: 'test',
+              source_section: 'test',
+              source_span: [0, 0] as [number, number],
+              source_text: 'test',
+              requirement_type: reqType,
+              confidence: 1
+            },
+            confidence: 1,
+            explanation: '',
+            evidence: []
+          }]
+        };
+
+        const result = generateRecommendations(matchingResult as any);
+        const warning = result.recommendations[0].fabricationWarning;
+
+        // Ensure it doesn't contain bad naive pluralizations like "yearses" or "responsibilitys"
+        assert.equal(warning.includes('yearses'), false, `Failed naive pluralization for ${reqType}`);
+        assert.equal(warning.includes('responsibilitys'), false, `Failed naive pluralization for ${reqType}`);
+        
+        // Ensure it uses the map correctly
+        const expectedPlural = CATEGORY_PLURAL_MAP[reqType] || reqType + 's';
+        assert.equal(warning.includes(`invent ${expectedPlural} or achievements`), true, `Missing correct pluralization for ${reqType} - Got: ${warning}`);
+      }
+    }
+  }
 ];
 
 let failures = 0;

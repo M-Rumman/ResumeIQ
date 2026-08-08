@@ -70,9 +70,14 @@ test('validator.ts strictly verifies properties', async (t) => {
       potentialAtsScore: 100
     },
     jobMatchExplanation: {
-      strongMatches: ['Python', 'HallucinatedSkill1'],
+      strongMatches: [
+        { requirement: 'Python', context: 'Matches Python' },
+        { requirement: 'HallucinatedSkill1', context: 'Bad' }
+      ],
       partialMatches: [],
-      missingSkills: ['HallucinatedSkill2']
+      missingSkills: [
+        { requirement: 'HallucinatedSkill2', context: 'Bad', tag: 'Genuine gap' }
+      ]
     },
     keywordCompatibility: {
       overallMatch: 80,
@@ -105,7 +110,9 @@ test('validator.ts strictly verifies properties', async (t) => {
   await t.test('Strips hallucinated skills', () => {
     assert.deepEqual(validated.existingSkills, ['Python']);
     assert.deepEqual(validated.missingSkills, []);
-    assert.deepEqual(validated.jobMatchExplanation.strongMatches, ['Python']);
+    assert.deepEqual(validated.jobMatchExplanation.strongMatches, [
+      { requirement: 'Python', context: 'Matches Python' }
+    ]);
     assert.deepEqual(validated.keywordCompatibility.missing, []);
   });
 

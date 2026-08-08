@@ -373,24 +373,43 @@ function JobMatchExplanation({ explanation }: { explanation: PremiumResults['eng
   const hasDetails = explanation.strongMatches.length || explanation.partialMatches.length || explanation.missingSkills.length;
   if (!hasDetails) return null;
 
+  const renderItem = (item: any) => (
+    <div key={item.requirement} className="mb-2 last:mb-0">
+      <div className="flex items-baseline gap-2">
+        <span className="font-bold text-gray-900">{item.requirement}</span>
+        {item.tag === 'Addressable by rewording' && (
+          <span className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+            {item.tag}
+          </span>
+        )}
+        {item.tag === 'Genuine gap' && (
+          <span className="text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-800">
+            {item.tag}
+          </span>
+        )}
+      </div>
+      <p className="text-gray-600 mt-0.5 leading-snug">{item.context}</p>
+    </div>
+  );
+
   return (
-    <div className="mt-4 pt-4 border-t border-gray-100 space-y-3 text-xs">
+    <div className="mt-4 pt-4 border-t border-gray-100 space-y-4 text-xs">
       {explanation.strongMatches.length > 0 && (
         <div>
-          <p className="font-bold text-emerald-700 mb-1">Top reasons you match</p>
-          <p className="text-gray-700">{explanation.strongMatches.slice(0, 3).join(' · ')}</p>
+          <p className="font-bold text-emerald-700 mb-2">Top reasons you match</p>
+          <div>{explanation.strongMatches.map(renderItem)}</div>
         </div>
       )}
       {explanation.missingSkills.length > 0 && (
         <div>
-          <p className="font-bold text-red-700 mb-1">Top gaps</p>
-          <p className="text-gray-700">{explanation.missingSkills.slice(0, 3).join(' · ')}</p>
+          <p className="font-bold text-red-700 mb-2">Top gaps</p>
+          <div>{explanation.missingSkills.map(renderItem)}</div>
         </div>
       )}
       {explanation.partialMatches.length > 0 && (
         <div>
-          <p className="font-bold text-[#3c4a59] mb-1">How the score was earned</p>
-          <p className="text-gray-700">{explanation.partialMatches.slice(0, 3).join(' · ')}</p>
+          <p className="font-bold text-[#3c4a59] mb-2">How the score was earned</p>
+          <div>{explanation.partialMatches.map(renderItem)}</div>
         </div>
       )}
     </div>

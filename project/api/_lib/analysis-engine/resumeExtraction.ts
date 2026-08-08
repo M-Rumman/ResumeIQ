@@ -82,6 +82,20 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
     });
   }
 
+  // Extract certifications
+  const hasExplicitCertifications = hasExplicitHeading(['certifications', 'licenses', 'certificates']);
+  for (const cert of structuredResume.certifications) {
+    facts.push({
+      id: randomUUID(),
+      type: 'certification',
+      normalizedName: extractSummaryName(cert) || 'Certification',
+      rawText: cert,
+      sourceSection: hasExplicitCertifications ? 'certifications' : 'inferred / not explicitly sectioned',
+      sectionInferred: !hasExplicitCertifications,
+      evidence: cert
+    });
+  }
+
   // Extract summary
   if (structuredResume.summary) {
     facts.push({

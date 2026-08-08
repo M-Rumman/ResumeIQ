@@ -20,9 +20,10 @@ export function validateAndSanitizeReport(
   report.keywordSuggestions = stripHallucinations(report.keywordSuggestions);
   
   if (report.jobMatchExplanation) {
-    report.jobMatchExplanation.strongMatches = stripHallucinations(report.jobMatchExplanation.strongMatches);
-    report.jobMatchExplanation.partialMatches = stripHallucinations(report.jobMatchExplanation.partialMatches);
-    report.jobMatchExplanation.missingSkills = stripHallucinations(report.jobMatchExplanation.missingSkills);
+    const stripHallucinatedObjects = (arr: any[]) => arr.filter(item => validRequirements.has(item.requirement));
+    report.jobMatchExplanation.strongMatches = stripHallucinatedObjects(report.jobMatchExplanation.strongMatches);
+    report.jobMatchExplanation.partialMatches = stripHallucinatedObjects(report.jobMatchExplanation.partialMatches);
+    report.jobMatchExplanation.missingSkills = stripHallucinatedObjects(report.jobMatchExplanation.missingSkills);
   }
 
   if (report.keywordCompatibility) {
@@ -79,9 +80,17 @@ export function validateAndSanitizeReport(
   report.keywordSuggestions = dedupe(report.keywordSuggestions);
 
   if (report.jobMatchExplanation) {
-    report.jobMatchExplanation.strongMatches = dedupe(report.jobMatchExplanation.strongMatches);
-    report.jobMatchExplanation.partialMatches = dedupe(report.jobMatchExplanation.partialMatches);
-    report.jobMatchExplanation.missingSkills = dedupe(report.jobMatchExplanation.missingSkills);
+    const dedupeObjects = (arr: any[]) => {
+      const seen = new Set();
+      return arr.filter(item => {
+        if (seen.has(item.requirement)) return false;
+        seen.add(item.requirement);
+        return true;
+      });
+    };
+    report.jobMatchExplanation.strongMatches = dedupeObjects(report.jobMatchExplanation.strongMatches);
+    report.jobMatchExplanation.partialMatches = dedupeObjects(report.jobMatchExplanation.partialMatches);
+    report.jobMatchExplanation.missingSkills = dedupeObjects(report.jobMatchExplanation.missingSkills);
   }
 
   if (report.keywordCompatibility) {
