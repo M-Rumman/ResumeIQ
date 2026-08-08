@@ -143,7 +143,7 @@ export async function parseJobDescription(
 
   } catch (error) {
     console.error('[jdParser] Failed to parse Job Description', error);
-    if (error instanceof Error && error.message.includes('401')) {
+    if (error instanceof Error && (error.message.includes('401') || error.message.includes('403'))) {
       throw new AiPipelineError('parser', 'UNAUTHORIZED_API_KEY', error.message);
     }
     if (error instanceof AiPipelineError) {

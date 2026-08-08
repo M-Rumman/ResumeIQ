@@ -293,9 +293,9 @@ export async function callOpenRouter(
           latencyMs: Date.now() - requestStartedAt,
           retryAttempt: i + 1,
         });
-        if (response.status === 401) {
+        if (response.status === 401 || response.status === 403) {
           throw new Error(
-            'OpenRouter rejected your API key (401). Create a new key at openrouter.ai/keys. On Vercel, set OPENROUTER_API_KEY under Project Settings → Environment Variables and redeploy.',
+            `OpenRouter rejected your API key (${response.status}). Create a new key at openrouter.ai/keys. On Vercel, set OPENROUTER_API_KEY under Project Settings → Environment Variables and redeploy. Ensure Site URL restrictions allow ${getAppBaseUrl()}.`,
           );
         }
         lastError = new Error(`OpenRouter error ${response.status}: ${text.slice(0, 280)}`);

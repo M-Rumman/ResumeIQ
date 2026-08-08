@@ -79,11 +79,11 @@ export async function runAnalysisPipeline(
     parsedResume.projects,
     {
       title: jobProfile.title,
-      requiredSkills: jobProfile.requiredSkills,
-      preferredSkills: jobProfile.preferredSkills,
-      responsibilities: jobProfile.responsibilities
+      requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
+      preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
+      responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
     },
-    jobProfile.priorities,
+    jobProfile.requirements.map(r => r.normalized_name),
     matchingResult.matches.map(m => ({
       skill: m.requirement.normalized_name,
       status: m.classification,

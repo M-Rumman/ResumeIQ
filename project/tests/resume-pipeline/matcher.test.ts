@@ -89,7 +89,7 @@ const tests: TestCase[] = [
       globalThis.fetch = async () => ({
         ok: true,
         json: async () => ({
-          choices: [{ message: { content: JSON.stringify({ classification: 'MISSING' }) } }]
+          choices: [{ message: { content: JSON.stringify([{ requirementId: '1', classification: 'MISSING' }]) } }]
         })
       }) as any;
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
@@ -138,7 +138,7 @@ const tests: TestCase[] = [
       globalThis.fetch = async () => ({
         ok: true,
         json: async () => ({
-          choices: [{ message: { content: JSON.stringify({ classification: 'UNDER_EXPRESSED', supportingFactId: 'f1' }) } }]
+          choices: [{ message: { content: JSON.stringify([{ requirementId: '1', classification: 'UNDER_EXPRESSED', supportingFactId: 'f1' }]) } }]
         })
       }) as any;
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
@@ -188,7 +188,7 @@ const tests: TestCase[] = [
       globalThis.fetch = async () => ({
         ok: true,
         json: async () => ({
-          choices: [{ message: { content: JSON.stringify({ classification: 'MISSING' }) } }]
+          choices: [{ message: { content: JSON.stringify([{ requirementId: '1', classification: 'MISSING' }]) } }]
         })
       }) as any;
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
@@ -196,6 +196,125 @@ const tests: TestCase[] = [
       try {
         const result = await matchRequirements(job, candidate);
         assert.equal(result.matches[0].classification, 'MISSING');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Regression: matcher handles raw JSON array format (bug fix) with Priya Chandran JD',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Senior UX Researcher',
+        requirements: [{
+          id: 'req-1',
+          category: 'experience',
+          normalized_name: '6+ years UX research',
+          original_text: '6+ years UX research',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: '6+ years UX research',
+          priority: 'required',
+          requirement_type: 'experience',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Priya Chandran', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-1',
+          type: 'experience',
+          normalizedName: '7 years UX research experience',
+          rawText: 'Senior UX Researcher with 7 years of experience leading mixed-methods research in fintech and consumer banking.',
+          sourceSection: 'Experience',
+          evidence: 'Senior UX Researcher with 7 years of experience leading mixed-methods research in fintech and consumer banking.'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([
+            {
+              requirementId: 'req-1',
+              classification: 'EXACT_MATCH',
+              supportingFactId: 'fact-1',
+              explanation: 'Candidate has 7 years of UX research experience.'
+            }
+          ]) } }]
+        })
+      }) as any;
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'EXACT_MATCH');
+        assert.equal(result.matches[0].evidence.length > 0, true);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Regression: matcher handles canonical object format with Priya Chandran JD',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Senior UX Researcher',
+        requirements: [{
+          id: 'req-2',
+          category: 'domain',
+          normalized_name: 'fintech/banking',
+          original_text: 'fintech/banking',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'fintech/banking',
+          priority: 'required',
+          requirement_type: 'domain',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Priya Chandran', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-2',
+          type: 'experience',
+          normalizedName: 'fintech and consumer banking',
+          rawText: 'Senior UX Researcher with 7 years of experience leading mixed-methods research in fintech and consumer banking.',
+          sourceSection: 'Experience',
+          evidence: 'Senior UX Researcher with 7 years of experience leading mixed-methods research in fintech and consumer banking.'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify({
+            matches: [
+              {
+                requirementId: 'req-2',
+                classification: 'STRONG_SEMANTIC_MATCH',
+                // Purposely test the anti-hallucination / fallback search by passing null/bad ID!
+                supportingFactId: null,
+                explanation: 'Candidate explicitly mentions fintech and consumer banking in summary.'
+              }
+            ]
+          }) } }]
+        })
+      }) as any;
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+      try {
+        const result = await matchRequirements(job, candidate);
+        // Because supportingFactId is null, it should trigger the fallback, successfully find fact-2 based on explanation/req words, 
+        // and downgrade to UNDER_EXPRESSED to be safe.
+        assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
+        assert.equal(result.matches[0].evidence[0].fact_id, 'fact-2');
       } finally {
         globalThis.fetch = originalFetch;
       }

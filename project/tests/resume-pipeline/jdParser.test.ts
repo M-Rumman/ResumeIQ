@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { validateAndProcessRequirements } from '../../api/_lib/analysis-engine/jdParser.js';
+import { validateAndProcessRequirements, parseJobDescription } from '../../api/_lib/analysis-engine/jdParser.js';
+import { AiPipelineError } from '../../api/_lib/openrouter.js';
 
 type TestCase = { name: string; run: () => void };
 
@@ -195,6 +196,29 @@ const tests: TestCase[] = [
       ];
       const result = validateAndProcessRequirements(parsed, rawJd);
       assert.equal(result.length, 0);
+    }
+  },
+  {
+    name: 'throws UNAUTHORIZED_API_KEY on 403 Forbidden',
+    run: async () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-testkey';
+      const originalFetch = global.fetch;
+      try {
+        global.fetch = async () => ({
+          ok: false,
+          status: 403,
+          text: async () => 'Forbidden due to Site URL'
+        } as any);
+
+        await parseJobDescription('Test JD');
+        assert.fail('Should have thrown an error');
+      } catch (error: any) {
+        assert.ok(error instanceof AiPipelineError);
+        assert.equal(error.code, 'UNAUTHORIZED_API_KEY');
+        assert.ok(error.message.includes('403'));
+      } finally {
+        global.fetch = originalFetch;
+      }
     }
   }
 ];

@@ -31,7 +31,7 @@ Classify the match for EACH requirement exactly into one of these states:
 - UNDER_EXPRESSED: Relevant evidence EXISTS anywhere in the resume but does not use matching terminology or isn't framed as directly satisfying this specific requirement.
 - MISSING: No reasonable evidence exists anywhere in the resume, even loosely. You MUST search across ALL provided resume content before assigning this.
 
-Output a JSON array of match objects. Each object must have:
+Output a JSON object containing a "matches" array. Each object in the array must have:
 - requirementId: The exact ID string of the requirement.
 - classification: One of EXACT_MATCH, STRONG_SEMANTIC_MATCH, PARTIAL_MATCH, RELATED_MATCH, UNDER_EXPRESSED, MISSING.
 - supportingFactId: The exact ID string of the Candidate Fact, or null.
@@ -146,9 +146,14 @@ export async function matchRequirements(
         { maxTokens: 2000, temperature: 0.1, observability: options.observability, stage: 'analyzer' }
       );
 
-      const parsed = extractJsonFromText(rawJson) as Record<string, any>;
+      const parsed = extractJsonFromText(rawJson) as any;
 
-      const llmMatches = Array.isArray(parsed.matches) ? parsed.matches : [];
+      let llmMatches: any[] = [];
+      if (Array.isArray(parsed)) {
+        llmMatches = parsed;
+      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.matches)) {
+        llmMatches = parsed.matches;
+      }
 
       for (const req of unmatchedRequirements) {
         // Robust Requirement Lookup: LLMs might truncate IDs, wrap them in brackets, or return the name instead.
@@ -182,7 +187,7 @@ export async function matchRequirements(
         let explanation: string = parsedMatch.explanation || '';
 
         // Robust Fact Lookup
-        const validFact = citedFactId ? candidate.facts.find(f => {
+        let validFact = citedFactId ? candidate.facts.find(f => {
           const fId = f.id.toLowerCase();
           const cId = citedFactId.toLowerCase();
           return fId === cId || fId.includes(cId) || cId.includes(fId);
@@ -190,8 +195,44 @@ export async function matchRequirements(
 
         // ANTI-HALLUCINATION:
         if (classification !== 'MISSING' && !validFact) {
-          classification = 'MISSING';
-          explanation = 'Fallback: System claimed a match but could not cite valid supporting evidence from the resume.';
+          const expLower = explanation.toLowerCase();
+          const reqLower = req.normalized_name.toLowerCase();
+          const reqWords = reqLower.split(/\s+/).filter(w => w.length > 3);
+          
+          let bestFact: CandidateFact | undefined = undefined;
+          let maxScore = 0;
+          
+          for (const f of prioritizedFacts) {
+            let score = 0;
+            const rawLower = f.rawText.toLowerCase();
+            
+            // Score based on explanation overlap
+            const words = rawLower.split(/\s+/).filter(w => w.length > 4);
+            for (const w of words) {
+              if (expLower.includes(w)) score++;
+            }
+            
+            // Score based on requirement overlap
+            for (const w of reqWords) {
+              if (rawLower.includes(w)) score += 2;
+            }
+            
+            if (score > maxScore) {
+              maxScore = score;
+              bestFact = f;
+            }
+          }
+          
+          if (maxScore > 0) {
+            validFact = bestFact;
+            if (classification === 'EXACT_MATCH' || classification === 'STRONG_SEMANTIC_MATCH') {
+              classification = 'UNDER_EXPRESSED';
+              explanation += ' (Note: Explicit citation missing; fallback evidence used.)';
+            }
+          } else {
+            classification = 'MISSING';
+            explanation = 'Fallback: System claimed a match but could not cite valid supporting evidence from the resume.';
+          }
         }
 
         let evidence: MatchEvidence[] = [];
