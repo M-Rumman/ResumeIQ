@@ -2718,9 +2718,9 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
       potentialAtsScore: atsScore,
     },
     jobMatchExplanation: {
-      strongMatches: arr(jobMatchExplanation.strongMatches),
-      partialMatches: arr(jobMatchExplanation.partialMatches),
-      missingSkills: arr(jobMatchExplanation.missingSkills),
+      strongMatches: arr(jobMatchExplanation.strongMatches).map(req => ({ requirement: req, context: 'Grounded match from requirements' })),
+      partialMatches: arr(jobMatchExplanation.partialMatches).map(req => ({ requirement: req, context: 'Partial match from requirements' })),
+      missingSkills: arr(jobMatchExplanation.missingSkills).map(req => ({ requirement: req, context: 'No explicit evidence found in your resume.', tag: 'Genuine gap' as const })),
     },
     keywordCompatibility,
     coachingReport,
@@ -2792,12 +2792,11 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
     result.atsScore + result.atsScoreExplanation.estimatedScoreImprovement,
   );
   if (result.jobMatchExplanation.strongMatches.length === 0) {
-    result.jobMatchExplanation.strongMatches = result.existingSkills;
+    result.jobMatchExplanation.strongMatches = result.existingSkills.map(req => ({ requirement: req, context: 'Derived from extracted technical skills' }));
   }
   if (result.jobMatchExplanation.missingSkills.length === 0) {
-    result.jobMatchExplanation.missingSkills = result.missingSkills.length > 0
-      ? result.missingSkills
-      : result.missingKeywords;
+    const missing = result.missingSkills.length > 0 ? result.missingSkills : result.missingKeywords;
+    result.jobMatchExplanation.missingSkills = missing.map(req => ({ requirement: req, context: 'Missing core requirement', tag: 'Genuine gap' as const }));
   }
 
   deduplicateAndPlanSuggestions(result);
@@ -3155,9 +3154,20 @@ export async function analyzeResumeWithAi(
     ],
   };
   const evidenceGroundedJobMatchExplanation = {
-    strongMatches: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'MATCHED'), 5),
-    partialMatches: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'PARTIALLY MATCHED'), 5),
-    missingSkills: requirementEvidenceCitationList(gapAnalysis.items.filter((item) => item.status === 'MISSING'), 5),
+    strongMatches: gapAnalysis.items.filter((item) => item.status === 'MATCHED').slice(0, 5).map(item => ({
+      requirement: item.skill,
+      context: item.matchReason || 'Matches requirement',
+    })),
+    partialMatches: gapAnalysis.items.filter((item) => item.status === 'PARTIALLY MATCHED').slice(0, 5).map(item => ({
+      requirement: item.skill,
+      context: item.matchReason || 'Partial match',
+      tag: 'Addressable by rewording' as const
+    })),
+    missingSkills: gapAnalysis.items.filter((item) => item.status === 'MISSING').slice(0, 5).map(item => ({
+      requirement: item.skill,
+      context: item.matchReason || 'Missing core requirement',
+      tag: 'Genuine gap' as const
+    })),
   };
   // Keyword and missing-skill fields are derived from the same deterministic
   // gap analysis that drives ATS, Job Match, and recommendations. Model-sent
