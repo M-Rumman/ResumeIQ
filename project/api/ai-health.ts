@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           'X-Title': 'ResuV',
         },
         body: JSON.stringify({
-          model: 'google/gemma-4-31b-it',
+          model: 'google/gemma-2-27b-it',
           messages: [{ role: 'user', content: 'ping' }],
           max_tokens: 1,
         }),
