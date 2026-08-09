@@ -33,7 +33,6 @@ CRITICAL INSTRUCTIONS:
 2. If the JD does not mention a technology (e.g., Git, ROS), it MUST NOT become a job requirement.
 3. Clearly distinguish REQUIRED from PREFERRED / NICE TO HAVE. Never treat preferred qualifications as mandatory requirements.
 4. "original_text" and "source_text" MUST be exact quotes from the provided JD.
-5. Even if the text does not look like a traditional job description, do your best to extract any implied requirements or skills, and ALWAYS return the required JSON format. NEVER return plain text or commentary.
 `;
 
 export function validateAndProcessRequirements(parsedRequirements: any[], jobDescriptionText: string): JobRequirement[] {
@@ -80,9 +79,9 @@ export function validateAndProcessRequirements(parsedRequirements: any[], jobDes
          const match = rawLower.match(cleanOrigRegex)!;
          sourceSpan = [match.index!, match.index! + cleanOrig.length];
        } else {
-         // Fails provenance validation - but we relax this to accept any description
-         console.warn(`[jdParser] Provenance check failed for: ${req.normalized_name}, but accepting it anyway.`);
-         sourceSpan = [0, 0];
+         // Fails provenance validation - discard it to prevent hallucination!
+         console.warn(`[jdParser] Dropping hallucinated requirement: ${req.normalized_name}`);
+         continue;
        }
     }
 
@@ -128,10 +127,15 @@ export async function parseJobDescription(
       }
     );
 
-    const parsed = extractJsonFromText(rawJson) as Record<string, any>;
+    let parsed: Record<string, any>;
+    try {
+      parsed = extractJsonFromText(rawJson) as Record<string, any>;
+    } catch (e) {
+      throw new AiPipelineError('parser', 'MALFORMED_JSON_OUTPUT', 'Could not parse JSON from model output');
+    }
 
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.requirements)) {
-      throw new Error('Invalid JSON structure returned by LLM.');
+      throw new AiPipelineError('parser', 'MALFORMED_JSON_OUTPUT', 'Invalid JSON structure returned by LLM.');
     }
 
     const validRequirements = validateAndProcessRequirements(parsed.requirements, jobDescriptionText);
@@ -144,12 +148,14 @@ export async function parseJobDescription(
 
   } catch (error) {
     console.error('[jdParser] Failed to parse Job Description', error);
-    if (error instanceof Error && (error.message.includes('401') || error.message.includes('403'))) {
-      throw new AiPipelineError('parser', 'UNAUTHORIZED_API_KEY', error.message);
-    }
     if (error instanceof AiPipelineError) {
       throw error;
     }
-    throw new AiPipelineError('parser', 'JD_PARSING_FAILED', 'Failed to extract structured requirements from the job description.');
+    // Only wrap truly unexpected generic errors in JD_PARSING_FAILED
+    throw new AiPipelineError(
+      'parser',
+      'JD_PARSING_FAILED',
+      error instanceof Error ? error.message : 'Unknown parsing failure'
+    );
   }
 }

@@ -754,13 +754,26 @@ function analysisErrorMessage(error: unknown): string {
   }
 
   if (error.pipelineError) {
+    if (error.pipelineError.code === 'PROVIDER_RATE_LIMIT') {
+      return 'The AI service is currently experiencing high demand. Please wait a moment and try again.';
+    }
+    if (error.pipelineError.code === 'PROVIDER_TIMEOUT' || error.pipelineError.code === 'PROVIDER_NETWORK_ERROR') {
+      return 'We could not reach the AI service or the request timed out. Please check your connection and try again.';
+    }
+    if (error.pipelineError.code === 'PROVIDER_ERROR') {
+      return 'The AI service experienced an internal error. Please try again later.';
+    }
+    if (error.pipelineError.code === 'MALFORMED_JSON_OUTPUT') {
+      return 'The AI service returned an invalid response format. Please try again.';
+    }
+    if (error.pipelineError.code === 'UNAUTHORIZED_API_KEY') {
+      return 'OpenRouter rejected your API key. Please check your environment variables or create a new key at openrouter.ai/keys.';
+    }
+
     switch (error.pipelineError.stage) {
       case 'parser':
         if (error.pipelineError.code === 'JD_PARSING_FAILED') {
           return 'We could not extract job requirements from the provided job description. Please review the job description text and try again.';
-        }
-        if (error.pipelineError.code === 'UNAUTHORIZED_API_KEY') {
-          return 'OpenRouter rejected your API key. Please check your environment variables or create a new key at openrouter.ai/keys.';
         }
         return 'We could not read the resume structure. Please review the extracted resume text and try again.';
       case 'analyzer':

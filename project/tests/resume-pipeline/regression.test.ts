@@ -250,10 +250,9 @@ const tests: TestCase[] = [
 
       // Assertions
       const hasGit = finalReport.requirementBreakdown.some((r: any) => r.requirement.normalized_name === 'Git');
-      // Relaxed provenance check means hallucinated skills won't be stripped out.
-      // assert.equal(hasGit, false, 'Git should be stripped out as it is hallucinated');
+      assert.equal(hasGit, false, 'Git should be stripped out as it is hallucinated');
       const hasRos = finalReport.requirementBreakdown.some((r: any) => r.requirement.normalized_name === 'ROS');
-      // assert.equal(hasRos, false, 'ROS should be stripped out as it is hallucinated');
+      assert.equal(hasRos, false, 'ROS should be stripped out as it is hallucinated');
 
       assert.ok(reqMap['Bachelor\'s Psychology/HCI/Cognitive Science'], 'Bachelor requirement should exist');
       assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(reqMap['Bachelor\'s Psychology/HCI/Cognitive Science'].classification), 'Bachelor should be a strong/exact match');

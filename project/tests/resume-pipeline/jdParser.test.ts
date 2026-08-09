@@ -220,6 +220,94 @@ const tests: TestCase[] = [
         globalThis.fetch = originalFetch;
       }
     }
+  },
+  {
+    name: 'throws PROVIDER_RATE_LIMIT on 429 Too Many Requests',
+    run: async () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-testkey';
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = async () => ({
+          ok: false,
+          status: 429,
+          text: async () => 'Rate limit exceeded'
+        } as any);
+
+        await parseJobDescription('Test JD');
+        assert.fail('Should have thrown an error');
+      } catch (error: any) {
+        assert.ok(error instanceof AiPipelineError);
+        assert.equal(error.code, 'PROVIDER_RATE_LIMIT');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'throws PROVIDER_ERROR on 500 Internal Server Error',
+    run: async () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-testkey';
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = async () => ({
+          ok: false,
+          status: 500,
+          text: async () => 'Internal Server Error'
+        } as any);
+
+        await parseJobDescription('Test JD');
+        assert.fail('Should have thrown an error');
+      } catch (error: any) {
+        assert.ok(error instanceof AiPipelineError);
+        assert.equal(error.code, 'PROVIDER_ERROR');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'throws PROVIDER_NETWORK_ERROR on fetch exception',
+    run: async () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-testkey';
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = async () => {
+          throw new Error('fetch failed');
+        };
+
+        await parseJobDescription('Test JD');
+        assert.fail('Should have thrown an error');
+      } catch (error: any) {
+        assert.ok(error instanceof AiPipelineError);
+        assert.equal(error.code, 'PROVIDER_NETWORK_ERROR');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'throws MALFORMED_JSON_OUTPUT on invalid AI response',
+    run: async () => {
+      process.env.OPENROUTER_API_KEY = 'sk-or-testkey';
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            choices: [{ message: { content: 'Sure, here are the requirements:\n- Must be cool\n- Know Git' } }]
+          })
+        } as any);
+
+        await parseJobDescription('Test JD');
+        assert.fail('Should have thrown an error');
+      } catch (error: any) {
+        assert.ok(error instanceof AiPipelineError);
+        assert.equal(error.code, 'MALFORMED_JSON_OUTPUT');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
   }
 ];
 

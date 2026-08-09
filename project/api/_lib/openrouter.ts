@@ -299,12 +299,19 @@ export async function callOpenRouter(
           latencyMs: Date.now() - requestStartedAt,
           retryAttempt: i + 1,
         });
+        const stage = (options.stage as AiPipelineStage) || 'analyzer';
         if (response.status === 401 || response.status === 403) {
-          throw new Error(
-            `OpenRouter rejected your API key (${response.status}). Create a new key at openrouter.ai/keys. On Vercel, set OPENROUTER_API_KEY under Project Settings → Environment Variables and redeploy. Ensure Site URL restrictions allow ${getAppBaseUrl()}.`,
+          throw new AiPipelineError(
+            stage,
+            'UNAUTHORIZED_API_KEY',
+            `OpenRouter rejected your API key (${response.status}). Create a new key at openrouter.ai/keys. On Vercel, set OPENROUTER_API_KEY under Project Settings → Environment Variables and redeploy. Ensure Site URL restrictions allow ${getAppBaseUrl()}.`
           );
         }
-        lastError = new Error(`OpenRouter error ${response.status}: ${text.slice(0, 280)}`);
+        
+        let errorCode = 'PROVIDER_ERROR';
+        if (response.status === 429) errorCode = 'PROVIDER_RATE_LIMIT';
+        
+        lastError = new AiPipelineError(stage, errorCode, `OpenRouter error ${response.status}: ${text.slice(0, 280)}`);
         const hasMoreModels = i < models.length - 1;
         if (hasMoreModels && isRetryableProviderError(response.status, text)) {
           await sleep(response.status === 429 ? 1500 + i * 500 : 400);
@@ -320,7 +327,8 @@ export async function callOpenRouter(
 
       const content = data.choices?.[0]?.message?.content;
       if (!content) {
-        lastError = new Error(`Empty OpenRouter response from model ${model}`);
+        const stage = (options.stage as AiPipelineStage) || 'analyzer';
+        lastError = new AiPipelineError(stage, 'PROVIDER_ERROR', `Empty OpenRouter response from model ${model}`);
         if (i < models.length - 1) {
           await sleep(400);
           continue;
@@ -350,7 +358,9 @@ export async function callOpenRouter(
         timedOut: requestTimedOut,
         requestTimeoutMs,
       });
-      lastError = err instanceof Error ? err : new Error(String(err));
+      const stage = (options.stage as AiPipelineStage) || 'analyzer';
+      const errorCode = requestTimedOut ? 'PROVIDER_TIMEOUT' : 'PROVIDER_NETWORK_ERROR';
+      lastError = err instanceof AiPipelineError ? err : new AiPipelineError(stage, errorCode, err instanceof Error ? err.message : String(err));
       if (i < models.length - 1) {
         await sleep(500);
         continue;
@@ -362,8 +372,10 @@ export async function callOpenRouter(
 
   throw (
     lastError ||
-    new Error(
-      'All configured AI providers are currently unavailable. Please try again shortly.',
+    new AiPipelineError(
+      (options.stage as AiPipelineStage) || 'analyzer',
+      'PROVIDER_ERROR',
+      'All configured AI providers are currently unavailable. Please try again shortly.'
     )
   );
 }
