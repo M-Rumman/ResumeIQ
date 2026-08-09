@@ -1,6 +1,18 @@
 import { containsPhoneNumber } from './resumeParser.js';
+import { scoreBulletQuality, bulletQualityImprovements, buildDetailedBulletTeachingGuide } from './analysis-engine/bulletScoring.js';
 
-type RewritePair = { before?: unknown; after?: unknown; confidence?: unknown };
+type RewritePair = {
+  before?: unknown;
+  after?: unknown;
+  confidence?: unknown;
+  beforeScore?: number;
+  afterScore?: number;
+  improvementScore?: number;
+  improvements?: string[];
+  whyWeak?: string[];
+  missingInformation?: string[];
+  whyStronger?: string[];
+};
 export type ValidationTelemetry = {
   acceptedRecommendations: number;
   rejectedRecommendations: number;
@@ -304,7 +316,7 @@ export function validateHiringManagerAssessment(
   };
 }
 
-function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
+function validateRewrites(values: unknown, resumeText: string, targetKeywords: string[]): RewritePair[] {
   if (!Array.isArray(values)) return [];
   const source = normalize(resumeText);
   const accepted: RewritePair[] = [];
@@ -316,26 +328,34 @@ function validateRewrites(values: unknown, resumeText: string): RewritePair[] {
     const after = typeof pair.after === 'string' ? pair.after.trim() : '';
     if (!before || !after || !source.includes(normalize(before))) continue;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
-    // A rewrite may use only technologies, metrics, and named terms supported
-    // by its own source bullet; evidence elsewhere in the resume is not enough.
-    if (hasInventedMetric(after, before) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, before)) continue;
+    // A rewrite may synthesize appropriately from across the resume,
+    // so we check for hallucinated metrics against the entire resume text.
+    if (hasInventedMetric(after, resumeText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, resumeText)) continue;
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
-    const beforeWords = new Set((before.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4));
-    const afterWords = (after.toLowerCase().match(/[a-z0-9+#]+/g) || []).filter((word) => word.length >= 4);
-    const newSubstantiveWords = afterWords.filter((word) => !beforeWords.has(word));
-    const beforeWordCount = before.trim().split(/\s+/).length;
-    const afterWordCount = after.trim().split(/\s+/).length;
-    const genericOpening = /^(?:worked|helped|assisted|responsible|supported|participated)\b/i.test(before);
-    const strongerOpening = /^(?:analyzed|assembled|automated|built|configured|debugged|designed|developed|engineered|fabricated|implemented|integrated|optimized|tested|validated)\b/i.test(after);
-    // Do not surface a cosmetic verb swap as an "improvement". Strong source
-    // bullets may receive concise edits, but weak bullets need visible added value.
-    const materiallyImproved = genericOpening
-      ? strongerOpening && (newSubstantiveWords.length >= 2 || afterWordCount >= beforeWordCount + 4)
-      : newSubstantiveWords.length >= 2 || afterWordCount >= beforeWordCount + 3;
-    if (!materiallyImproved) continue;
+    
+    const beforeQuality = scoreBulletQuality(before, targetKeywords);
+    const afterQuality = scoreBulletQuality(after, targetKeywords);
+    
+    if (afterQuality.total <= beforeQuality.total) continue;
+    
+    const improvements = bulletQualityImprovements(beforeQuality, afterQuality);
+    const guide = buildDetailedBulletTeachingGuide({ before, after }, targetKeywords);
+    
     const rawConfidence = typeof pair.confidence === 'string' ? pair.confidence : 'High';
     const confidence = ['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High';
-    accepted.push({ before, after, confidence });
+    
+    accepted.push({
+      before,
+      after,
+      confidence,
+      beforeScore: beforeQuality.total,
+      afterScore: afterQuality.total,
+      improvementScore: afterQuality.total - beforeQuality.total,
+      improvements,
+      whyWeak: guide.whyWeak,
+      missingInformation: guide.missingInformation,
+      whyStronger: guide.whyStronger,
+    });
   }
   return accepted;
 }
@@ -346,6 +366,7 @@ export function validateAiResumeOutput(
   resumeText: string,
   jobDescription = '',
   telemetry?: ValidationTelemetry,
+  targetKeywords: string[] = [],
 ): Record<string, any> {
   const output = { ...raw };
   const seenKeywords = new Set<string>();
@@ -361,7 +382,7 @@ export function validateAiResumeOutput(
   output.keywordSuggestions = dedupeKeywordGroup(output.keywordSuggestions);
   output.keywordGaps = dedupeKeywordGroup(output.keywordGaps);
   output.missingRequiredSkills = dedupeKeywordGroup(output.missingRequiredSkills);
-  output.improvedBulletPoints = validateRewrites(output.improvedBulletPoints, resumeText);
+  output.improvedBulletPoints = validateRewrites(output.improvedBulletPoints, resumeText, targetKeywords);
   output.weakBullets = Array.isArray(output.weakBullets)
     ? output.weakBullets.filter((value: unknown) => typeof value === 'string' && normalize(resumeText).includes(normalize(value)))
     : [];

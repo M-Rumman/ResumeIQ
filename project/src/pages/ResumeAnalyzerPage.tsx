@@ -37,172 +37,7 @@ import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
 type AnalysisResults = ResumeDisplayResults;
 type PremiumResults = PremiumResumeDisplayResults;
 
-const STRONG_BULLET_ACTION_VERBS = new Set([
-  'accelerated', 'achieved', 'analyzed', 'architected', 'assembled', 'automated', 'built',
-  'coordinated', 'created', 'delivered', 'designed', 'developed', 'engineered', 'fabricated',
-  'implemented', 'improved', 'integrated', 'led', 'managed', 'optimized', 'presented',
-  'produced', 'reduced', 'streamlined', 'tested', 'validated',
-]);
-
-function firstWord(text: string) {
-  return text.trim().match(/[A-Za-z]+/)?.[0]?.toLowerCase() || '';
-}
-
-function hasQuantification(text: string) {
-  return /(?:\b\d+(?:\.\d+)?(?:%|x)?\b|\[x\]\s*(?:%|users|components|requests))/i.test(text);
-}
-
-const GENERIC_BULLET_OPENERS = new Set([
-  'assisted', 'helped', 'participated', 'responsible', 'supported', 'worked',
-]);
-type BulletQuality = {
-  total: number;
-  actionVerb: number;
-  keywordRichness: number;
-  measurableImpact: number;
-  sentenceClarity: number;
-  ownershipStructure: number;
-};
-
-function containsTerm(text: string, term: string) {
-  const escaped = term.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?=$|[^a-z0-9])`, 'i').test(text);
-}
-
-/** Deterministic writing-quality score; it is not an LLM estimate or a random number. */
-function supportsTargetKeyword(text: string, keyword: string): boolean {
-  if (containsTerm(text, keyword)) return true;
-  const normalized = text.toLowerCase();
-  const target = keyword.toLowerCase();
-  if (target === 'control systems') return /\bpid\b|\bcontrol(?:ler)?\b/.test(normalized);
-  if (target === 'sensor integration') return /\bsensor|lidar\b/.test(normalized) && /\binterface|interfacing|integrat/.test(normalized);
-  return false;
-}
-
-function scoreBulletQuality(text: string, targetKeywords: string[]): BulletQuality {
-  const words = text.trim().match(/[A-Za-z0-9+#]+/g) || [];
-  const opener = firstWord(text);
-  const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 30 : GENERIC_BULLET_OPENERS.has(opener) ? 5 : 15;
-  const keywordRichness = Math.min(25, [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
-    .filter((term) => supportsTargetKeyword(text, term)).length * 8.5);
-  const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 12 : 20) : 0;
-  const sentenceClarity = words.length >= 12 && words.length <= 42 ? 15 : words.length >= 7 && words.length <= 55 ? 8 : 4;
-  const ownershipStructure = STRONG_BULLET_ACTION_VERBS.has(opener)
-    && words.length >= 10
-    ? 10
-    : 0;
-  const total = Math.round(actionVerb + keywordRichness + measurableImpact + sentenceClarity + ownershipStructure);
-  return { total, actionVerb, keywordRichness, measurableImpact, sentenceClarity, ownershipStructure };
-}
-
-function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) {
-  const improvements = [
-    [after.actionVerb > before.actionVerb, 'Stronger action verb'],
-    [after.keywordRichness > before.keywordRichness, 'Better ATS keywords for this role'],
-    [after.measurableImpact > before.measurableImpact, 'More measurable impact'],
-    [after.sentenceClarity > before.sentenceClarity, 'Clearer sentence structure'],
-    [after.ownershipStructure > before.ownershipStructure, 'Clearer ownership and contribution structure'],
-  ] as const;
-  return improvements.filter(([improved]) => improved).map(([, label]) => label);
-}
-
-/**
- * Explanations are derived only from the original and server-validated rewrite.
- * They identify the type of detail a candidate should add, without claiming an
- * unsupported tool, outcome, or metric exists in the source resume.
- */
-export function buildBulletTeachingGuide({ before, after }: PremiumResults['bulletSuggestions'][number]) {
-  const originalStartsStrong = STRONG_BULLET_ACTION_VERBS.has(firstWord(before));
-  const rewrittenVerb = firstWord(after);
-  const originalHasMetric = hasQuantification(before);
-  const rewrittenIsMoreDetailed = after.trim().split(/\s+/).length > before.trim().split(/\s+/).length + 3;
-
-  const whyWeak = [
-    originalStartsStrong
-      ? 'The contribution is not specific enough for a recruiter to quickly understand the work performed.'
-      : 'It starts with generic wording instead of a clear, specific action.',
-    originalHasMetric
-      ? 'The technical context or outcome is not explained clearly enough.'
-      : 'It does not show the scope, outcome, or measurable result of the work.',
-  ];
-
-  const missingInformation = [
-    rewrittenIsMoreDetailed
-      ? 'The specific technical contribution, components, methods, or context already supported by the resume.'
-      : 'A clearer explanation of the candidate\'s specific contribution.',
-    originalHasMetric
-      ? 'A direct connection between the work and its result or impact.'
-      : 'A supported outcome, scope, or metric, if one is available.',
-  ];
-
-  const whyStronger = [
-    rewrittenVerb
-      ? `Begins with the clear action verb “${rewrittenVerb.charAt(0).toUpperCase()}${rewrittenVerb.slice(1)}.”`
-      : 'Uses a clearer action-to-contribution structure.',
-    rewrittenIsMoreDetailed
-      ? 'Makes the documented technical contribution easier to understand while preserving the original meaning.'
-      : 'Uses more direct professional resume language while preserving the original meaning.',
-    'Gives recruiters and ATS systems clearer, resume-supported evidence of the candidate\'s work.',
-  ];
-
-  return { whyWeak, missingInformation, whyStronger };
-}
-
-/** Bullet-specific coaching derived from the validated source/rewrite pair only. */
-function buildDetailedBulletTeachingGuide(
-  { before, after }: PremiumResults['bulletSuggestions'][number],
-  targetKeywords: string[],
-) {
-  const targetTerms = targetKeywords.filter((term) => containsTerm(after, term) && !containsTerm(before, term));
-  const purpose = after.match(/\bto\s+([^.;]+)/i)?.[1]?.trim();
-  const genericOpening = GENERIC_BULLET_OPENERS.has(firstWord(before));
-
-  const whyWeak = [
-    genericOpening
-      ? `Opens with “${firstWord(before)},” which does not clearly show ownership of the work.`
-      : `Does not clearly connect the documented work to a specific professional objective.`,
-    targetTerms.length > 0
-      ? 'This bullet does not name the specific tools, technologies, or methodologies involved.'
-      : 'Uses generic phrasing but gives limited context about how skills were applied.',
-    hasQuantification(before)
-      ? 'This bullet does not clearly explain the purpose or practical result of the work.'
-      : 'This bullet does not state a supported outcome, scope, or measurable result.',
-  ];
-
-  const missingInformation = [
-    targetTerms.length
-      ? `Detected in the source bullet: ${targetTerms.slice(0, 3).join(', ')}.`
-      : 'Not explicitly stated in this bullet: tools, technologies, or methodologies used. Check other resume sections before treating this as missing.',
-    purpose
-      ? `Detected professional objective: ${purpose}.`
-      : 'Not explicitly stated in this bullet: the professional purpose. Do not assume it is missing from the rest of the resume.',
-    hasQuantification(before)
-      ? 'Detected: a clear link between the documented work and its practical outcome.'
-      : 'Unsupported in this bullet: a metric, test result, scope, or performance outcome. Add one only if documented elsewhere.',
-  ];
-
-  const whyStronger = [
-    `Makes ownership explicit with the action “${firstWord(after).replace(/^./, (letter) => letter.toUpperCase())}.”`,
-    targetTerms.length
-      ? `Adds resume-supported professional context: ${targetTerms.slice(0, 3).join(', ')}.`
-      : 'Makes the documented work easier for a recruiter to understand.',
-    purpose
-      ? `Clarifies the professional objective: ${purpose}.`
-      : 'Uses a clearer action-to-contribution structure without adding unsupported results.',
-    targetTerms.length
-      ? `Improves alignment with this role through supported job terminology: ${targetTerms.slice(0, 2).join(', ')}.`
-      : `Makes the documented work easier to evaluate against this role's stated requirements without adding unsupported job terminology.`,
-  ];
-  return { whyWeak, missingInformation, whyStronger };
-}
-
-function BulletImprovementGuide({
-  items,
-  targetKeywords,
-}: {
-  items: PremiumResults['bulletSuggestions'];
-  targetKeywords: string[];
-}) {
+function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSuggestions'] }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-2">
@@ -215,17 +50,13 @@ function BulletImprovementGuide({
       {items.length > 0 ? (
         <div className="space-y-6">
           {items.map((item, i) => {
-            const guide = buildDetailedBulletTeachingGuide(item, targetKeywords);
-            const beforeQuality = scoreBulletQuality(item.before, targetKeywords);
-            const afterQuality = scoreBulletQuality(item.after, targetKeywords);
-            const improvements = bulletQualityImprovements(beforeQuality, afterQuality);
             return (
               <article key={`${item.before}-${i}`} className="rounded-xl border border-gray-200 overflow-hidden">
                 <div className="grid md:grid-cols-[1fr_auto_1fr] items-stretch bg-gray-100 gap-px">
                   <div className="bg-red-50 p-4">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <span className="text-xs font-bold text-red-700 uppercase tracking-wide">Before</span>
-                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800">Score {beforeQuality.total}/100</span>
+                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800">Score {item.beforeScore ?? '?'}/100</span>
                     </div>
                     <p className="text-sm text-red-950">{item.before}</p>
                   </div>
@@ -235,38 +66,40 @@ function BulletImprovementGuide({
                   <div className="bg-emerald-50 p-4">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">After</span>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">Score {afterQuality.total}/100</span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">Score {item.afterScore ?? '?'}/100</span>
                     </div>
                     <p className="text-sm text-emerald-950 font-medium">{item.after}</p>
                   </div>
                 </div>
                 <div className="border-y border-gray-100 bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <h4 className="text-sm font-bold text-gray-900">Improvement Score: {afterQuality.total - beforeQuality.total >= 0 ? '+' : ''}{afterQuality.total - beforeQuality.total}</h4>
+                    <h4 className="text-sm font-bold text-gray-900">
+                      Improvement Score: {(item.improvementScore ?? 0) >= 0 ? '+' : ''}{item.improvementScore ?? '?'}
+                    </h4>
                     <span className="text-xs font-bold text-gray-700">Grounding confidence: {item.confidence}</span>
                   </div>
                   <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-emerald-800">
-                    {(improvements.length ? improvements : ['More complete, resume-supported explanation of the work']).map((improvement) => <li key={improvement}>+ {improvement}</li>)}
+                    {(item.improvements?.length ? item.improvements : ['More complete, resume-supported explanation of the work']).map((improvement) => <li key={improvement}>+ {improvement}</li>)}
                   </ul>
                 </div>
                 <div className="grid md:grid-cols-2 gap-px bg-gray-100">
                   <div className="bg-white p-4">
                     <h4 className="text-sm font-bold text-gray-900 mb-2">Why it is weak</h4>
                     <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                      {guide.whyWeak.map((reason) => <li key={reason}>{reason}</li>)}
+                      {(item.whyWeak || []).map((reason) => <li key={reason}>{reason}</li>)}
                     </ul>
                   </div>
                   <div className="bg-white p-4">
                     <h4 className="text-sm font-bold text-gray-900 mb-2">What information is missing</h4>
                     <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                      {guide.missingInformation.map((detail) => <li key={detail}>{detail}</li>)}
+                      {(item.missingInformation || []).map((detail) => <li key={detail}>{detail}</li>)}
                     </ul>
                   </div>
                 </div>
                 <div className="bg-white p-4">
                   <h4 className="text-sm font-bold text-gray-900 mb-2">Why this is stronger</h4>
                   <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                    {guide.whyStronger.map((reason) => <li key={reason}>{reason}</li>)}
+                    {(item.whyStronger || []).map((reason) => <li key={reason}>{reason}</li>)}
                   </ul>
                 </div>
               </article>
@@ -1216,14 +1049,7 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
               </div>
             </div>
 
-            <BulletImprovementGuide
-              items={results.bulletSuggestions}
-              targetKeywords={[
-                ...(results.engine.keywordCompatibility.exactMatches || []),
-                ...(results.engine.keywordCompatibility.semanticMatches || []),
-                ...(results.engine.keywordCompatibility.missing || []),
-              ]}
-            />
+            <BulletImprovementGuide items={results.bulletSuggestions} />
     </>
   );
 }

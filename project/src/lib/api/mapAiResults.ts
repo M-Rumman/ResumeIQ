@@ -99,8 +99,7 @@ function bulletsFromAi(ai: AiResumeAnalysisPremium): BulletPair[] {
   const fromAi = (ai.improvedBulletPoints || [])
     .filter((b) => b?.before && b?.after)
     .map((b) => ({
-      before: b.before,
-      after: b.after,
+      ...b,
       confidence: b.confidence === 'Medium' || b.confidence === 'Low' ? b.confidence : 'High' as const,
     }));
   return fromAi.slice(0, 6);

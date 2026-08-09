@@ -574,7 +574,7 @@ Rules:
 - Surface technical contribution only when the original bullet explicitly provides the relevant technologies, tools, components, methods, or domain context. Do not add technical detail that is not in the supplied bullet.
 - Strict Grounding: Do NOT invent or exaggerate projects, technologies, tools, employers, companies, certifications, scope, seniority, ownership, outcomes, or metrics.
 - Do not reduce the impact of the original bullet. Preserve all quantified metrics (e.g., 34%, 5,000-person) and original factual strength exactly as provided.
-- Never add a metric, placeholder, result, performance claim, engineering objective, or scale unless it is explicitly supported by that same source bullet.
+- You may improve clarity using metrics, outcomes, or information from elsewhere in the candidate's resume ONLY when the relationship is unambiguous and the resulting statement remains factually supported by the resume as a whole. Do NOT invent or exaggerate metrics not found in the resume.
 - Keep each rewrite to one concise resume bullet. Do not add explanations, section headings, contact information, URLs, emails, phone numbers, or LinkedIn references.
 - If a bullet cannot be safely strengthened from its supplied content, omit it instead of inventing detail.
 
@@ -3249,7 +3249,8 @@ export async function analyzeResumeWithAi(
     rejectionReasons: {},
   };
   try {
-    validated = validateAiResumeOutput(combinedRaw, resumeText, jobDescription, validationTelemetry);
+    const targetKeywords = gapAnalysis.items.map((item) => item.skill).filter(Boolean);
+    validated = validateAiResumeOutput(combinedRaw, resumeText, jobDescription, validationTelemetry, targetKeywords);
   } catch (error) {
     console.error('[pipeline] validation failed', {
       errorType: error instanceof Error ? error.name : 'unknown',

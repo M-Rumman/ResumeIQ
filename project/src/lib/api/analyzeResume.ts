@@ -66,7 +66,18 @@ export interface AiResumeAnalysisPremium {
   formattingSuggestions: string[];
   formattingIssues: string[];
   weakBullets: string[];
-  improvedBulletPoints: { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' }[];
+  improvedBulletPoints: {
+    before: string;
+    after: string;
+    confidence: 'High' | 'Medium' | 'Low';
+    beforeScore: number;
+    afterScore: number;
+    improvementScore: number;
+    improvements: string[];
+    whyWeak: string[];
+    missingInformation: string[];
+    whyStronger: string[];
+  }[];
   improvementSuggestions: string[];
   optimizationRecommendations: string[];
   actionPlan: Gap[];
