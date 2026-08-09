@@ -4,12 +4,12 @@ import { validateAndSanitizeReport } from '../../api/_lib/analysis-engine/valida
 import type { AiResumeAnalysisFull } from '../../api/_lib/openrouter.js';
 import type { JobProfile, CandidateProfile } from '../../api/_lib/analysis-engine/types.js';
 
-test('validator.ts strictly verifies properties', async (t) => {
+test('validator.ts strictly verifies properties', async (t: any) => {
   const dummyJob: JobProfile = {
     title: 'Software Engineer',
     requirements: [
       {
-        requirement_id: 'r1',
+        id: 'r1',
         normalized_name: 'Python',
         original_text: 'Python',
         source_section: 'Requirements',
@@ -28,7 +28,7 @@ test('validator.ts strictly verifies properties', async (t) => {
     facts: [],
     rawStructure: {
       experience: ['Worked with Python']
-    }
+    } as any
   };
 
   const dummyReport: AiResumeAnalysisFull = {
@@ -103,7 +103,7 @@ test('validator.ts strictly verifies properties', async (t) => {
       biggestImprovements: [],
       confidence: 'High'
     }
-  };
+  } as any;
 
   const validated = validateAndSanitizeReport(dummyReport, dummyJob, dummyCandidate);
 

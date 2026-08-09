@@ -212,7 +212,7 @@ B.S. in Construction Management — Colorado State University, 2016`;
         assert.equal(legacyReport.detectedSections.includes('Experience'), true, 'Evaluator failed to detect Experience section');
         
         // 2. Assert ATS breakdown doesn't complain about missing Experience
-        const structureIssue = legacyReport.atsBreakdown.find(b => b.label === 'Section Recognition');
+        const structureIssue = legacyReport.atsBreakdown.find((b: any) => b.label === 'Section Recognition');
         assert.equal(structureIssue?.explanation.includes('Missing or unparseable section: experience'), false, 'ATS score penalized for missing experience');
 
       } finally {

@@ -69,7 +69,7 @@ const tests: TestCase[] = [
   {
     name: 'Action verb check awards full marks and no critique when bullets use strong verbs',
     run: () => {
-      const job: JobProfile = { title: 'Engineer', requirements: [], priorities: [] };
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
       const matchingResult: MatchingResult = { matches: [] };
       
       const strongCandidate: CandidateProfile = {
@@ -91,7 +91,7 @@ const tests: TestCase[] = [
   {
     name: 'Action verb check deducts marks and generates critique when bullets use weak verbs',
     run: () => {
-      const job: JobProfile = { title: 'Engineer', requirements: [], priorities: [] };
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
       const matchingResult: MatchingResult = { matches: [] };
       
       const weakCandidate: CandidateProfile = {
@@ -113,7 +113,7 @@ const tests: TestCase[] = [
   {
     name: 'Action verb check correctly identifies strong verbs and ignores leading adverbs (Regression Test)',
     run: () => {
-      const job: JobProfile = { title: 'Engineer', requirements: [], priorities: [] };
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
       const matchingResult: MatchingResult = { matches: [] };
       
       const regressionCandidate: CandidateProfile = {

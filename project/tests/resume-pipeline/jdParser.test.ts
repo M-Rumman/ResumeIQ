@@ -202,9 +202,9 @@ const tests: TestCase[] = [
     name: 'throws UNAUTHORIZED_API_KEY on 403 Forbidden',
     run: async () => {
       process.env.OPENROUTER_API_KEY = 'sk-or-testkey';
-      const originalFetch = global.fetch;
+      const originalFetch = globalThis.fetch;
       try {
-        global.fetch = async () => ({
+        globalThis.fetch = async () => ({
           ok: false,
           status: 403,
           text: async () => 'Forbidden due to Site URL'
@@ -217,7 +217,7 @@ const tests: TestCase[] = [
         assert.equal(error.code, 'UNAUTHORIZED_API_KEY');
         assert.ok(error.message.includes('403'));
       } finally {
-        global.fetch = originalFetch;
+        globalThis.fetch = originalFetch;
       }
     }
   }
@@ -227,7 +227,7 @@ async function runTests() {
   let passed = 0;
   for (const test of tests) {
     try {
-      test.run();
+      await test.run();
       passed++;
     } catch (e: any) {
       console.error(`❌ FAILED: ${test.name}`);

@@ -71,7 +71,7 @@ async function testMatcherRegression() {
         return m ? m[1] : null;
       };
 
-      const matches = [];
+      const matches: any[] = [];
       const lines = prompt.split('\n');
       for (const line of lines) {
         if (line.startsWith('[ID:')) {
@@ -135,7 +135,7 @@ async function testMatcherRegression() {
     
     console.log('\n--- Final Report Matches ---');
     const matches = engineResult.legacyReport.requirementBreakdown;
-    matches.forEach(m => {
+    matches.forEach((m: any) => {
       console.log(`${m.requirement.normalized_name}: ${m.classification} (${m.evidence.length} evidence facts)`);
     });
 

@@ -822,7 +822,6 @@ Capstone Design Project
             { skill: 'Firmware Development', status: 'PARTIALLY MATCHED', evidence: ['Built an Arduino line follower using sensors and BLDC motors.'] },
             { skill: 'PCB Testing', status: 'MISSING', evidence: [] },
           ],
-          responsibilities: [],
         },
         'Embedded Systems Intern',
       );
