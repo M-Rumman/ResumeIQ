@@ -754,6 +754,15 @@ function analysisErrorMessage(error: unknown): string {
   }
 
   if (error.pipelineError) {
+    if (error.pipelineError.code === 'PROVIDER_INSUFFICIENT_CREDITS') {
+      return 'Your AI provider account (OpenRouter) has insufficient credits. Please top up your balance to continue.';
+    }
+    if (error.pipelineError.code === 'PROVIDER_BAD_REQUEST') {
+      return 'The AI service rejected the request. The input might be too large or invalid for the selected model.';
+    }
+    if (error.pipelineError.code === 'PROVIDER_MODEL_NOT_FOUND') {
+      return 'The configured AI model could not be found. Please check your environment variables.';
+    }
     if (error.pipelineError.code === 'PROVIDER_RATE_LIMIT') {
       return 'The AI service is currently experiencing high demand. Please wait a moment and try again.';
     }

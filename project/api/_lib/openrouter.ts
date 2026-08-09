@@ -310,6 +310,9 @@ export async function callOpenRouter(
         
         let errorCode = 'PROVIDER_ERROR';
         if (response.status === 429) errorCode = 'PROVIDER_RATE_LIMIT';
+        else if (response.status === 402) errorCode = 'PROVIDER_INSUFFICIENT_CREDITS';
+        else if (response.status === 400) errorCode = 'PROVIDER_BAD_REQUEST';
+        else if (response.status === 404) errorCode = 'PROVIDER_MODEL_NOT_FOUND';
         
         lastError = new AiPipelineError(stage, errorCode, `OpenRouter error ${response.status}: ${text.slice(0, 280)}`);
         const hasMoreModels = i < models.length - 1;
