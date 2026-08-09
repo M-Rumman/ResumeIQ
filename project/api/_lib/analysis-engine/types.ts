@@ -71,7 +71,8 @@ export type MatchClassification =
   | 'PARTIAL_MATCH' 
   | 'RELATED_MATCH' 
   | 'UNDER_EXPRESSED'
-  | 'MISSING';
+  | 'MISSING'
+  | 'ANALYSIS_FAILED';
 
 export interface MatchEvidence {
   source_section: string;

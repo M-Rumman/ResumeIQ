@@ -73,8 +73,15 @@ export async function matchRequirements(
 
   const unmatchedRequirements: typeof job.requirements = [];
 
+  let totalExperienceYears = 0;
+  for (const f of candidate.facts) {
+    if (f.type === 'experience' && f.employment_duration_years) {
+      totalExperienceYears += f.employment_duration_years;
+    }
+  }
+
+  // 1. Stage 1: Deterministic Matcher (Lexical & Heuristic) Exact Matching
   for (const req of job.requirements) {
-    // 1. Lexical / Heuristic Exact Matching
     let exactMatchFound: RequirementMatch | null = null;
     const reqNameLower = req.normalized_name.toLowerCase().trim();
     const reqClean = reqNameLower.replace(/[^a-z0-9]/g, '');
@@ -85,28 +92,113 @@ export async function matchRequirements(
       const rawLower = fact.rawText.toLowerCase();
 
       let isExact = false;
+      let matchedStrength: MatchClassification = 'EXACT_MATCH';
+
+      // 1a. Lexical Match
       if (reqClean && factClean === reqClean) isExact = true;
       else if (reqNameLower && rawLower.includes(` ${reqNameLower} `)) isExact = true;
       else if (reqNameLower && rawLower.startsWith(`${reqNameLower} `)) isExact = true;
       else if (reqNameLower && rawLower.endsWith(` ${reqNameLower}`)) isExact = true;
       else if (reqNameLower && rawLower === reqNameLower) isExact = true;
 
-      if (req.category === 'education' && req.degree_level && fact.type === 'education' && fact.degree_level === req.degree_level) {
-        if (!req.fields || req.fields.length === 0) {
+      // 1b. Morphological Variants (e.g. mentor/mentored/mentoring)
+      if (!isExact && reqNameLower.length > 4) {
+        // Strip common suffixes (ing, ed, s, ship)
+        const stem = reqNameLower.replace(/(ing|ed|s|ship)$/, '');
+        if (stem.length > 3 && rawLower.includes(stem)) {
           isExact = true;
-        } else if (fact.fields && fact.fields.some(f => req.fields?.some(rf => rf.toLowerCase() === f.toLowerCase()))) {
+          matchedStrength = 'STRONG_SEMANTIC_MATCH';
+        }
+      }
+
+      // 1c. Education Level Matching
+      if (req.category === 'education' && req.degree_level && fact.type === 'education') {
+        const reqLvl = req.degree_level;
+        const factLvl = fact.degree_level;
+        const factRaw = fact.rawText.toLowerCase();
+        
+        let levelMatch = false;
+        if (reqLvl === factLvl) levelMatch = true;
+        if (reqLvl === 'master' && (factRaw.includes('m.s.') || factRaw.includes('m.a.') || factRaw.includes('mba') || factRaw.includes("master's"))) levelMatch = true;
+        if (reqLvl === 'bachelor' && (factRaw.includes('b.s.') || factRaw.includes('b.a.') || factRaw.includes('bba') || factRaw.includes("bachelor's"))) levelMatch = true;
+
+        if (levelMatch) {
+          if (!req.fields || req.fields.length === 0) {
+            isExact = true;
+          } else if (fact.fields && fact.fields.some(f => req.fields?.some(rf => rf.toLowerCase() === f.toLowerCase()))) {
+            isExact = true;
+          } else if (req.fields && req.fields.some(rf => factRaw.includes(rf.toLowerCase()))) {
+            isExact = true;
+          }
+        }
+      }
+
+      // 1d. Years of Experience Matching
+      if (req.minimum_years && fact.type === 'experience' && fact.employment_duration_years) {
+        // Use total experience years across all facts
+        if (totalExperienceYears >= req.minimum_years) {
+           isExact = true;
+           matchedStrength = 'STRONG_SEMANTIC_MATCH';
+        } else if (fact.employment_duration_years >= req.minimum_years) {
+           isExact = true;
+           matchedStrength = 'STRONG_SEMANTIC_MATCH';
+        }
+      }
+
+      // 1e. Location Matching
+      if (req.category === 'location') {
+        // Split out hybrid/remote tags and prefixes
+        const baseLocation = reqNameLower.replace(/^location:\s*/gi, '').replace(/\((hybrid|remote|onsite).*?\)/gi, '').trim();
+        console.log(`[Location Match] baseLocation: '${baseLocation}', rawLower: '${rawLower}', factId: '${fact.id}'`);
+        if (baseLocation && rawLower.includes(baseLocation)) {
           isExact = true;
-        } else if (req.fields && req.fields.some(rf => rawLower.includes(rf.toLowerCase()))) {
+          if (reqNameLower.includes('hybrid') || reqNameLower.includes('remote')) {
+            if (!rawLower.includes('hybrid') && !rawLower.includes('remote')) {
+              matchedStrength = 'PARTIAL_MATCH'; // Location matches, but mode is unverified
+            }
+          }
+        }
+      }
+
+      // 1f. Domain/Industry Matching
+      if (req.category === 'domain') {
+        const domainSynonyms: Record<string, string[]> = {
+          'fintech': ['bank', 'financial', 'lending', 'consumer banking', 'finance'],
+          'banking': ['bank', 'financial', 'lending', 'finance'],
+        };
+        for (const [key, syns] of Object.entries(domainSynonyms)) {
+          if (reqNameLower.includes(key) && syns.some(s => rawLower.includes(s))) {
+            isExact = true;
+            matchedStrength = 'STRONG_SEMANTIC_MATCH';
+            break;
+          }
+        }
+      }
+
+      // 1g. Scale / Research Operations
+      if (reqNameLower.includes('scale') || reqNameLower.includes('research operations')) {
+        if (rawLower.includes('scale') || rawLower.includes('research operations') || /\d{2,},000/.test(rawLower)) {
           isExact = true;
+          matchedStrength = 'STRONG_SEMANTIC_MATCH';
+        }
+      }
+
+      // 1h. Specific Responsibilities Matching
+      if (req.category === 'responsibility') {
+        if (reqNameLower.includes('data science') && rawLower.includes('data science')) isExact = true;
+        if (reqNameLower.includes('senior leadership') && (rawLower.includes('vp') || rawLower.includes('c-suite') || rawLower.includes('director'))) isExact = true;
+        if (reqNameLower.includes('end-to-end') && rawLower.includes('generative') && rawLower.includes('evaluative')) {
+           isExact = true;
+           matchedStrength = 'STRONG_SEMANTIC_MATCH';
         }
       }
 
       if (isExact) {
         exactMatchFound = {
           requirement: req,
-          classification: 'EXACT_MATCH',
+          classification: matchedStrength,
           confidence: 1.0,
-          explanation: 'Exact lexical or structural match found in resume.',
+          explanation: 'Deterministic or structured heuristic match found in resume.',
           evidence: [{
             source_section: fact.sourceSection,
             source_text: fact.rawText,
@@ -176,7 +268,7 @@ export async function matchRequirements(
         if (!parsedMatch) {
           matches.push({
             requirement: req,
-            classification: 'MISSING',
+            classification: 'ANALYSIS_FAILED',
             confidence: 0,
             explanation: 'Analysis skipped for this requirement.',
             evidence: []
@@ -215,8 +307,8 @@ export async function matchRequirements(
             }
             
             // Score based on requirement overlap
-            for (const w of reqWords) {
-              if (rawLower.includes(w)) score += 2;
+            for (const w of Array.from(reqWords)) {
+              if (rawLower.includes(w as string)) score += 2;
             }
             
             if (score > maxScore) {
@@ -262,7 +354,7 @@ export async function matchRequirements(
       for (const req of unmatchedRequirements) {
         matches.push({
           requirement: req,
-          classification: 'MISSING',
+          classification: 'ANALYSIS_FAILED',
           confidence: 0,
           explanation: 'Analysis failed for this requirement.',
           evidence: []

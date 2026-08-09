@@ -20,6 +20,7 @@ function getMatchContribution(classification: MatchClassification): number {
     case 'RELATED_MATCH':
     case 'UNDER_EXPRESSED': return 0.25;
     case 'MISSING': return 0.0;
+    case 'ANALYSIS_FAILED': return 0.0;
     default: return 0.0;
   }
 }
@@ -58,7 +59,11 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
     } else if (contribution > 0 && contribution < 0.85) {
       weaknesses.push(`Partial match for ${match.requirement.category}: ${match.requirement.normalized_name}`);
     } else if (contribution === 0 && match.requirement.priority === 'required') {
-      weaknesses.push(`Missing required ${match.requirement.category}: ${match.requirement.normalized_name}`);
+      if (match.classification === 'ANALYSIS_FAILED') {
+         weaknesses.push(`Analysis failed for required ${match.requirement.category}: ${match.requirement.normalized_name}`);
+      } else {
+         weaknesses.push(`Missing required ${match.requirement.category}: ${match.requirement.normalized_name}`);
+      }
     }
   }
 

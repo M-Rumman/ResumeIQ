@@ -39,6 +39,11 @@ export function validateAndProcessRequirements(parsedRequirements: any[], jobDes
   const validRequirements: JobRequirement[] = [];
 
   for (const req of parsedRequirements) {
+    if (!req.normalized_name || typeof req.normalized_name !== 'string' || req.normalized_name.trim() === '') {
+       console.warn(`[jdParser] Dropping blank requirement from LLM output`);
+       continue;
+    }
+
     // PROVENANCE VALIDATION: "Can I point to the exact supplied JD text that created this requirement?"
     const rawLower = jobDescriptionText.toLowerCase().replace(/\s+/g, ' ');
     const sourceLower = (req.source_text || req.original_text || '').toLowerCase().replace(/\s+/g, ' ');

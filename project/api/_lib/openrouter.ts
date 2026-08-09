@@ -573,6 +573,7 @@ Rules:
 - Return a confidence level: High only when every material detail is directly stated in the original bullet; Medium when the rewrite is a conservative wording inference from the original; Low only when the source is too vague for a confident rewrite (and normally omit that bullet instead).
 - Surface technical contribution only when the original bullet explicitly provides the relevant technologies, tools, components, methods, or domain context. Do not add technical detail that is not in the supplied bullet.
 - Strict Grounding: Do NOT invent or exaggerate projects, technologies, tools, employers, companies, certifications, scope, seniority, ownership, outcomes, or metrics.
+- Do not reduce the impact of the original bullet. Preserve all quantified metrics (e.g., 34%, 5,000-person) and original factual strength exactly as provided.
 - Never add a metric, placeholder, result, performance claim, engineering objective, or scale unless it is explicitly supported by that same source bullet.
 - Keep each rewrite to one concise resume bullet. Do not add explanations, section headings, contact information, URLs, emails, phone numbers, or LinkedIn references.
 - If a bullet cannot be safely strengthened from its supplied content, omit it instead of inventing detail.

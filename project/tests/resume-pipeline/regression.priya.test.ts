@@ -1,0 +1,192 @@
+import assert from 'node:assert/strict';
+import { extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
+import { matchRequirements } from '../../api/_lib/analysis-engine/matcher.js';
+import { parseJobDescription } from '../../api/_lib/analysis-engine/jdParser.js';
+
+const priyaResume = `
+Priya Chandran
+Chicago, IL
+
+Senior UX Researcher with 7 years of experience leading mixed-methods research in fintech and consumer banking. Skilled at translating complex user behavior into product decisions that improve adoption and trust. Proven track record mentoring researchers and scaling research operations at high-growth companies.
+
+Experience:
+Senior UX Researcher — Brightledger Bank (Chicago, IL) | 2021–Present
+- Led generative and evaluative research across mobile banking redesign, informing a roadmap that increased feature adoption by 34%
+- Built and managed a 5,000-person participant panel and centralized research repository, cutting study recruitment time by 50%
+- Ran longitudinal diary studies on financial stress and money management habits, directly shaping a new budgeting tool
+- Mentored 3 junior researchers and established research operations best practices adopted company-wide
+- Regularly presented findings to VP and C-suite stakeholders, directly influencing quarterly product strategy
+
+UX Researcher — Cardstack Financial (Remote) | 2019–2021
+- Conducted 100+ usability tests and interviews across web and mobile lending products
+- Partnered with data science to triangulate clickstream analytics with qualitative insights, identifying a major drop-off point in the loan application flow
+- Designed and fielded quarterly surveys (NPS, CSAT) reaching 10,000+ customers
+
+Associate UX Researcher — Meterly (Chicago, IL) | 2018–2019
+- Supported research for a personal finance app, conducting interviews and moderated usability testing
+- Synthesized findings into personas and journey maps used across design and product teams
+
+Education:
+M.S. in Human-Computer Interaction — DePaul University, 2018
+B.A. in Psychology — University of Illinois Urbana-Champaign, 2016
+
+Skills:
+Qualitative & quantitative research methods, usability testing, survey design, diary studies, research operations, stakeholder communication, Dovetail, UserTesting, Qualtrics, SQL (basic)
+`;
+
+const priyaJd = `
+Senior UX Researcher
+
+Requirements:
+* 6+ years of UX research experience, ideally in fintech, banking, or a regulated industry
+* Strong command of both qualitative and quantitative research methods
+* Experience running research at scale (research repositories, participant panels)
+* Excellent stakeholder communication and storytelling skills
+* Bachelor's degree in Psychology, HCI, Cognitive Science, or related field (Master's preferred)
+* Location: Chicago, IL (Hybrid — 3 days onsite)
+
+Responsibilities:
+* Lead end-to-end research studies (generative, evaluative, and longitudinal) across web and mobile banking products
+* Design and conduct interviews, usability tests, surveys, and diary studies
+* Translate qualitative and quantitative findings into clear, actionable insights for cross-functional stakeholders
+* Mentor junior researchers and help scale research operations
+* Partner with data science to triangulate behavioral analytics with qualitative findings
+* Present findings to senior leadership and influence product strategy
+`;
+
+export async function testPriyaRegression() {
+  console.log('Testing Priya Chandran Regression scenario...');
+  
+  process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+  // 1. Extract Candidate Profile
+  const candidateProfile = await extractCandidateProfile(priyaResume);
+  console.log("CANDIDATE FACTS:", JSON.stringify(candidateProfile.facts, null, 2));
+  
+  // Mock LLM
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+    const prompt = body.messages?.[1]?.content || '';
+    
+    // JD Parser mock
+    if (prompt.includes('Raw Job Description:')) {
+      const mockLlmOutput = {
+        title: 'Senior UX Researcher',
+        company: 'Northlight Financial',
+        requirements: [
+          { normalized_name: '6+ years of UX research experience', original_text: '6+ years of UX research experience, ideally in fintech, banking, or a regulated industry', category: 'experience', priority: 'required', minimum_years: 6 },
+          { normalized_name: 'qualitative and quantitative research methods', original_text: 'Strong command of both qualitative and quantitative research methods', category: 'hard skill', priority: 'required' },
+          { normalized_name: 'Research at Scale', original_text: 'Experience running research at scale (research repositories, participant panels)', category: 'experience', priority: 'required' },
+          { normalized_name: 'stakeholder communication', original_text: 'Excellent stakeholder communication and storytelling skills', category: 'soft skill', priority: 'required' },
+          { normalized_name: 'Bachelor\'s degree in Psychology, HCI, Cognitive Science, or related field', original_text: 'Bachelor\'s degree in Psychology, HCI, Cognitive Science, or related field (Master\'s preferred)', category: 'education', priority: 'required', degree_level: 'bachelor' },
+          { normalized_name: 'Master\'s degree', original_text: 'Master\'s preferred', category: 'education', priority: 'preferred', degree_level: 'master' },
+          { normalized_name: 'Location: Chicago, IL (Hybrid — 3 days onsite)', original_text: 'Location: Chicago, IL (Hybrid — 3 days onsite)', category: 'location', priority: 'required' },
+          { normalized_name: 'Lead end-to-end research studies', original_text: 'Lead end-to-end research studies (generative, evaluative, and longitudinal) across web and mobile banking products', category: 'responsibility', priority: 'required' },
+          { normalized_name: 'Design and conduct research studies', original_text: 'Design and conduct interviews, usability tests, surveys, and diary studies', category: 'responsibility', priority: 'required' },
+          { normalized_name: 'Mentorship', original_text: 'Mentor junior researchers and help scale research operations', category: 'soft skill', priority: 'required' },
+          { normalized_name: 'Partner with data science', original_text: 'Partner with data science to triangulate behavioral analytics with qualitative findings', category: 'responsibility', priority: 'required' },
+          { normalized_name: 'Present findings to senior leadership', original_text: 'Present findings to senior leadership and influence product strategy', category: 'responsibility', priority: 'required' },
+          { normalized_name: 'Fintech/Banking Industry', original_text: 'fintech, banking, or a regulated industry', category: 'domain', priority: 'required' }
+        ]
+      };
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify(mockLlmOutput) } }] }) } as any;
+    }
+    
+    // Matcher LLM fallback mock (return empty, relying on Stage 1)
+    if (prompt.includes('Candidate Facts (Prioritized):')) {
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ matches: [] }) } }] }) } as any;
+    }
+
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{}' } }] }) } as any;
+  };
+
+  try {
+    // 2. Parse JD
+    const jobProfile = await parseJobDescription(priyaJd);
+  
+  // Assert no blank requirements
+  const blankReq = jobProfile.requirements.find(r => !r.normalized_name || r.normalized_name.trim() === '');
+  assert.ok(!blankReq, 'No blank requirement should reach the matcher');
+  
+  // 3. Match Requirements
+  const { matches } = await matchRequirements(jobProfile, candidateProfile);
+
+  // Helper to find match by a substring of its name
+  const findMatch = (nameSubstr: string) => {
+    return matches.find(m => m.requirement.normalized_name.toLowerCase().includes(nameSubstr.toLowerCase()));
+  };
+  
+  // Test 1: 6+ years UX research -> MATCH
+  const expMatch = findMatch('6+ years') || findMatch('ux research experience') || findMatch('years');
+  assert.ok(expMatch, 'Experience requirement must exist');
+  assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(expMatch.classification), '6+ years UX research should be MATCH');
+  
+  // Test 2: Fintech/Banking -> MATCH
+  const industryMatch = findMatch('fintech') || findMatch('banking');
+  assert.ok(industryMatch, 'Industry requirement must exist');
+  assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(industryMatch.classification), 'Fintech/Banking should be MATCH');
+  
+  // Test 3: Research at Scale -> MATCH
+  const scaleMatch = findMatch('research at scale') || findMatch('scale');
+  if (scaleMatch) { // Depending on how LLM parsed the JD
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(scaleMatch.classification), 'Research at Scale should be MATCH');
+  }
+
+  // Test 4: Mentorship -> MATCH
+  const mentorMatch = findMatch('mentor') || findMatch('mentorship');
+  assert.ok(mentorMatch, 'Mentorship requirement must exist');
+  assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(mentorMatch.classification), 'Mentorship should be MATCH');
+  
+  // Test 5: Chicago location -> MATCH
+  const locMatch = findMatch('chicago');
+  if (locMatch) {
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH', 'PARTIAL_MATCH'].includes(locMatch.classification), 'Location Chicago should be MATCH or PARTIAL_MATCH (due to hybrid)');
+  }
+  const hybridMatch = findMatch('hybrid');
+  if (hybridMatch && hybridMatch.requirement.id !== locMatch?.requirement.id) {
+    assert.ok(['PARTIAL_MATCH', 'UNDER_EXPRESSED', 'UNVERIFIED', 'MISSING'].includes(hybridMatch.classification), 'Hybrid should not be an EXACT_MATCH as it is unverified');
+  }
+
+  // Test 6: Data science partnership -> MATCH
+  const dsMatch = findMatch('data science');
+  if (dsMatch) {
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(dsMatch.classification), 'Data Science should be MATCH');
+  }
+
+  // Test 7: VP/C-suite presentation -> MATCH
+  const leadershipMatch = findMatch('leadership') || findMatch('vp') || findMatch('c-suite');
+  if (leadershipMatch) {
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(leadershipMatch.classification), 'Senior Leadership Presentation should be MATCH');
+  }
+
+  // Test 8: Master's -> MATCH
+  const masterMatch = findMatch('master');
+  if (masterMatch) {
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(masterMatch.classification), "Master's should be MATCH");
+  }
+
+  // Test 9: Bachelor's -> MATCH
+  const bachelorMatch = findMatch('bachelor');
+  if (bachelorMatch) {
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(bachelorMatch.classification), "Bachelor's should be MATCH");
+  }
+
+  // Check no hallucinated supporting facts
+  for (const m of matches) {
+    if (m.classification !== 'MISSING' && m.classification !== 'ANALYSIS_FAILED') {
+      assert.ok(m.evidence.length > 0, `Match ${m.requirement.normalized_name} claims to match but has no evidence`);
+      for (const ev of m.evidence) {
+        const factExists = candidateProfile.facts.some(f => f.id === ev.fact_id);
+        assert.ok(factExists, `Match ${m.requirement.normalized_name} cites hallucinated fact ID: ${ev.fact_id}`);
+      }
+    }
+  }
+
+  console.log('✅ Priya Chandran Regression Passed');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+testPriyaRegression().catch(console.error);
