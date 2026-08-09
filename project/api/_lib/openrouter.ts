@@ -29,10 +29,10 @@ const MIN_OPENROUTER_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_OPENROUTER_REQUEST_TIMEOUT_MS = 120_000;
 
 /** Paid primary model with a compatible paid fallback. */
-const DEFAULT_MODEL = 'google/gemini-1.5-flash';
+const DEFAULT_MODEL = 'google/gemma-4-31b-it:free';
 
 const MODEL_FALLBACKS = [
-  'google/gemini-1.5-pro',
+  'google/gemma-4-26b-a4b-it:free',
 ] as const;
 
 function hasSourceSummaryHeader(resumeText: string): boolean {
