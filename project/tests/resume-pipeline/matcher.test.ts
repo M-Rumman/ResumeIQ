@@ -265,14 +265,14 @@ const tests: TestCase[] = [
         title: 'Senior UX Researcher',
         requirements: [{
           id: 'req-2',
-          category: 'domain',
-          normalized_name: 'fintech/banking',
-          original_text: 'fintech/banking',
+          category: 'responsibility',
+          normalized_name: 'Financial industry knowledge',
+          original_text: 'Financial industry knowledge',
           source_section: 'Requirements',
           source_span: [0, 10],
-          source_text: 'fintech/banking',
+          source_text: 'Financial industry knowledge',
           priority: 'required',
-          requirement_type: 'domain',
+          requirement_type: 'responsibility',
           confidence: 1
         }]
       };
@@ -394,6 +394,332 @@ const tests: TestCase[] = [
 
       const result = await matchRequirements(job, candidate);
       assert.equal(result.matches[0].classification, 'EXACT_MATCH', 'Should exact match PMP string');
+    }
+  },
+  {
+    name: 'Research Design and Execution matched by strong semantic evidence',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'UX Researcher',
+        requirements: [{
+          id: 'req-rd',
+          category: 'responsibility',
+          normalized_name: 'Research Design and Execution',
+          original_text: 'Research Design and Execution',
+          source_section: 'Requirements',
+          source_span: [0, 20],
+          source_text: 'Research Design and Execution',
+          priority: 'required',
+          requirement_type: 'responsibility',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-rd',
+          type: 'experience',
+          normalizedName: 'Conducted user research',
+          rawText: 'Led generative and evaluative research across mobile banking redesign. Ran longitudinal diary studies. Conducted 100+ usability tests and interviews. Designed and fielded quarterly surveys.',
+          sourceSection: 'Experience',
+          evidence: 'Led generative and evaluative research across mobile banking redesign. Ran longitudinal diary studies. Conducted 100+ usability tests and interviews. Designed and fielded quarterly surveys.'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([{
+            requirementId: 'req-rd',
+            classification: 'STRONG_SEMANTIC_MATCH',
+            supportingFactId: 'fact-rd',
+            explanation: 'Candidate has extensive evidence of research design and execution via usability tests, diary studies, and surveys.'
+          }]) } }]
+        })
+      }) as any;
+      
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Genuinely under-expressed requirement with weak/partial evidence',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Product Manager',
+        requirements: [{
+          id: 'req-ue',
+          category: 'responsibility',
+          normalized_name: 'Go-to-market strategy',
+          original_text: 'Go-to-market strategy',
+          source_section: 'Requirements',
+          source_span: [0, 20],
+          source_text: 'Go-to-market strategy',
+          priority: 'required',
+          requirement_type: 'responsibility',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-ue',
+          type: 'experience',
+          normalizedName: 'Helped launch',
+          rawText: 'Assisted the marketing team during the launch phase by providing feature descriptions.',
+          sourceSection: 'Experience',
+          evidence: 'Assisted the marketing team during the launch phase by providing feature descriptions.'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([{
+            requirementId: 'req-ue',
+            classification: 'UNDER_EXPRESSED',
+            supportingFactId: 'fact-ue',
+            explanation: 'Candidate assisted with launches but did not own or drive the GTM strategy.'
+          }]) } }]
+        })
+      }) as any;
+      
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Genuinely missing requirement',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Data Engineer',
+        requirements: [{
+          id: 'req-miss',
+          category: 'tool',
+          normalized_name: 'Apache Kafka',
+          original_text: 'Apache Kafka',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Apache Kafka',
+          priority: 'required',
+          requirement_type: 'tool',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-miss',
+          type: 'experience',
+          normalizedName: 'Python Developer',
+          rawText: 'Built REST APIs using Python and Flask.',
+          sourceSection: 'Experience',
+          evidence: 'Built REST APIs using Python and Flask.'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([{
+            requirementId: 'req-miss',
+            classification: 'MISSING',
+            supportingFactId: null,
+            explanation: 'No evidence of Apache Kafka.'
+          }]) } }]
+        })
+      }) as any;
+      
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'MISSING');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Similar keywords appear but capability not demonstrated (RELATED_MATCH)',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Machine Learning Engineer',
+        requirements: [{
+          id: 'req-rel',
+          category: 'responsibility',
+          normalized_name: 'Training deep learning models from scratch',
+          original_text: 'Training deep learning models from scratch',
+          source_section: 'Requirements',
+          source_span: [0, 20],
+          source_text: 'Training deep learning models from scratch',
+          priority: 'required',
+          requirement_type: 'responsibility',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-rel',
+          type: 'experience',
+          normalizedName: 'Model deployment',
+          rawText: 'Deployed pre-trained deep learning models via AWS SageMaker for inference. Managed model monitoring.',
+          sourceSection: 'Experience',
+          evidence: 'Deployed pre-trained deep learning models via AWS SageMaker for inference. Managed model monitoring.'
+        }],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([{
+            requirementId: 'req-rel',
+            classification: 'RELATED_MATCH',
+            supportingFactId: 'fact-rel',
+            explanation: 'Candidate works with deep learning models but only for deployment/inference, not training from scratch.'
+          }]) } }]
+        })
+      }) as any;
+      
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'RELATED_MATCH');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Strong direct evidence vs weak tangential evidence',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'UX Researcher',
+        requirements: [{
+          id: 'req-lr',
+          category: 'responsibility',
+          normalized_name: 'Large-scale Research Operations',
+          original_text: 'Large-scale Research Operations',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Large-scale Research Operations',
+          priority: 'required',
+          requirement_type: 'responsibility',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [
+          {
+            id: 'fact-weak',
+            type: 'experience',
+            normalizedName: 'Mentorship',
+            rawText: 'Mentored 3 junior researchers and established research operations best practices adopted company-wide',
+            sourceSection: 'Experience',
+            evidence: 'Mentored 3 junior researchers and established research operations best practices adopted company-wide'
+          },
+          {
+            id: 'fact-strong',
+            type: 'experience',
+            normalizedName: 'Built repository',
+            rawText: 'Built and managed a 5,000-person participant panel and centralized research repository, cutting study recruitment time by 50%',
+            sourceSection: 'Experience',
+            evidence: 'Built and managed a 5,000-person participant panel and centralized research repository, cutting study recruitment time by 50%'
+          }
+        ],
+        rawStructure: {} as any
+      };
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([{
+            requirementId: 'req-lr',
+            classification: 'STRONG_SEMANTIC_MATCH',
+            supportingFactId: 'fact-strong',
+            explanation: 'Candidate managed a massive 5000-person panel which clearly demonstrates large-scale research operations.'
+          }]) } }]
+        })
+      }) as any;
+
+      try {
+        const result = await matchRequirements(job, candidate);
+        assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
+        assert.equal(result.matches[0].evidence[0].fact_id, 'fact-strong', 'Should select the strong scaled evidence fact ID');
+        assert.equal(result.matches[0].evidence[0].evidence_strength, 'primary', 'Experience fact should be primary');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Experience evidence vs skills-list evidence (correct ID propagation)',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Data Scientist',
+        requirements: [{
+          id: 'req-ds',
+          category: 'hard skill',
+          normalized_name: 'Python',
+          original_text: 'Python programming',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Python',
+          priority: 'required',
+          requirement_type: 'skill',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [
+          {
+            id: 'fact-skill',
+            type: 'skill',
+            normalizedName: 'Python',
+            rawText: 'Python',
+            sourceSection: 'Skills',
+            evidence: 'Python'
+          },
+          {
+            id: 'fact-exp',
+            type: 'experience',
+            normalizedName: 'Python developer',
+            rawText: 'Developed robust ML pipelines using Python.',
+            sourceSection: 'Experience',
+            evidence: 'Developed robust ML pipelines using Python.'
+          }
+        ],
+        rawStructure: {} as any
+      };
+
+      // Note: Python is a deterministic lexical match. The deterministic matcher loops through prioritized facts.
+      // Since Experience (priority 1) comes before Skill (priority 6), the deterministic matcher MUST select the experience fact!
+      const result = await matchRequirements(job, candidate);
+      assert.equal(result.matches[0].classification, 'EXACT_MATCH');
+      assert.equal(result.matches[0].evidence[0].fact_id, 'fact-exp', 'Deterministic matcher should pick experience over skill due to sorting');
     }
   }
 ];

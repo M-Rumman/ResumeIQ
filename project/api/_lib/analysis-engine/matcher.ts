@@ -21,14 +21,22 @@ You will be given:
 1. A list of requirements (ID, Name, Category, Original Text).
 2. Prioritized Candidate Facts (ID, Type, Section, Text). 
    - Facts are ordered by evidence strength (Experience > Education > Projects > Skills).
-   - Prefer stronger evidence (Experience) over weaker evidence (Skills) if both satisfy the requirement.
+
+EVIDENCE RANKING RULES:
+When multiple facts could satisfy a requirement, you MUST select the single strongest fact as the supportingFactId. Rank evidence in this exact order of priority:
+1. Direct responsibility/task evidence (e.g., specific work history demonstrating the task).
+2. Evidence that explicitly demonstrates the requirement's core capability.
+3. Quantified/scaled evidence (e.g., numbers, team sizes, budgets, repository size) when the requirement involves scale.
+4. Evidence with strong semantic alignment.
+5. Skills-list evidence (only select this if experience/responsibility evidence is completely unavailable).
+6. Generic or tangential evidence (last resort).
 
 Classify the match for EACH requirement exactly into one of these states:
 - EXACT_MATCH: The resume explicitly contains the exact requirement.
-- STRONG_SEMANTIC_MATCH: Different wording, but evidence clearly demonstrates the identical capability.
+- STRONG_SEMANTIC_MATCH: Different wording, but evidence clearly and directly demonstrates the identical capability or responsibility. Do not require lexical keyword repetition if strong factual evidence proves the requirement.
 - PARTIAL_MATCH: Some evidence exists, but lacks full depth/breadth.
 - RELATED_MATCH: Adjacent/tangential evidence exists but doesn't prove the specific requirement.
-- UNDER_EXPRESSED: Relevant evidence EXISTS anywhere in the resume but does not use matching terminology or isn't framed as directly satisfying this specific requirement.
+- UNDER_EXPRESSED: Relevant evidence EXISTS anywhere in the resume but the evidence is materially weaker, indirect, incomplete, or lacks an important aspect of the requirement. Do NOT use this if the candidate has strong, direct factual evidence demonstrating the capability.
 - MISSING: No reasonable evidence exists anywhere in the resume, even loosely. You MUST search across ALL provided resume content before assigning this.
 
 Output a JSON object containing a "matches" array. Each object in the array must have:
@@ -52,7 +60,8 @@ Example JSON structure:
 CRITICAL RULES:
 - Never hallucinate facts. If there's truly no related evidence, output MISSING.
 - If a JD requires a very specific tool (e.g., ROS, MATLAB) and there is absolutely no evidence, output MISSING.
-- You may use logical deduction to assign UNDER_EXPRESSED if the evidence strongly implies the capability (e.g., "collaborated with analysts" -> implies data science collaboration).
+- You may use logical deduction to assign UNDER_EXPRESSED if the evidence implies the capability, but if the evidence is direct and strong, classify as STRONG_SEMANTIC_MATCH even if terminology differs.
+- Do not upgrade a requirement merely because related words appear. The classification must remain evidence-grounded.
 - "B.A." vs "Bachelor's degree" is an EXACT_MATCH or STRONG_SEMANTIC_MATCH.
 - If a location matches but the work mode (e.g. remote, hybrid) is unverified in the resume, classify as PARTIAL_MATCH.
 `;
@@ -82,7 +91,8 @@ export async function matchRequirements(
 
   // 1. Stage 1: Deterministic Matcher (Lexical & Heuristic) Exact Matching
   for (const req of job.requirements) {
-    let exactMatchFound: RequirementMatch | null = null;
+    let bestExactMatch: RequirementMatch | null = null;
+    let bestMatchScore = -1;
     const reqNameLower = req.normalized_name.toLowerCase().trim();
     const reqClean = reqNameLower.replace(/[^a-z0-9]/g, '');
 
@@ -94,11 +104,11 @@ export async function matchRequirements(
       let isExact = false;
       let matchedStrength: MatchClassification = 'EXACT_MATCH';
 
+      const rawLowerPadded = ' ' + rawLower.replace(/[.,;:()]/g, ' ') + ' ';
+
       // 1a. Lexical Match
       if (reqClean && factClean === reqClean) isExact = true;
-      else if (reqNameLower && rawLower.includes(` ${reqNameLower} `)) isExact = true;
-      else if (reqNameLower && rawLower.startsWith(`${reqNameLower} `)) isExact = true;
-      else if (reqNameLower && rawLower.endsWith(` ${reqNameLower}`)) isExact = true;
+      else if (reqNameLower && rawLowerPadded.includes(` ${reqNameLower} `)) isExact = true;
       else if (reqNameLower && rawLower === reqNameLower) isExact = true;
 
       // 1b. Morphological Variants (e.g. mentor/mentored/mentoring)
@@ -149,7 +159,6 @@ export async function matchRequirements(
       if (req.category === 'location') {
         // Split out hybrid/remote tags and prefixes
         const baseLocation = reqNameLower.replace(/^location:\s*/gi, '').replace(/\((hybrid|remote|onsite).*?\)/gi, '').trim();
-        console.log(`[Location Match] baseLocation: '${baseLocation}', rawLower: '${rawLower}', factId: '${fact.id}'`);
         if (baseLocation && rawLower.includes(baseLocation)) {
           isExact = true;
           if (reqNameLower.includes('hybrid') || reqNameLower.includes('remote')) {
@@ -177,7 +186,7 @@ export async function matchRequirements(
 
       // 1g. Scale / Research Operations
       if (reqNameLower.includes('scale') || reqNameLower.includes('research operations')) {
-        if (rawLower.includes('scale') || rawLower.includes('research operations') || /\d{2,},000/.test(rawLower)) {
+        if (rawLower.includes('scale') || rawLower.includes('research operations') || /\d+,\d{3}/.test(rawLower)) {
           isExact = true;
           matchedStrength = 'STRONG_SEMANTIC_MATCH';
         }
@@ -194,25 +203,39 @@ export async function matchRequirements(
       }
 
       if (isExact) {
-        exactMatchFound = {
-          requirement: req,
-          classification: matchedStrength,
-          confidence: 1.0,
-          explanation: 'Deterministic or structured heuristic match found in resume.',
-          evidence: [{
-            source_section: fact.sourceSection,
-            source_text: fact.rawText,
-            fact_id: fact.id,
-            relevance: 'direct',
-            evidence_strength: FACT_PRIORITY[fact.type] <= 3 ? 'primary' : 'secondary'
-          }]
-        };
-        break; // Stop at first exact match (which is the highest priority due to sort)
+        // Calculate a score to pick the best deterministic match
+        let score = 100 - (FACT_PRIORITY[fact.type] || 99); // Base score from priority
+        if (matchedStrength === 'EXACT_MATCH') score += 50;
+        
+        // Boost for quantification (numbers) especially for scaled requirements
+        if (/\d+/.test(rawLower)) {
+          score += 20;
+          if (reqNameLower.includes('scale') && /\d+,\d{3}/.test(rawLower)) {
+            score += 50;
+          }
+        }
+
+        if (score > bestMatchScore) {
+          bestMatchScore = score;
+          bestExactMatch = {
+            requirement: req,
+            classification: matchedStrength,
+            confidence: 1.0,
+            explanation: 'Deterministic or structured heuristic match found in resume.',
+            evidence: [{
+              source_section: fact.sourceSection,
+              source_text: fact.rawText,
+              fact_id: fact.id,
+              relevance: 'direct',
+              evidence_strength: FACT_PRIORITY[fact.type] <= 3 ? 'primary' : 'secondary'
+            }]
+          };
+        }
       }
     }
 
-    if (exactMatchFound) {
-      matches.push(exactMatchFound);
+    if (bestExactMatch) {
+      matches.push(bestExactMatch);
       continue;
     }
 
@@ -294,12 +317,15 @@ export async function matchRequirements(
           const reqWords = reqLower.split(/\s+/).filter(w => w.length > 3);
           
           let bestFact: CandidateFact | undefined = undefined;
-          let maxScore = 0;
+          let maxScore = -1; // Initialize to -1 to allow 0 scores to win if it's the only one
           
           for (const f of prioritizedFacts) {
             let score = 0;
             const rawLower = f.rawText.toLowerCase();
             
+            // Base score from priority
+            score += (100 - (FACT_PRIORITY[f.type] || 99)) * 10; // priority dominates
+
             // Score based on explanation overlap
             const words = rawLower.split(/\s+/).filter(w => w.length > 4);
             for (const w of words) {
@@ -309,6 +335,11 @@ export async function matchRequirements(
             // Score based on requirement overlap
             for (const w of Array.from(reqWords)) {
               if (rawLower.includes(w as string)) score += 2;
+            }
+
+            // Boost for numbers
+            if (/\d+/.test(rawLower)) {
+              score += 15;
             }
             
             if (score > maxScore) {

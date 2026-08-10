@@ -44,14 +44,24 @@ export function scoreBulletQuality(text: string, targetKeywords: string[]): Bull
   const words = text.trim().match(/[A-Za-z0-9+#]+/g) || [];
   const opener = firstWord(text);
   const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 30 : GENERIC_BULLET_OPENERS.has(opener) ? 5 : 15;
-  const keywordRichness = Math.min(25, [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
-    .filter((term) => supportsTargetKeyword(text, term)).length * 8.5);
   const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 12 : 20) : 0;
   const sentenceClarity = words.length >= 12 && words.length <= 42 ? 15 : words.length >= 7 && words.length <= 55 ? 8 : 4;
   const ownershipStructure = STRONG_BULLET_ACTION_VERBS.has(opener)
     && words.length >= 10
-    ? 10
+    ? 15
     : 0;
+
+  const rawKeywordScore = [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
+    .filter((term) => supportsTargetKeyword(text, term)).length * 10;
+  
+  // Keyword richness is penalized if the bullet lacks a strong action verb or measurable impact (anti-stuffing).
+  let keywordRichness = 0;
+  if (actionVerb === 30 || measurableImpact > 0) {
+    keywordRichness = Math.min(20, rawKeywordScore);
+  } else {
+    keywordRichness = Math.min(5, rawKeywordScore * 0.25);
+  }
+
   const total = Math.round(actionVerb + keywordRichness + measurableImpact + sentenceClarity + ownershipStructure);
   return { total, actionVerb, keywordRichness, measurableImpact, sentenceClarity, ownershipStructure };
 }

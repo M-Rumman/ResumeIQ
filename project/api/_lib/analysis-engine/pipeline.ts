@@ -109,7 +109,7 @@ export async function runAnalysisPipeline(
     .map(m => m.requirement.normalized_name);
 
   const partialSkills = sortedMatches
-    .filter(m => ['PARTIAL_MATCH', 'RELATED_MATCH', 'UNDER_EXPLICIT'].includes(m.classification))
+    .filter(m => ['PARTIAL_MATCH', 'RELATED_MATCH', 'UNDER_EXPRESSED'].includes(m.classification))
     .map(m => m.requirement.normalized_name);
 
   const missingCoreSkills = sortedMatches
@@ -123,7 +123,12 @@ export async function runAnalysisPipeline(
   const allMissingSkills = [...missingCoreSkills, ...missingPreferredSkills];
   const allStrongSkills = [...exactSkills, ...semanticSkills];
 
-  const formatSuggestion = (r: any) => `**What**: Explicitly add ${r.requirement}.\n**Why**: ${r.whyItMatters}\n**Where**: ${r.whereToAdd}\n**Evidence**: ${r.evidenceStatus}\n**Note**: ${r.fabricationWarning}`;
+  const formatSuggestion = (r: any) => {
+    const whatText = r.type === 'weak_bullet' 
+      ? `Reword your experience to explicitly highlight ${r.requirement}` 
+      : `Explicitly add ${r.requirement}`;
+    return `**What**: ${whatText}.\n**Why**: ${r.whyItMatters}\n**Where**: ${r.whereToAdd}\n**Evidence**: ${r.evidenceStatus}\n**Note**: ${r.fabricationWarning}`;
+  };
   const improvements = recommendationResult.recommendations.map(formatSuggestion);
 
   const contextGaps = [];
@@ -144,7 +149,7 @@ export async function runAnalysisPipeline(
       _achievedPoints: detail.achievedPoints
     };
 
-    if (match.classification === 'MISSING' || match.classification === 'UNDER_EXPRESSED') {
+    if (match.classification === 'MISSING') {
       contextGaps.push(item);
     } else if (match.classification === 'EXACT_MATCH' || match.classification === 'STRONG_SEMANTIC_MATCH') {
       contextStrengths.push(item);

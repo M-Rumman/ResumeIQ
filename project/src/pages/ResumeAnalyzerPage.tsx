@@ -56,7 +56,7 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
                   <div className="bg-red-50 p-4">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <span className="text-xs font-bold text-red-700 uppercase tracking-wide">Before</span>
-                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800">Score {item.beforeScore ?? '?'}/100</span>
+                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800">Score {item.beforeScore}/100</span>
                     </div>
                     <p className="text-sm text-red-950">{item.before}</p>
                   </div>
@@ -66,7 +66,7 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
                   <div className="bg-emerald-50 p-4">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">After</span>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">Score {item.afterScore ?? '?'}/100</span>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">Score {item.afterScore}/100</span>
                     </div>
                     <p className="text-sm text-emerald-950 font-medium">{item.after}</p>
                   </div>
@@ -74,7 +74,7 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
                 <div className="border-y border-gray-100 bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <h4 className="text-sm font-bold text-gray-900">
-                      Improvement Score: {(item.improvementScore ?? 0) >= 0 ? '+' : ''}{item.improvementScore ?? '?'}
+                      Improvement Score: {item.improvementScore >= 0 ? '+' : ''}{item.improvementScore}
                     </h4>
                     <span className="text-xs font-bold text-gray-700">Grounding confidence: {item.confidence}</span>
                   </div>

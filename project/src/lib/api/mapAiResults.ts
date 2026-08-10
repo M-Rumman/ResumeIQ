@@ -5,7 +5,18 @@ export type ImprovementItem = {
   text: string;
 };
 
-export type BulletPair = { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' };
+export type BulletPair = { 
+  before: string; 
+  after: string; 
+  confidence: 'High' | 'Medium' | 'Low';
+  beforeScore: number;
+  afterScore: number;
+  improvementScore: number;
+  improvements: string[];
+  whyWeak: string[];
+  missingInformation: string[];
+  whyStronger: string[];
+};
 
 export type PremiumResumeDisplayResults = {
   atsScore: number;

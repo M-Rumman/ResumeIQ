@@ -330,13 +330,27 @@ function validateRewrites(values: unknown, resumeText: string, targetKeywords: s
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
     // A rewrite may synthesize appropriately from across the resume,
     // so we check for hallucinated metrics against the entire resume text.
-    if (hasInventedMetric(after, resumeText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, resumeText)) continue;
-    if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
-    
+    const hasInvented = hasInventedMetric(after, resumeText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, resumeText);
     const beforeQuality = scoreBulletQuality(before, targetKeywords);
     const afterQuality = scoreBulletQuality(after, targetKeywords);
     
-    if (afterQuality.total <= beforeQuality.total) continue;
+    if (afterQuality.total <= beforeQuality.total || hasInvented) {
+      accepted.push({
+        before,
+        after: before, // Fall back to original
+        confidence: 'High',
+        beforeScore: beforeQuality.total,
+        afterScore: beforeQuality.total,
+        improvementScore: 0,
+        improvements: [],
+        whyWeak: [],
+        missingInformation: [],
+        whyStronger: ['No genuine improvement can be made without inventing unsupported information. Your original bullet has been preserved.'],
+      });
+      continue;
+    }
+    
+    if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
     
     const improvements = bulletQualityImprovements(beforeQuality, afterQuality);
     const guide = buildDetailedBulletTeachingGuide({ before, after }, targetKeywords);
