@@ -507,7 +507,7 @@ function OverallAssessmentCard({ results }: { results: PremiumResults }) {
         <div className="grid sm:grid-cols-3 gap-6 text-center mt-4">
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Job Match</p>
-            <p className="text-4xl font-extrabold text-emerald-700">{match}%</p>
+            <p className="text-4xl font-extrabold text-emerald-700">{Math.round(match)}%</p>
           </div>
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Classification</p>
@@ -535,7 +535,7 @@ function MatchScoreCalculationCard({ details }: { details: PremiumResults['match
         </div>
         <div className="text-right">
           <p className="text-sm font-bold text-gray-900">
-            {Math.round(details.totalAchievedScore)} / {Math.round(details.totalMaxScore)} Points
+            {Math.round(details.totalAchievedScore * 10) / 10} / {Math.round(details.totalMaxScore * 10) / 10} Points
           </p>
           <p className="text-xs text-gray-500">Achieved Score vs. Maximum Score</p>
         </div>

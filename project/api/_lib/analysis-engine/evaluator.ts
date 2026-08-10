@@ -39,7 +39,8 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
     const confidence = match.confidence > 0 ? match.confidence : 1.0;
     
     const maxPoints = weight * 10;
-    const achievedPoints = maxPoints * contribution * confidence;
+    const rawAchieved = maxPoints * contribution * confidence;
+    const achievedPoints = Math.round(rawAchieved * 10) / 10;
 
     totalMaxScore += maxPoints;
     totalAchievedScore += achievedPoints;
@@ -67,7 +68,10 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
     }
   }
 
-  const matchScore = totalMaxScore > 0 ? Math.round((totalAchievedScore / totalMaxScore) * 100) : 100;
+  // Fix floating point precision issues (e.g. 98.39999999999999 -> 98.4)
+  totalAchievedScore = Math.round(totalAchievedScore * 10) / 10;
+
+  const matchScore = totalMaxScore > 0 ? (totalAchievedScore / totalMaxScore) * 100 : 100;
   
   const matchScoreDetails = {
     totalMaxScore,

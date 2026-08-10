@@ -186,7 +186,7 @@ export async function matchRequirements(
 
       // 1g. Scale / Research Operations
       if (reqNameLower.includes('scale') || reqNameLower.includes('research operations')) {
-        if (rawLower.includes('scale') || rawLower.includes('research operations') || /\d+,\d{3}/.test(rawLower)) {
+        if (rawLower.includes('scale') || rawLower.includes('research operations') || /\b\d{4,}\b|\d+,\d{3}/.test(rawLower)) {
           isExact = true;
           matchedStrength = 'STRONG_SEMANTIC_MATCH';
         }
@@ -204,16 +204,24 @@ export async function matchRequirements(
 
       if (isExact) {
         // Calculate a score to pick the best deterministic match
-        let score = 100 - (FACT_PRIORITY[fact.type] || 99); // Base score from priority
-        if (matchedStrength === 'EXACT_MATCH') score += 50;
+        let score = 0;
         
-        // Boost for quantification (numbers) especially for scaled requirements
+        // 1. Base score from priority (Experience > Quantified > Education > Skills)
+        const priorityScore = (10 - (FACT_PRIORITY[fact.type] || 9)) * 100; // e.g., Experience = 900, Skill = 400
+        score += priorityScore;
+        
+        // 2. Quantified Achievement Evidence
         if (/\d+/.test(rawLower)) {
           score += 20;
-          if (reqNameLower.includes('scale') && /\d+,\d{3}/.test(rawLower)) {
-            score += 50;
+          if (fact.type === 'experience') {
+             score += 500; // Quantified experience is highly preferred
+             if (reqNameLower.includes('scale') && /\b\d{4,}\b|\d+,\d{3}/.test(rawLower)) {
+               score += 500;
+             }
           }
         }
+
+        if (matchedStrength === 'EXACT_MATCH') score += 50;
 
         if (score > bestMatchScore) {
           bestMatchScore = score;
@@ -234,11 +242,27 @@ export async function matchRequirements(
       }
     }
 
+    let fallbackMatch: RequirementMatch | null = null;
+
     if (bestExactMatch) {
-      matches.push(bestExactMatch);
-      continue;
+      const bestFactId = bestExactMatch.evidence[0].fact_id;
+      const bestFact = prioritizedFacts.find(f => f.id === bestFactId);
+      const priority = bestFact ? (FACT_PRIORITY[bestFact.type] || 99) : 99;
+      
+      const isCoreCategory = ['experience', 'education', 'location', 'domain', 'years'].includes(req.category);
+      
+      // If the best deterministic match is weak (e.g. from skills section) and the requirement is semantic, don't short-circuit.
+      if (priority > 3 && !isCoreCategory) {
+         fallbackMatch = bestExactMatch;
+      } else {
+         matches.push(bestExactMatch);
+         continue;
+      }
     }
 
+    if (fallbackMatch) {
+      (req as any)._fallbackMatch = fallbackMatch;
+    }
     unmatchedRequirements.push(req);
   }
 
@@ -289,13 +313,17 @@ export async function matchRequirements(
         });
 
         if (!parsedMatch) {
-          matches.push({
-            requirement: req,
-            classification: 'ANALYSIS_FAILED',
-            confidence: 0,
-            explanation: 'Analysis skipped for this requirement.',
-            evidence: []
-          });
+          if ((req as any)._fallbackMatch) {
+            matches.push((req as any)._fallbackMatch);
+          } else {
+            matches.push({
+              requirement: req,
+              classification: 'ANALYSIS_FAILED',
+              confidence: 0,
+              explanation: 'Analysis skipped for this requirement.',
+              evidence: []
+            });
+          }
           continue;
         }
 
@@ -371,6 +399,13 @@ export async function matchRequirements(
           });
         }
 
+        // Check fallback if LLM failed to find a valid strong match
+        const hasFallback = (req as any)._fallbackMatch;
+        if (hasFallback && (classification === 'MISSING' || classification === 'RELATED_MATCH' || classification === 'ANALYSIS_FAILED')) {
+          matches.push((req as any)._fallbackMatch);
+          continue;
+        }
+
         matches.push({
           requirement: req,
           classification,
@@ -383,13 +418,17 @@ export async function matchRequirements(
     } catch (error) {
       console.error(`[matcher] Failed to evaluate batched requirements`, error);
       for (const req of unmatchedRequirements) {
-        matches.push({
-          requirement: req,
-          classification: 'ANALYSIS_FAILED',
-          confidence: 0,
-          explanation: 'Analysis failed for this requirement.',
-          evidence: []
-        });
+        if ((req as any)._fallbackMatch) {
+          matches.push((req as any)._fallbackMatch);
+        } else {
+          matches.push({
+            requirement: req,
+            classification: 'ANALYSIS_FAILED',
+            confidence: 0,
+            explanation: 'Analysis failed for this requirement.',
+            evidence: []
+          });
+        }
       }
     }
   }

@@ -721,6 +721,123 @@ const tests: TestCase[] = [
       assert.equal(result.matches[0].classification, 'EXACT_MATCH');
       assert.equal(result.matches[0].evidence[0].fact_id, 'fact-exp', 'Deterministic matcher should pick experience over skill due to sorting');
     }
+  },
+  {
+    name: 'Regression: Deterministic fallback routes weak skill matches to LLM for semantic verification',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Project Manager',
+        requirements: [{
+          id: 'req-sh',
+          category: 'soft skill',
+          normalized_name: 'Stakeholder Communication',
+          original_text: 'Stakeholder Communication',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Stakeholder Communication',
+          priority: 'required',
+          requirement_type: 'skill',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [
+          {
+            id: 'fact-skill',
+            type: 'skill',
+            normalizedName: 'Stakeholder Communication',
+            rawText: 'Stakeholder Communication',
+            sourceSection: 'Skills',
+            evidence: 'Stakeholder Communication'
+          },
+          {
+            id: 'fact-exp',
+            type: 'experience',
+            normalizedName: 'Presented to C-suite',
+            rawText: 'Regularly presented findings to VP and C-suite stakeholders, directly influencing quarterly product strategy',
+            sourceSection: 'Experience',
+            evidence: 'Regularly presented findings to VP and C-suite stakeholders, directly influencing quarterly product strategy'
+          }
+        ],
+        rawStructure: {} as any
+      };
+
+      // The LLM mock will select fact-exp
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([{
+            requirementId: 'req-sh',
+            classification: 'STRONG_SEMANTIC_MATCH',
+            supportingFactId: 'fact-exp',
+            explanation: 'Candidate regularly presented to VP and C-suite stakeholders.'
+          }]) } }]
+        })
+      }) as any;
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
+      try {
+        const result = await matchRequirements(job, candidate);
+        // It should NOT be an EXACT_MATCH from fact-skill. It should be STRONG_SEMANTIC_MATCH from fact-exp
+        assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
+        assert.equal(result.matches[0].evidence[0].fact_id, 'fact-exp');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'Regression: Deterministic matcher correctly ranks quantified achievements over standard experience bullets',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'UX Researcher',
+        requirements: [{
+          id: 'req-lr2',
+          category: 'responsibility',
+          normalized_name: 'Large-scale Research Operations',
+          original_text: 'Large-scale Research Operations',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Large-scale Research Operations',
+          priority: 'required',
+          requirement_type: 'responsibility',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [
+          {
+            id: 'fact-std',
+            type: 'experience',
+            normalizedName: 'Mentored',
+            rawText: 'Mentored 3 junior researchers and established research operations best practices adopted company-wide',
+            sourceSection: 'Experience',
+            evidence: 'Mentored 3 junior researchers and established research operations best practices adopted company-wide'
+          },
+          {
+            id: 'fact-quant',
+            type: 'experience',
+            normalizedName: 'Built repository',
+            rawText: 'Built and managed a 5000-person participant panel and centralized research repository, cutting study recruitment time by 50%',
+            sourceSection: 'Experience',
+            evidence: 'Built and managed a 5000-person participant panel and centralized research repository, cutting study recruitment time by 50%'
+          }
+        ],
+        rawStructure: {} as any
+      };
+
+      // In this test, NO LLM is used. The deterministic matcher MUST pick fact-quant over fact-std
+      // because 5000-person matches the scale regex, giving it a huge boost.
+      const result = await matchRequirements(job, candidate);
+      
+      assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
+      assert.equal(result.matches[0].evidence[0].fact_id, 'fact-quant');
+    }
   }
 ];
 
