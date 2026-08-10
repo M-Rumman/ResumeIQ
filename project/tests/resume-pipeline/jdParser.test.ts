@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { validateAndProcessRequirements, parseJobDescription } from '../../api/_lib/analysis-engine/jdParser.js';
-import { AiPipelineError } from '../../api/_lib/openrouter.js';
+import { AiPipelineError, isAiPipelineError } from '../../api/_lib/openrouter.js';
 
 type TestCase = { name: string; run: () => void };
 
@@ -213,7 +213,7 @@ const tests: TestCase[] = [
         await parseJobDescription('Test JD');
         assert.fail('Should have thrown an error');
       } catch (error: any) {
-        assert.ok(error instanceof AiPipelineError);
+        assert.ok(isAiPipelineError(error));
         assert.equal(error.code, 'UNAUTHORIZED_API_KEY');
         assert.ok(error.message.includes('403'));
       } finally {
@@ -236,7 +236,7 @@ const tests: TestCase[] = [
         await parseJobDescription('Test JD');
         assert.fail('Should have thrown an error');
       } catch (error: any) {
-        assert.ok(error instanceof AiPipelineError);
+        assert.ok(isAiPipelineError(error));
         assert.equal(error.code, 'PROVIDER_RATE_LIMIT');
       } finally {
         globalThis.fetch = originalFetch;
@@ -258,7 +258,7 @@ const tests: TestCase[] = [
         await parseJobDescription('Test JD');
         assert.fail('Should have thrown an error');
       } catch (error: any) {
-        assert.ok(error instanceof AiPipelineError);
+        assert.ok(isAiPipelineError(error));
         assert.equal(error.code, 'PROVIDER_ERROR');
       } finally {
         globalThis.fetch = originalFetch;
@@ -278,7 +278,7 @@ const tests: TestCase[] = [
         await parseJobDescription('Test JD');
         assert.fail('Should have thrown an error');
       } catch (error: any) {
-        assert.ok(error instanceof AiPipelineError);
+        assert.ok(isAiPipelineError(error));
         assert.equal(error.code, 'PROVIDER_NETWORK_ERROR');
       } finally {
         globalThis.fetch = originalFetch;
@@ -302,7 +302,7 @@ const tests: TestCase[] = [
         await parseJobDescription('Test JD');
         assert.fail('Should have thrown an error');
       } catch (error: any) {
-        assert.ok(error instanceof AiPipelineError);
+        assert.ok(isAiPipelineError(error));
         assert.equal(error.code, 'MALFORMED_JSON_OUTPUT');
       } finally {
         globalThis.fetch = originalFetch;

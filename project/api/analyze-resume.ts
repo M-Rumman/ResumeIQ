@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomUUID } from 'node:crypto';
 import { getUserFromRequest } from './_lib/auth.js';
-import { AiPipelineError } from './_lib/openrouter.js';
+import { AiPipelineError, isAiPipelineError } from './_lib/openrouter.js';
 import { runAnalysisPipeline } from './_lib/analysis-engine/pipeline.js';
 import {
   createAiObservabilityContext,
@@ -143,7 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       reportId,
     });
   } catch (err) {
-    if (err instanceof AiPipelineError) {
+    if (isAiPipelineError(err)) {
       logAiEvent(observability, 'request_failed', {
         status: 502,
         stage: err.stage,

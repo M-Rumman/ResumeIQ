@@ -1,4 +1,4 @@
-import { callOpenRouter, AiPipelineError, extractJsonFromText } from '../openrouter.js';
+import { callOpenRouter, AiPipelineError, isAiPipelineError, extractJsonFromText } from '../openrouter.js';
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { JobProfile, JobRequirement } from './types.js';
 import { randomUUID } from 'node:crypto';
@@ -153,7 +153,7 @@ export async function parseJobDescription(
 
   } catch (error) {
     console.error('[jdParser] Failed to parse Job Description', error);
-    if (error instanceof AiPipelineError) {
+    if (isAiPipelineError(error)) {
       throw error;
     }
     // Only wrap truly unexpected generic errors in JD_PARSING_FAILED

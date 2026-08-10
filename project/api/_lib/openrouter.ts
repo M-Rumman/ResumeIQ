@@ -229,6 +229,10 @@ export class AiPipelineError extends Error {
   }
 }
 
+export function isAiPipelineError(err: unknown): err is AiPipelineError {
+  return typeof err === 'object' && err !== null && 'name' in err && (err as Error).name === 'AiPipelineError';
+}
+
 export async function callOpenRouter(
   messages: ChatMessage[],
   options: {
@@ -363,7 +367,7 @@ export async function callOpenRouter(
       });
       const stage = (options.stage as AiPipelineStage) || 'analyzer';
       const errorCode = requestTimedOut ? 'PROVIDER_TIMEOUT' : 'PROVIDER_NETWORK_ERROR';
-      lastError = err instanceof AiPipelineError ? err : new AiPipelineError(stage, errorCode, err instanceof Error ? err.message : String(err));
+      lastError = isAiPipelineError(err) ? err : new AiPipelineError(stage, errorCode, err instanceof Error ? err.message : String(err));
       if (i < models.length - 1) {
         await sleep(500);
         continue;
@@ -2911,7 +2915,7 @@ async function callStructuredStage(
   try {
     return await request(false);
   } catch (error) {
-    if (!(error instanceof AiPipelineError) || error.code !== 'INVALID_JSON') throw error;
+    if (!isAiPipelineError(error) || error.code !== 'INVALID_JSON') throw error;
     logAiEvent(options.observability, 'structured_stage_retry', { stage, reason: 'invalid_json' });
     return request(true);
   }
