@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getUserFromRequest } from './_lib/auth.js';
 import { AiPipelineError, isAiPipelineError } from './_lib/openrouter.js';
 import { runAnalysisPipeline } from './_lib/analysis-engine/pipeline.js';
+import { extractCandidateProfile } from './_lib/analysis-engine/resumeExtraction.js';
 import {
   createAiObservabilityContext,
   logAiEvent,
@@ -42,8 +43,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string; reportId?: string; candidateProfile?: any };
+  const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string; reportId?: string; candidateProfile?: any; action?: string };
   const resumeText = (body.resumeText || '').trim().slice(0, INPUT_LIMITS.RESUME_TEXT_MAX);
+
+  if (body.action === 'preprocess') {
+    if (!resumeText) {
+      return res.status(400).json({ error: 'Missing resumeText' });
+    }
+    const candidateProfile = extractCandidateProfile(resumeText);
+    return res.status(200).json({ candidateProfile });
+  }
+
   const jobDescription = (body.jobDescription || body.jobRole || '')
     .trim()
     .slice(0, INPUT_LIMITS.JOB_DESCRIPTION_MAX);

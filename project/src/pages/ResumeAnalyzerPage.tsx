@@ -724,7 +724,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     }
     const timer = setTimeout(() => {
       setIsPreprocessing(true);
-      apiPost('/api/preprocess-resume', { resumeText: resumeText.trim() })
+      apiPost('/api/analyze-resume', { resumeText: resumeText.trim(), action: 'preprocess' })
         .then((res: any) => {
           setPreprocessedProfile(res.candidateProfile);
         })
