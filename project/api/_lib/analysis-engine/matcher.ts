@@ -437,7 +437,6 @@ export async function matchRequirements(
         }
       }
     }
-  }
 
   return { matches };
 }
