@@ -42,14 +42,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const rate = await enforceAiRateLimit(user.id);
-  if (!rate.allowed) {
-    res.setHeader('Retry-After', String(rate.retryAfter));
-    return res.status(429).json({
-      error: 'Too many requests. Please wait a moment and try again.',
-    });
-  }
-
   const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string; reportId?: string };
   const resumeText = (body.resumeText || '').trim().slice(0, INPUT_LIMITS.RESUME_TEXT_MAX);
   const jobDescription = (body.jobDescription || body.jobRole || '')
@@ -74,13 +66,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Target job description is required.' });
   }
 
-  const access = await verifyAiFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
+  const [rate, access, billing] = await Promise.all([
+    enforceAiRateLimit(user.id),
+    verifyAiFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS),
+    getReconciledProfileBilling(user.id),
+  ]);
+
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfter));
+    return res.status(429).json({
+      error: 'Too many requests. Please wait a moment and try again.',
+    });
+  }
+
   if ('status' in access) {
     return respondError(res, access.status, access.message);
   }
 
   const requestedReportId = typeof body.reportId === 'string' ? body.reportId.trim() : '';
-  const billing = await getReconciledProfileBilling(user.id);
   const unlockedReports = Array.isArray(billing.unlocked_reports)
     ? billing.unlocked_reports.filter((reportId): reportId is string => typeof reportId === 'string')
     : [];
@@ -110,19 +113,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let reportId: string | null = null;
     try {
-      const persisted = await persistAiResultAndCommitUsage({
-        userId: user.id,
-        featureType: FEATURE_TYPES.RESUME_ANALYSIS,
-        shouldConsumeUsage: !access.hasPro,
-        insertRecord: () => insertResumeAnalysisRecord(user.id, {
-          atsScore: result.atsScore,
-          strengths: strengths || 'AI analysis completed.',
-          improvements: improvements || '- See full report in app.',
+      const [persisted] = await Promise.all([
+        persistAiResultAndCommitUsage({
+          userId: user.id,
+          featureType: FEATURE_TYPES.RESUME_ANALYSIS,
+          shouldConsumeUsage: !access.hasPro,
+          insertRecord: () => insertResumeAnalysisRecord(user.id, {
+            atsScore: result.atsScore,
+            strengths: strengths || 'AI analysis completed.',
+            improvements: improvements || '- See full report in app.',
+          }),
+          deleteRecord: deleteResumeAnalysisRecord,
+          commitUsage: () => commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS),
+          buildReportId: (recordId) => `resume_analysis:${recordId}`,
         }),
-        deleteRecord: deleteResumeAnalysisRecord,
-        commitUsage: () => commitSuccessfulDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS),
-        buildReportId: (recordId) => `resume_analysis:${recordId}`,
-      });
+        !access.hasPro ? recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS) : Promise.resolve(),
+      ]);
       reportId = persisted.reportId;
     } catch (error) {
       if (error instanceof Error && /limit reached/i.test(error.message)) {
@@ -131,9 +137,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw error;
     }
 
-    if (!access.hasPro) {
-      await recordDailyUsage(user.id, FEATURE_TYPES.RESUME_ANALYSIS);
-    }
     logAiEvent(observability, 'request_completed', {
       status: 200,
       totalDurationMs: Date.now() - observability.startedAt,

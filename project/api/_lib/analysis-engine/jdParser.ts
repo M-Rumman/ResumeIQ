@@ -125,6 +125,7 @@ export async function parseJobDescription(
         { role: 'user', content: prompt }
       ],
       {
+        model: 'google/gemini-1.5-flash',
         maxTokens: 4000,
         temperature: 0.1,
         observability: options.observability,

@@ -66,11 +66,7 @@ CRITICAL RULES:
 - If a location matches but the work mode (e.g. remote, hybrid) is unverified in the resume, classify as PARTIAL_MATCH.
 `;
 
-export async function matchRequirements(
-  job: JobProfile,
-  candidate: CandidateProfile,
-  options: { observability?: AiObservabilityContext } = {}
-): Promise<MatchingResult> {
+export function getDeterministicMatches(job: JobProfile, candidate: CandidateProfile) {
   const matches: RequirementMatch[] = [];
 
   // Sort facts globally by priority so the LLM and the exact matcher see best evidence first
@@ -266,8 +262,18 @@ export async function matchRequirements(
     unmatchedRequirements.push(req);
   }
 
+  return { matches, unmatchedRequirements, prioritizedFacts };
+}
+
+export async function matchRequirements(
+  job: JobProfile,
+  candidate: CandidateProfile,
+  deterministicResult: { matches: RequirementMatch[], unmatchedRequirements: typeof job.requirements, prioritizedFacts: CandidateFact[] },
+  options: { observability?: AiObservabilityContext } = {}
+): Promise<MatchingResult> {
+  const { matches, unmatchedRequirements, prioritizedFacts } = deterministicResult;
+
   // 2. LLM Verification Pass - BATCHED
-  if (unmatchedRequirements.length > 0) {
     try {
       const factListStr = prioritizedFacts.map(f => {
         let meta = `[ID: ${f.id}] [Section: ${f.sourceSection}]`;

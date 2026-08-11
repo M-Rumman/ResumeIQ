@@ -1,6 +1,6 @@
 import { parseJobDescription } from './jdParser.js';
 import { extractCandidateProfile } from './resumeExtraction.js';
-import { matchRequirements } from './matcher.js';
+import { matchRequirements, getDeterministicMatches } from './matcher.js';
 import { evaluateScores } from './evaluator.js';
 import { generateRecommendations } from './recommendations.js';
 import { validateAndSanitizeReport } from './validator.js';
@@ -70,27 +70,31 @@ export async function runAnalysisPipeline(
   }
 
   // 3. Premium Deep Analysis
-  const matchingResult = await matchRequirements(jobProfile, candidateProfile, options);
+  const deterministicResult = getDeterministicMatches(jobProfile, candidateProfile);
+
+  const [matchingResult, bulletRewrites] = await Promise.all([
+    matchRequirements(jobProfile, candidateProfile, deterministicResult, options),
+    generateBulletRewritesWithAi(
+      parsedResume.experience,
+      parsedResume.projects,
+      {
+        title: jobProfile.title,
+        requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
+        preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
+        responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
+      },
+      jobProfile.requirements.map(r => r.normalized_name),
+      deterministicResult.matches.map(m => ({
+        skill: m.requirement.normalized_name,
+        status: m.classification,
+        evidence: m.evidence.map(e => e.source_text)
+      })),
+      options.observability
+    )
+  ]);
+
   const evaluationResult = evaluateScores(jobProfile, candidateProfile, matchingResult);
   const recommendationResult = generateRecommendations(matchingResult);
-
-  const bulletRewrites = await generateBulletRewritesWithAi(
-    parsedResume.experience,
-    parsedResume.projects,
-    {
-      title: jobProfile.title,
-      requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
-      preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
-      responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
-    },
-    jobProfile.requirements.map(r => r.normalized_name),
-    matchingResult.matches.map(m => ({
-      skill: m.requirement.normalized_name,
-      status: m.classification,
-      evidence: m.evidence.map(e => e.source_text)
-    })),
-    options.observability
-  );
 
   // 4. Keyword & Skill Categorization
   // Sort requirements so core/required items appear first
