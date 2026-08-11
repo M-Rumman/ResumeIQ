@@ -1,6 +1,5 @@
 import { parseResumeText, type StructuredResume } from '../resumeParser.js';
 import type { CandidateProfile, CandidateFact } from './types.js';
-import { randomUUID } from 'node:crypto';
 
 /**
  * Extracts a normalized, flat list of CandidateFacts from the structured resume
@@ -29,7 +28,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
   // Extract skills
   for (const skill of structuredResume.skills) {
     facts.push({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       type: 'skill',
       normalizedName: skill.trim(),
       rawText: skill.trim(),
@@ -43,7 +42,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
   for (const exp of structuredResume.experience) {
     const duration = parseExperienceDuration(exp);
     facts.push({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       type: 'experience',
       normalizedName: extractSummaryName(exp) || 'Professional Experience',
       rawText: exp,
@@ -57,7 +56,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
   // Extract project entries
   for (const proj of structuredResume.projects) {
     facts.push({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       type: 'project',
       normalizedName: extractSummaryName(proj) || 'Project',
       rawText: proj,
@@ -70,7 +69,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
   // Extract education
   for (const edu of structuredResume.education) {
     facts.push({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       type: 'education',
       normalizedName: extractSummaryName(edu) || 'Education',
       rawText: edu,
@@ -86,7 +85,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
   const hasExplicitCertifications = hasExplicitHeading(['certifications', 'licenses', 'certificates']);
   for (const cert of structuredResume.certifications) {
     facts.push({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       type: 'certification',
       normalizedName: extractSummaryName(cert) || 'Certification',
       rawText: cert,
@@ -99,7 +98,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
   // Extract summary
   if (structuredResume.summary) {
     facts.push({
-      id: randomUUID(),
+      id: crypto.randomUUID(),
       type: 'other',
       normalizedName: 'Summary',
       rawText: structuredResume.summary,

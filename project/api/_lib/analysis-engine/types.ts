@@ -154,9 +154,11 @@ export interface PipelineContext {
   resumeText: string;
   jobDescriptionText: string;
   includePremium: boolean;
+  candidateProfile?: CandidateProfile;
 }
 
 export interface EngineResult {
   tier: 'free' | 'premium';
   legacyReport: AiResumeAnalysisFull | any; // Any for free tier fallback
+  timings?: Record<string, number>;
 }

@@ -682,6 +682,8 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   });
   const [exportingPdf, setExportingPdf] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
+  const [preprocessedProfile, setPreprocessedProfile] = useState<any>(null);
+  const [isPreprocessing, setIsPreprocessing] = useState(false);
 
   const { userId, isPro } = usePaywallAccess(reportId);
 
@@ -714,6 +716,23 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   useEffect(() => {
     refreshUsageStatus();
   }, []);
+
+  useEffect(() => {
+    if (!resumeText.trim()) {
+      setPreprocessedProfile(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setIsPreprocessing(true);
+      apiPost('/api/preprocess-resume', { resumeText: resumeText.trim() })
+        .then((res: any) => {
+          setPreprocessedProfile(res.candidateProfile);
+        })
+        .catch(err => console.error('Preprocessing failed', err))
+        .finally(() => setIsPreprocessing(false));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [resumeText]);
 
   async function handleAnalyze() {
     setAnalyzing(true);
@@ -756,8 +775,11 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
 
     let analysisResults: AnalysisResults;
     try {
-      const ai = await fetchAiResumeAnalysis(text, jobDescription.trim());
-      analysisResults = mapAiResumeToDisplay(ai) as AnalysisResults;
+      const response = await fetchAiResumeAnalysis(text, jobDescription.trim(), preprocessedProfile);
+      
+      console.log('Response timings:', (response as any).timings);
+
+      analysisResults = mapAiResumeToDisplay(response, isPro || usageInfo.isPro) as AnalysisResults;
     } catch (error) {
       setAnalyzing(false);
       if (error instanceof ApiRequestError && error.status === 429 && /today's free resume analysis limit/i.test(error.message)) {

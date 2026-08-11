@@ -15,11 +15,16 @@ export async function runAnalysisPipeline(
 ): Promise<EngineResult> {
   console.info('[pipeline] Starting modular analysis engine...');
 
+  const startDb = performance.now();
+  // (DB preflight is tracked in analyze-resume.ts)
+
   // 1. Extraction (Parallel)
+  const extractStart = performance.now();
   const [jobProfile, candidateProfile] = await Promise.all([
     parseJobDescription(context.jobDescriptionText, options),
-    Promise.resolve(extractCandidateProfile(context.resumeText))
+    context.candidateProfile ? Promise.resolve(context.candidateProfile) : Promise.resolve(extractCandidateProfile(context.resumeText))
   ]);
+  const extractEnd = performance.now();
 
   // Create a ParsedResume object for legacy compat
   const parsedResume: ParsedResume = {
@@ -70,6 +75,7 @@ export async function runAnalysisPipeline(
   }
 
   // 3. Premium Deep Analysis
+  const matcherStart = performance.now();
   const deterministicResult = getDeterministicMatches(jobProfile, candidateProfile);
 
   const [matchingResult, bulletRewrites] = await Promise.all([
@@ -92,9 +98,12 @@ export async function runAnalysisPipeline(
       options.observability
     )
   ]);
+  const matcherEnd = performance.now();
 
+  const evaluatorStart = performance.now();
   const evaluationResult = evaluateScores(jobProfile, candidateProfile, matchingResult);
   const recommendationResult = generateRecommendations(matchingResult);
+  const evaluatorEnd = performance.now();
 
   // 4. Keyword & Skill Categorization
   // Sort requirements so core/required items appear first
@@ -234,10 +243,23 @@ export async function runAnalysisPipeline(
     matchScoreDetails: evaluationResult.matchScoreDetails
   };
 
+  const validatorStart = performance.now();
   const validatedReport = validateAndSanitizeReport(legacyReport, jobProfile, candidateProfile);
+  const validatorEnd = performance.now();
 
+  const pipelineEnd = performance.now();
+
+  console.info('[pipeline] Engine complete.');
+  
   return {
     tier: 'premium',
-    legacyReport: validatedReport
+    legacyReport: validatedReport,
+    timings: {
+      extract_and_parse_jd: extractEnd - extractStart,
+      matcher_and_rewriter: matcherEnd - matcherStart,
+      evaluator: evaluatorEnd - evaluatorStart,
+      validator: validatorEnd - validatorStart,
+      pipeline_total: pipelineEnd - extractStart,
+    }
   };
 }

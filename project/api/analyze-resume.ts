@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string; reportId?: string };
+  const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string; reportId?: string; candidateProfile?: any };
   const resumeText = (body.resumeText || '').trim().slice(0, INPUT_LIMITS.RESUME_TEXT_MAX);
   const jobDescription = (body.jobDescription || body.jobRole || '')
     .trim()
@@ -66,11 +66,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Target job description is required.' });
   }
 
+  const dbPreflightStart = performance.now();
   const [rate, access, billing] = await Promise.all([
     enforceAiRateLimit(user.id),
     verifyAiFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS),
     getReconciledProfileBilling(user.id),
   ]);
+  const dbPreflightEnd = performance.now();
 
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfter));
@@ -96,7 +98,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       {
         resumeText,
         jobDescriptionText: jobDescription,
-        includePremium
+        includePremium,
+        candidateProfile: body.candidateProfile
       },
       { observability }
     );
@@ -112,6 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : result.basicFeedback.map((item: string) => `- ${item}`).join('\n');
 
     let reportId: string | null = null;
+    const dbPersistenceStart = performance.now();
     try {
       const [persisted] = await Promise.all([
         persistAiResultAndCommitUsage({
@@ -140,10 +144,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     logAiEvent(observability, 'request_completed', {
       status: 200,
       totalDurationMs: Date.now() - observability.startedAt,
+      reportType: engineResult.tier,
     });
+    
+    const dbPersistenceEnd = performance.now();
+
+    const timings = {
+      db_preflight: dbPreflightEnd - dbPreflightStart,
+      ...(engineResult.timings || {}),
+      db_persistence: dbPersistenceEnd - dbPersistenceStart,
+      request_total: performance.now() - dbPreflightStart,
+    };
+
     return res.status(200).json({
       ...result,
       reportId,
+      isPremiumReport: engineResult.tier === 'premium',
+      isUnlocked: hasReportUnlock,
+      timings
     });
   } catch (err) {
     if (isAiPipelineError(err)) {
