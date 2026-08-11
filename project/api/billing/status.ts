@@ -1,12 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUserFromRequest } from '../_lib/auth.js';
-import { getReconciledProfileBilling, profileHasProAccess } from '../_lib/billing.js';
+import { getReconciledProfileBilling, profileHasProAccess, syncBillingFromStoredEvents } from '../_lib/billing.js';
 import { applyBillingRateLimit } from '../_lib/billingRateLimit.js';
+import { rejectOversizedBody, BODY_LIMITS } from '../_lib/requestLimits.js';
 import { CLIENT_ERRORS, logApiError, respondError } from '../_lib/safeError.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (req.method === 'POST' && rejectOversizedBody(req, res, BODY_LIMITS.DEFAULT)) {
+    return;
   }
 
   const user = await getUserFromRequest(req);
@@ -19,7 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const billing = await getReconciledProfileBilling(user.id);
+    if (req.method === 'POST') {
+      await syncBillingFromStoredEvents(user.id);
+    }
+    const billing = await getReconciledProfileBilling(user.id, { force: req.method === 'POST' });
     return res.status(200).json({
       plan: billing.plan,
       subscription_status: billing.subscription_status,
@@ -28,6 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       unlocked_reports: Array.isArray(billing.unlocked_reports)
         ? billing.unlocked_reports
         : [],
+      ...(req.method === 'POST' ? { synced: true } : {})
     });
   } catch (err) {
     logApiError('billing/status', err, { user_id: user.id });

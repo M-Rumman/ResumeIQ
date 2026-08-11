@@ -25,7 +25,7 @@ export default function PaymentSuccessPage({ onNavigate }: PaymentSuccessPagePro
             subscription_status: string;
             is_pro: boolean;
             subscription_expires_at?: string | null;
-          }>('/api/billing/sync', {});
+          }>('/api/billing/status', {});
 
           const isActive =
             result.plan?.toLowerCase() === 'pro'

@@ -37,7 +37,7 @@ export default function JobMatchPage() {
   };
   const save = async (job: Job) => {
     try {
-      await apiPost('/api/saved-jobs', { job_id: job.id, job_title: job.title, company: job.company, location: job.location, salary: job.salary, match_score: job.relevanceScore, apply_url: job.applyUrl, source: job.id.split(':')[0] });
+      await apiPost('/api/job-match?action=saved', { job_id: job.id, job_title: job.title, company: job.company, location: job.location, salary: job.salary, match_score: job.relevanceScore, apply_url: job.applyUrl, source: job.id.split(':')[0] });
       setSaved((values) => [...values, job.id]);
     } catch { setError('Could not save this job.'); }
   };

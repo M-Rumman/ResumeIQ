@@ -35,14 +35,14 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   useEffect(() => {
     if (!sessionStorage.getItem(BILLING_REFRESH_KEY)) return;
     sessionStorage.removeItem(BILLING_REFRESH_KEY);
-    void apiPost('/api/billing/sync', {}).finally(() => {
+    void apiPost('/api/billing/status', {}).finally(() => {
       setRefreshKey((key) => key + 1);
     });
   }, []);
 
   function handleRefresh() {
     setRefreshKey((key) => key + 1);
-    void apiPost('/api/billing/sync', {}).catch(() => undefined);
+    void apiPost('/api/billing/status', {}).catch(() => undefined);
   }
 
   function handleUpgrade() {
