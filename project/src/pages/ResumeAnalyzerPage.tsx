@@ -600,7 +600,7 @@ function analysisErrorMessage(error: unknown): string {
       return 'The AI service is currently experiencing high demand. Please wait a moment and try again.';
     }
     if (error.pipelineError.code === 'PROVIDER_TIMEOUT' || error.pipelineError.code === 'PROVIDER_NETWORK_ERROR') {
-      return 'We could not reach the AI service or the request timed out. Please check your connection and try again.';
+      return 'The AI analysis engines are currently experiencing very high demand and timed out. Please try again in a few moments.';
     }
     if (error.pipelineError.code === 'PROVIDER_ERROR') {
       return 'The AI service experienced an internal error. Please try again later.';

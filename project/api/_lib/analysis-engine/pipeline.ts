@@ -79,7 +79,10 @@ export async function runAnalysisPipeline(
   const deterministicResult = getDeterministicMatches(jobProfile, candidateProfile);
 
   const [matchingResult, bulletRewrites] = await Promise.all([
-    matchRequirements(jobProfile, candidateProfile, deterministicResult, options),
+    matchRequirements(jobProfile, candidateProfile, deterministicResult, options).catch(err => {
+      console.error('[pipeline] AI Matcher failed, degrading to deterministic:', err);
+      return deterministicResult as any; // Fallback to deterministic matcher
+    }),
     generateBulletRewritesWithAi(
       parsedResume.experience,
       parsedResume.projects,
@@ -96,7 +99,10 @@ export async function runAnalysisPipeline(
         evidence: m.evidence.map(e => e.source_text)
       })),
       options.observability
-    )
+    ).catch(err => {
+      console.error('[pipeline] AI Rewriter failed, skipping rewrites:', err);
+      return { improvedBulletPoints: [], weakBullets: [] };
+    })
   ]);
   const matcherEnd = performance.now();
 
