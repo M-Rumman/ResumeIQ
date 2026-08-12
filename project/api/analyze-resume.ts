@@ -46,14 +46,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = req.body as { resumeText?: string; jobRole?: string; jobDescription?: string; reportId?: string; candidateProfile?: any; action?: string };
   const resumeText = (body.resumeText || '').trim().slice(0, INPUT_LIMITS.RESUME_TEXT_MAX);
 
-  if (body.action === 'preprocess') {
-    if (!resumeText) {
-      return res.status(400).json({ error: 'Missing resumeText' });
-    }
-    const candidateProfile = extractCandidateProfile(resumeText);
-    return res.status(200).json({ candidateProfile });
-  }
-
   const jobDescription = (body.jobDescription || body.jobRole || '')
     .trim()
     .slice(0, INPUT_LIMITS.JOB_DESCRIPTION_MAX);

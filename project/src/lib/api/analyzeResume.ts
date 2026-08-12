@@ -148,13 +148,11 @@ export type AiResumeAnalysis = AiResumeAnalysisPremium | AiResumeAnalysisFree;
 
 export async function fetchAiResumeAnalysis(
   resumeText: string,
-  jobDescription: string,
-  candidateProfile?: any
+  jobDescription: string
 ): Promise<AiResumeAnalysis> {
   return apiPost<AiResumeAnalysis>('/api/analyze-resume', {
     resumeText,
     jobDescription,
     jobRole: jobDescription,
-    candidateProfile,
   }, { timeoutMs: analysisTimeoutMs() });
 }

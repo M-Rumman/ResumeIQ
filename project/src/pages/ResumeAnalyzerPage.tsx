@@ -682,7 +682,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   });
   const [exportingPdf, setExportingPdf] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
-  const [preprocessedProfile, setPreprocessedProfile] = useState<any>(null);
+
 
 
   const { userId, isPro } = usePaywallAccess(reportId);
@@ -716,21 +716,6 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   useEffect(() => {
     refreshUsageStatus();
   }, []);
-
-  useEffect(() => {
-    if (!resumeText.trim()) {
-      setPreprocessedProfile(null);
-      return;
-    }
-    const timer = setTimeout(() => {
-      apiPost('/api/analyze-resume', { resumeText: resumeText.trim(), action: 'preprocess' })
-        .then((res: any) => {
-          setPreprocessedProfile(res.candidateProfile);
-        })
-        .catch(err => console.error('Preprocessing failed', err));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [resumeText]);
 
   async function handleAnalyze() {
     setAnalyzing(true);
@@ -773,7 +758,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
 
     let analysisResults: AnalysisResults;
     try {
-      const response = await fetchAiResumeAnalysis(text, jobDescription.trim(), preprocessedProfile);
+      const response = await fetchAiResumeAnalysis(text, jobDescription.trim());
       
       console.log('Response timings:', (response as any).timings);
 
