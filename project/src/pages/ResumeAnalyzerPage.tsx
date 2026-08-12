@@ -683,7 +683,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
   const [exportingPdf, setExportingPdf] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
   const [preprocessedProfile, setPreprocessedProfile] = useState<any>(null);
-  const [isPreprocessing, setIsPreprocessing] = useState(false);
+
 
   const { userId, isPro } = usePaywallAccess(reportId);
 
@@ -723,13 +723,11 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
       return;
     }
     const timer = setTimeout(() => {
-      setIsPreprocessing(true);
       apiPost('/api/analyze-resume', { resumeText: resumeText.trim(), action: 'preprocess' })
         .then((res: any) => {
           setPreprocessedProfile(res.candidateProfile);
         })
-        .catch(err => console.error('Preprocessing failed', err))
-        .finally(() => setIsPreprocessing(false));
+        .catch(err => console.error('Preprocessing failed', err));
     }, 1000);
     return () => clearTimeout(timer);
   }, [resumeText]);
@@ -779,7 +777,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
       
       console.log('Response timings:', (response as any).timings);
 
-      analysisResults = mapAiResumeToDisplay(response, isPro || usageInfo.isPro) as AnalysisResults;
+      analysisResults = mapAiResumeToDisplay(response) as AnalysisResults;
     } catch (error) {
       setAnalyzing(false);
       if (error instanceof ApiRequestError && error.status === 429 && /today's free resume analysis limit/i.test(error.message)) {

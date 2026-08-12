@@ -110,7 +110,7 @@ export async function testPriyaRegression() {
   assert.ok(!blankReq, 'No blank requirement should reach the matcher');
   
   // 3. Match Requirements
-  const { matches } = await matchRequirements(jobProfile, candidateProfile);
+  const { matches } = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
 
   // Helper to find match by a substring of its name
   const findMatch = (nameSubstr: string) => {

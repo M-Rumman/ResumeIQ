@@ -21,10 +21,11 @@ test('validator.ts strictly verifies properties', async (t: any) => {
         confidence: 1.0
       }
     ],
-    metadata: { job_type: 'Full-time' }
+    
   };
 
   const dummyCandidate: CandidateProfile = {
+    contact: {} as any,
     facts: [],
     rawStructure: {
       experience: ['Worked with Python']

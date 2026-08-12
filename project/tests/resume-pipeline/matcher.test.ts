@@ -45,7 +45,7 @@ const tests: TestCase[] = [
         rawStructure: {} as any
       };
 
-      const result = await matchRequirements(job, candidate);
+      const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
       assert.equal(result.matches[0].classification, 'EXACT_MATCH');
       assert.equal(result.matches[0].evidence[0].evidence_strength, 'primary');
     }
@@ -95,7 +95,7 @@ const tests: TestCase[] = [
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
 
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'MISSING');
       } finally {
         globalThis.fetch = originalFetch;
@@ -144,7 +144,7 @@ const tests: TestCase[] = [
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
 
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
         assert.equal(result.matches[0].evidence.length > 0, true, 'Should attach the evidence');
       } finally {
@@ -194,7 +194,7 @@ const tests: TestCase[] = [
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
 
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'MISSING');
       } finally {
         globalThis.fetch = originalFetch;
@@ -250,7 +250,7 @@ const tests: TestCase[] = [
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
 
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'EXACT_MATCH');
         assert.equal(result.matches[0].evidence.length > 0, true);
       } finally {
@@ -310,7 +310,7 @@ const tests: TestCase[] = [
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
 
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         // Because supportingFactId is null, it should trigger the fallback, successfully find fact-2 based on explanation/req words, 
         // and downgrade to UNDER_EXPRESSED to be safe.
         assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
@@ -356,7 +356,7 @@ const tests: TestCase[] = [
         rawStructure: {} as any
       };
 
-      const result = await matchRequirements(job, candidate);
+      const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
       assert.equal(result.matches[0].classification, 'EXACT_MATCH', 'Should match via substring of rawText');
     }
   },
@@ -392,7 +392,7 @@ const tests: TestCase[] = [
         rawStructure: {} as any
       };
 
-      const result = await matchRequirements(job, candidate);
+      const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
       assert.equal(result.matches[0].classification, 'EXACT_MATCH', 'Should exact match PMP string');
     }
   },
@@ -442,7 +442,7 @@ const tests: TestCase[] = [
       }) as any;
       
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
       } finally {
         globalThis.fetch = originalFetch;
@@ -495,7 +495,7 @@ const tests: TestCase[] = [
       }) as any;
       
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
       } finally {
         globalThis.fetch = originalFetch;
@@ -548,7 +548,7 @@ const tests: TestCase[] = [
       }) as any;
       
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'MISSING');
       } finally {
         globalThis.fetch = originalFetch;
@@ -601,7 +601,7 @@ const tests: TestCase[] = [
       }) as any;
       
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'RELATED_MATCH');
       } finally {
         globalThis.fetch = originalFetch;
@@ -664,7 +664,7 @@ const tests: TestCase[] = [
       }) as any;
 
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
         assert.equal(result.matches[0].evidence[0].fact_id, 'fact-strong', 'Should select the strong scaled evidence fact ID');
         assert.equal(result.matches[0].evidence[0].evidence_strength, 'primary', 'Experience fact should be primary');
@@ -717,7 +717,7 @@ const tests: TestCase[] = [
 
       // Note: Python is a deterministic lexical match. The deterministic matcher loops through prioritized facts.
       // Since Experience (priority 1) comes before Skill (priority 6), the deterministic matcher MUST select the experience fact!
-      const result = await matchRequirements(job, candidate);
+      const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
       assert.equal(result.matches[0].classification, 'EXACT_MATCH');
       assert.equal(result.matches[0].evidence[0].fact_id, 'fact-exp', 'Deterministic matcher should pick experience over skill due to sorting');
     }
@@ -780,7 +780,7 @@ const tests: TestCase[] = [
       process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
 
       try {
-        const result = await matchRequirements(job, candidate);
+        const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
         // It should NOT be an EXACT_MATCH from fact-skill. It should be STRONG_SEMANTIC_MATCH from fact-exp
         assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
         assert.equal(result.matches[0].evidence[0].fact_id, 'fact-exp');
@@ -833,7 +833,7 @@ const tests: TestCase[] = [
 
       // In this test, NO LLM is used. The deterministic matcher MUST pick fact-quant over fact-std
       // because 5000-person matches the scale regex, giving it a huge boost.
-      const result = await matchRequirements(job, candidate);
+      const result = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
       
       assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
       assert.equal(result.matches[0].evidence[0].fact_id, 'fact-quant');
