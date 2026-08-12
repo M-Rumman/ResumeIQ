@@ -2991,7 +2991,7 @@ export async function analyzeResumeWithAi(
       { role: 'system', content: RESUME_PARSER_SYSTEM_PROMPT },
       { role: 'user', content: parserUserContent },
     ],
-    { maxTokens: 3000, temperature: 0.1, observability }
+    { maxTokens: 8000, temperature: 0.1, observability }
   );
   if (!parsedJson.resume || typeof parsedJson.resume !== 'object' || !parsedJson.job || typeof parsedJson.job !== 'object') {
     throw new AiPipelineError('parser', 'INVALID_SCHEMA', 'The parser response is missing resume or job data.');
@@ -3106,7 +3106,7 @@ export async function analyzeResumeWithAi(
         { role: 'system', content: ANALYZER_SYSTEM_PROMPT },
         { role: 'user', content: analysisUserContent }
       ],
-      { maxTokens: 4800, temperature: 0.2, observability }
+      { maxTokens: 8000, temperature: 0.2, observability }
     ),
     callStructuredStage(
       'rewriter',
@@ -3114,7 +3114,7 @@ export async function analyzeResumeWithAi(
         { role: 'system', content: REWRITER_SYSTEM_PROMPT },
         { role: 'user', content: rewriterUserContent }
       ],
-      { maxTokens: 2200, temperature: 0.3, observability }
+      { maxTokens: 8000, temperature: 0.3, observability }
     )
   ]);
 
@@ -3329,7 +3329,7 @@ export async function generateBulletRewritesWithAi(
         { role: 'system', content: REWRITER_SYSTEM_PROMPT },
         { role: 'user', content: rewriterUserContent }
       ],
-      { maxTokens: 2200, temperature: 0.3, observability }
+      { maxTokens: 8000, temperature: 0.3, observability }
     );
     return {
       improvedBulletPoints: Array.isArray(rewriterJson?.improvedBulletPoints) ? rewriterJson.improvedBulletPoints : [],
@@ -3353,7 +3353,7 @@ export async function generateInterviewPrepWithAi(
       { role: 'system', content: INTERVIEW_SYSTEM_PROMPT },
       { role: 'user', content: user },
     ],
-    { maxTokens: 4000, temperature: 0.4 },
+    { maxTokens: 8000, temperature: 0.4 },
   );
 
   return normalizeInterviewPrep(planInterviewRecommendations(extractJsonFromText(raw) as Record<string, any>));

@@ -290,7 +290,7 @@ export async function matchRequirements(
           { role: 'system', content: MATCHER_SYSTEM_PROMPT },
           { role: 'user', content: prompt }
         ],
-        { maxTokens: 2000, temperature: 0.1, observability: options.observability, stage: 'analyzer' }
+        { maxTokens: 8000, temperature: 0.1, observability: options.observability, stage: 'analyzer' }
       );
 
       const parsed = extractJsonFromText(rawJson) as any;
