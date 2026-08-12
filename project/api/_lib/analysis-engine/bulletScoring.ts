@@ -85,42 +85,37 @@ export function buildDetailedBulletTeachingGuide(
   const targetTerms = targetKeywords.filter((term) => containsTerm(after, term) && !containsTerm(before, term));
   const purpose = after.match(/\bto\s+([^.;]+)/i)?.[1]?.trim();
   const genericOpening = GENERIC_BULLET_OPENERS.has(firstWord(before));
+  const hasStrongActionVerb = STRONG_BULLET_ACTION_VERBS.has(firstWord(after));
+  const beforeHasQuant = hasQuantification(before);
 
-  const whyWeak = [
-    genericOpening
-      ? `Opens with “${firstWord(before)},” which does not clearly show ownership of the work.`
-      : `Does not clearly connect the documented work to a specific professional objective.`,
-    targetTerms.length > 0
-      ? 'This bullet does not name the specific tools, technologies, or methodologies involved.'
-      : 'Uses generic phrasing but gives limited context about how skills were applied.',
-    hasQuantification(before)
-      ? 'This bullet does not clearly explain the purpose or practical result of the work.'
-      : 'This bullet does not state a supported outcome, scope, or measurable result.',
-  ];
+  const whyWeak: string[] = [];
+  if (genericOpening) {
+    whyWeak.push(`"${firstWord(before).replace(/^./, l => l.toUpperCase())}" communicates limited ownership.`);
+  } else if (!STRONG_BULLET_ACTION_VERBS.has(firstWord(before))) {
+    whyWeak.push(`The sentence structure is passive or uses a weak opening verb.`);
+  }
+  
+  if (!beforeHasQuant) {
+    whyWeak.push(`No documented outcome or measurable impact is stated in this bullet.`);
+  }
 
-  const missingInformation = [
-    targetTerms.length
-      ? `Detected in the source bullet: ${targetTerms.slice(0, 3).join(', ')}.`
-      : 'Not explicitly stated in this bullet: tools, technologies, or methodologies used. Check other resume sections before treating this as missing.',
-    purpose
-      ? `Detected professional objective: ${purpose}.`
-      : 'Not explicitly stated in this bullet: the professional purpose. Do not assume it is missing from the rest of the resume.',
-    hasQuantification(before)
-      ? 'Detected: a clear link between the documented work and its practical outcome.'
-      : 'Unsupported in this bullet: a metric, test result, scope, or performance outcome. Add one only if documented elsewhere.',
-  ];
+  const missingInformation: string[] = [];
+  if (targetTerms.length > 0) {
+    missingInformation.push(`Check if you can add specific tools or methodologies to this bullet without inventing them.`);
+  } else if (!beforeHasQuant) {
+    missingInformation.push(`A metric, scope, or performance outcome is absent (only add if supported elsewhere in your resume).`);
+  } else {
+    missingInformation.push(`This bullet is factually complete based on your resume evidence.`);
+  }
 
-  const whyStronger = [
-    `Makes ownership explicit with the action “${firstWord(after).replace(/^./, (letter) => letter.toUpperCase())}.”`,
-    targetTerms.length
-      ? `Adds resume-supported professional context: ${targetTerms.slice(0, 3).join(', ')}.`
-      : 'Makes the documented work easier for a recruiter to understand.',
-    purpose
-      ? `Clarifies the professional objective: ${purpose}.`
-      : 'Uses a clearer action-to-contribution structure without adding unsupported results.',
-    targetTerms.length
-      ? `Improves alignment with this role through supported job terminology: ${targetTerms.slice(0, 2).join(', ')}.`
-      : `Makes the documented work easier to evaluate against this role's stated requirements without adding unsupported job terminology.`,
-  ];
+  const whyStronger: string[] = [];
+  if (hasStrongActionVerb && !STRONG_BULLET_ACTION_VERBS.has(firstWord(before))) {
+    whyStronger.push(`Uses the stronger action verb "${firstWord(after).replace(/^./, l => l.toUpperCase())}".`);
+  }
+  if (targetTerms.length > 0) {
+    whyStronger.push(`Clarifies alignment with the target role through relevant terminology.`);
+  }
+  whyStronger.push(`Preserves all original facts without inventing outcomes.`);
+
   return { whyWeak, missingInformation, whyStronger };
 }

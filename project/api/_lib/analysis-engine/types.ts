@@ -133,6 +133,7 @@ export interface Recommendation {
   type: 'missing_skill' | 'weak_bullet' | 'formatting' | 'missing_section';
   priority: 'critical' | 'important' | 'optional';
   requirement: string;
+  recommendedAction: string;
   whyItMatters: string;
   whereToAdd: string;
   evidenceStatus: string;

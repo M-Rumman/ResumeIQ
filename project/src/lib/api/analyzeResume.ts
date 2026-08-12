@@ -33,6 +33,7 @@ export interface Gap {
   whereToAdd: string;
   evidenceStatus: string;
   fabricationWarning: string;
+  recommendedAction?: string;
   priority: 'critical' | 'important' | 'optional';
   type: 'missing_skill' | 'weak_bullet';
 }

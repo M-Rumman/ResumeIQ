@@ -56,7 +56,9 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
                   <div className="bg-red-50 p-4">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <span className="text-xs font-bold text-red-700 uppercase tracking-wide">Before</span>
-                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800">Score {item.beforeScore}/100</span>
+                      {typeof item.beforeScore === 'number' && !isNaN(item.beforeScore) && (
+                        <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800">Score {item.beforeScore}/100</span>
+                      )}
                     </div>
                     <p className="text-sm text-red-950">{item.before}</p>
                   </div>
@@ -66,7 +68,9 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
                   <div className="bg-emerald-50 p-4">
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">After</span>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">Score {item.afterScore}/100</span>
+                      {typeof item.afterScore === 'number' && !isNaN(item.afterScore) && (
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">Score {item.afterScore}/100</span>
+                      )}
                     </div>
                     <p className="text-sm text-emerald-950 font-medium">{item.after}</p>
                   </div>
@@ -74,9 +78,11 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
                 <div className="border-y border-gray-100 bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <h4 className="text-sm font-bold text-gray-900">
-                      Improvement Score: {item.improvementScore >= 0 ? '+' : ''}{item.improvementScore}
+                      {typeof item.improvementScore === 'number' && !isNaN(item.improvementScore) 
+                        ? `Improvement Score: ${item.improvementScore >= 0 ? '+' : ''}${item.improvementScore}`
+                        : 'Improvement Summary'}
                     </h4>
-                    <span className="text-xs font-bold text-gray-700">Grounding confidence: {item.confidence}</span>
+                    <span className="text-xs font-bold text-gray-700">Grounding confidence: {item.confidence || 'Medium'}</span>
                   </div>
                   <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-emerald-800">
                     {(item.improvements?.length ? item.improvements : ['More complete, resume-supported explanation of the work']).map((improvement) => <li key={improvement}>+ {improvement}</li>)}
@@ -86,20 +92,20 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
                   <div className="bg-white p-4">
                     <h4 className="text-sm font-bold text-gray-900 mb-2">Why it is weak</h4>
                     <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                      {(item.whyWeak || []).map((reason) => <li key={reason}>{reason}</li>)}
+                      {(item.whyWeak?.length ? item.whyWeak : ['Sentence structure lacks strong professional impact.']).map((reason) => <li key={reason}>{reason}</li>)}
                     </ul>
                   </div>
                   <div className="bg-white p-4">
                     <h4 className="text-sm font-bold text-gray-900 mb-2">What information is missing</h4>
                     <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                      {(item.missingInformation || []).map((detail) => <li key={detail}>{detail}</li>)}
+                      {(item.missingInformation?.length ? item.missingInformation : ['No missing context detected.']).map((detail) => <li key={detail}>{detail}</li>)}
                     </ul>
                   </div>
                 </div>
                 <div className="bg-white p-4">
                   <h4 className="text-sm font-bold text-gray-900 mb-2">Why this is stronger</h4>
                   <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                    {(item.whyStronger || []).map((reason) => <li key={reason}>{reason}</li>)}
+                    {(item.whyStronger?.length ? item.whyStronger : ['Improves sentence clarity and professional tone.']).map((reason) => <li key={reason}>{reason}</li>)}
                   </ul>
                 </div>
               </article>
@@ -419,7 +425,7 @@ function BiggestOpportunitiesCard({ actionPlan }: { actionPlan: Gap[] }) {
               href={`#req-${gap.requirement.replace(/\s+/g, '-').toLowerCase()}`} 
               className="text-sm text-amber-950 hover:underline font-medium"
             >
-              Add {gap.requirement} to your {gap.whereToAdd.toLowerCase().replace('.', '')}
+              {gap.recommendedAction || `Add ${gap.requirement} to your ${gap.whereToAdd.toLowerCase().replace('.', '')}`}
             </a>
           </li>
         ))}

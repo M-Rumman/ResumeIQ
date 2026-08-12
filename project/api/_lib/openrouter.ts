@@ -573,14 +573,16 @@ Rules:
 - Every "after" bullet MUST begin with a strong, specific action verb. Prefer verbs relevant to the field (e.g., Developed, Designed, Researched, Negotiated, Analyzed, Managed) when they are truthful to the original bullet.
 - Produce a materially stronger bullet, not a light paraphrase. Improve the sentence's clarity, professional tone, domain specificity, and readable action-to-contribution structure while preserving the original meaning.
 - Reject synonym-only rewrites. A rewrite must add resume-supported professional context, purpose, outcome, or ownership clarity beyond merely replacing the opening verb. When the original bullet is weak, aim for a clearly visible quality improvement; make only minor edits when it is already strong.
-- Prefer this truthful structure when the source supports it: strong action verb + specific professional work + named methodology, tool, or component + purpose or professional objective + documented outcome. Do not fabricate a result; use "to support", "to enable", "to improve", or similar truthful purpose wording when no measured result exists.
+- STRICT GROUNDING RULE: You MUST NOT invent an objective, outcome, purpose, business impact, user impact, scope, stakeholder involvement, methodology, or tool.
+- Do NOT add phrases like "to identify...", "to improve...", "resulting in...", or "in order to..." unless that exact purpose or outcome is explicitly stated in the source resume facts.
+- If the source bullet does not state a purpose or outcome, the rewritten bullet MUST NOT state one. A conservative, safe rewrite is always preferred over an impressive but unsupported hallucination.
+- Prefer this truthful structure when the source supports it: strong action verb + specific professional work + named methodology/tool.
 - Return a confidence level: High only when every material detail is directly stated in the original bullet; Medium when the rewrite is a conservative wording inference from the original; Low only when the source is too vague for a confident rewrite (and normally omit that bullet instead).
 - Surface technical contribution only when the original bullet explicitly provides the relevant technologies, tools, components, methods, or domain context. Do not add technical detail that is not in the supplied bullet.
-- Strict Grounding: Do NOT invent or exaggerate projects, technologies, tools, employers, companies, certifications, scope, seniority, ownership, outcomes, or metrics.
 - Do not reduce the impact of the original bullet. Preserve all quantified metrics (e.g., 34%, 5,000-person) and original factual strength exactly as provided.
 - You may improve clarity using metrics, outcomes, or information from elsewhere in the candidate's resume ONLY when the relationship is unambiguous and the resulting statement remains factually supported by the resume as a whole. Do NOT invent or exaggerate metrics not found in the resume.
 - Keep each rewrite to one concise resume bullet. Do not add explanations, section headings, contact information, URLs, emails, phone numbers, or LinkedIn references.
-- If a bullet cannot be safely strengthened from its supplied content, omit it instead of inventing detail.
+- If a stronger rewrite cannot be safely generated without hallucinating unsupported details, simply return a conservative rewrite that cleans up the grammar/verbs of the original bullet, or omit the bullet entirely.
 
 Required JSON Schema:
 {

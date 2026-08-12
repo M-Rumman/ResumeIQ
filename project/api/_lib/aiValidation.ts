@@ -1,17 +1,17 @@
 import { containsPhoneNumber } from './resumeParser.js';
 import { scoreBulletQuality, bulletQualityImprovements, buildDetailedBulletTeachingGuide } from './analysis-engine/bulletScoring.js';
 
-type RewritePair = {
-  before?: unknown;
-  after?: unknown;
-  confidence?: unknown;
-  beforeScore?: number;
-  afterScore?: number;
-  improvementScore?: number;
-  improvements?: string[];
-  whyWeak?: string[];
-  missingInformation?: string[];
-  whyStronger?: string[];
+export type RewritePair = {
+  before: string;
+  after: string;
+  confidence: 'High' | 'Medium' | 'Low';
+  beforeScore: number;
+  afterScore: number;
+  improvementScore: number;
+  improvements: string[];
+  whyWeak: string[];
+  missingInformation: string[];
+  whyStronger: string[];
 };
 export type ValidationTelemetry = {
   acceptedRecommendations: number;
@@ -316,25 +316,28 @@ export function validateHiringManagerAssessment(
   };
 }
 
-function validateRewrites(values: unknown, resumeText: string, targetKeywords: string[]): RewritePair[] {
+export function validateRewrites(values: unknown, resumeText: string, targetKeywords: string[]): RewritePair[] {
   if (!Array.isArray(values)) return [];
   const source = normalize(resumeText);
   const accepted: RewritePair[] = [];
 
   for (const value of values) {
     if (!value || typeof value !== 'object') continue;
-    const pair = value as RewritePair;
+    const pair = value as Record<string, unknown>;
     const before = typeof pair.before === 'string' ? pair.before.trim() : '';
     const after = typeof pair.after === 'string' ? pair.after.trim() : '';
     if (!before || !after || !source.includes(normalize(before))) continue;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
     // A rewrite may synthesize appropriately from across the resume,
     // so we check for hallucinated metrics against the entire resume text.
-    const hasInvented = hasInventedMetric(after, resumeText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, resumeText);
+    // However, named technical terms MUST be supported by the original bullet itself.
+    const hasInvented = hasInventedMetric(after, resumeText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, before);
     const beforeQuality = scoreBulletQuality(before, targetKeywords);
     const afterQuality = scoreBulletQuality(after, targetKeywords);
     
-    if (afterQuality.total <= beforeQuality.total || hasInvented) {
+    // We accept a rewrite if it's strictly better, OR if it has the same score but isn't worse (e.g. cleans up grammar).
+    // The previous bug was rejecting equal score improvements.
+    if (afterQuality.total < beforeQuality.total || hasInvented) {
       accepted.push({
         before,
         after: before, // Fall back to original
@@ -356,7 +359,7 @@ function validateRewrites(values: unknown, resumeText: string, targetKeywords: s
     const guide = buildDetailedBulletTeachingGuide({ before, after }, targetKeywords);
     
     const rawConfidence = typeof pair.confidence === 'string' ? pair.confidence : 'High';
-    const confidence = ['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High';
+    const confidence = (['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High') as 'High' | 'Medium' | 'Low';
     
     accepted.push({
       before,

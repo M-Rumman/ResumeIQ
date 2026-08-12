@@ -4,6 +4,7 @@ import { matchRequirements, getDeterministicMatches } from './matcher.js';
 import { evaluateScores } from './evaluator.js';
 import { generateRecommendations } from './recommendations.js';
 import { validateAndSanitizeReport } from './validator.js';
+import { validateRewrites } from '../aiValidation.js';
 import type { PipelineContext, EngineResult, AiResumeAnalysisFull } from './types.js';
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { ParsedResume, KeywordCompatibility } from '../openrouter.js';
@@ -143,10 +144,7 @@ export async function runAnalysisPipeline(
   const allStrongSkills = [...exactSkills, ...semanticSkills];
 
   const formatSuggestion = (r: any) => {
-    const whatText = r.type === 'weak_bullet' 
-      ? `Reword your experience to explicitly highlight ${r.requirement}` 
-      : `Explicitly add ${r.requirement}`;
-    return `**What**: ${whatText}.\n**Why**: ${r.whyItMatters}\n**Where**: ${r.whereToAdd}\n**Evidence**: ${r.evidenceStatus}\n**Note**: ${r.fabricationWarning}`;
+    return `**What**: ${r.recommendedAction || 'Improve this area'}.\n**Why**: ${r.whyItMatters}\n**Where**: ${r.whereToAdd}\n**Evidence**: ${r.evidenceStatus}\n**Note**: ${r.fabricationWarning}`;
   };
   const improvements = recommendationResult.recommendations.map(formatSuggestion);
 
@@ -202,7 +200,7 @@ export async function runAnalysisPipeline(
     formattingIssues: [],
     formattingSuggestions: [],
     weakBullets: bulletRewrites.weakBullets,
-    improvedBulletPoints: bulletRewrites.improvedBulletPoints,
+    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name)),
     improvementSuggestions: improvements,
     optimizationRecommendations: improvements,
     keywordSuggestions: allMissingSkills,

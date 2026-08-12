@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
-import { matchRequirements } from '../../api/_lib/analysis-engine/matcher.js';
+import { matchRequirements, getDeterministicMatches } from '../../api/_lib/analysis-engine/matcher.js';
 import { parseJobDescription } from '../../api/_lib/analysis-engine/jdParser.js';
 
 const priyaResume = `
@@ -110,7 +110,8 @@ export async function testPriyaRegression() {
   assert.ok(!blankReq, 'No blank requirement should reach the matcher');
   
   // 3. Match Requirements
-  const { matches } = await matchRequirements(, , { matches: [], unmatchedRequirements: .requirements, prioritizedFacts: .facts });
+  const deterministicResult = getDeterministicMatches(jobProfile, candidateProfile);
+  const { matches } = await matchRequirements(jobProfile, candidateProfile, deterministicResult);
 
   // Helper to find match by a substring of its name
   const findMatch = (nameSubstr: string) => {

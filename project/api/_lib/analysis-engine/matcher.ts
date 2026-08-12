@@ -63,8 +63,63 @@ CRITICAL RULES:
 - You may use logical deduction to assign UNDER_EXPRESSED if the evidence implies the capability, but if the evidence is direct and strong, classify as STRONG_SEMANTIC_MATCH even if terminology differs.
 - Do not upgrade a requirement merely because related words appear. The classification must remain evidence-grounded.
 - "B.A." vs "Bachelor's degree" is an EXACT_MATCH or STRONG_SEMANTIC_MATCH.
-- If a location matches but the work mode (e.g. remote, hybrid) is unverified in the resume, classify as PARTIAL_MATCH.
+- If a location matches but the work mode (e.g. remote, hybrid) is unverified in the resume, classify as EXACT_MATCH and note the missing mode in the explanation. Do NOT downgrade to PARTIAL_MATCH or treat it as a generic skill.
 `;
+
+export function scoreFactForRequirement(fact: CandidateFact, req: import('./types.js').JobRequirement, baseClassification: MatchClassification = 'EXACT_MATCH'): number {
+  let score = 0;
+  const rawLower = fact.rawText.toLowerCase();
+  const reqNameLower = req.normalized_name.toLowerCase();
+  const factClean = fact.normalizedName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const reqClean = reqNameLower.replace(/[^a-z0-9]/g, '');
+  
+  const priorityScore = (10 - (FACT_PRIORITY[fact.type] || 9)) * 1000;
+  score += priorityScore;
+  
+  if (baseClassification === 'EXACT_MATCH') score += 5000;
+  if (factClean === reqClean || rawLower === reqNameLower) score += 2000;
+  
+  const rawLowerPadded = ' ' + rawLower.replace(/[.,;:()]/g, ' ') + ' ';
+  if (rawLowerPadded.includes(` ${reqNameLower} `)) score += 1000;
+
+  if (/\b\d+\b/.test(rawLower)) {
+    score += 500;
+    if ((reqNameLower.includes('scale') || reqNameLower.includes('research operations')) && /\b\d{4,}\b|\d+,\d{3}/.test(rawLower)) {
+      score += 10000;
+    }
+    if ((reqNameLower.includes('mentor') || reqNameLower.includes('lead') || reqNameLower.includes('manage')) && /\b[1-9]\d?\b/.test(rawLower)) {
+      score += 2000;
+    }
+  }
+
+  if (fact.type === 'experience' || fact.type === 'project') {
+    if (rawLower.split(' ').length > 8) {
+      score += 300;
+    }
+  }
+
+  if (req.category === 'domain') {
+    if (fact.type === 'experience' || fact.type === 'other' || fact.type === 'project') {
+      score += 2000;
+    }
+  }
+  
+  if (reqNameLower.includes('executive') || reqNameLower.includes('stakeholder') || reqNameLower.includes('presentation') || reqNameLower.includes('leadership')) {
+     if (rawLower.includes('c-suite') || rawLower.includes('vp') || rawLower.includes('executive') || rawLower.includes('director')) {
+       score += 5000;
+     }
+     if (fact.type === 'experience') score += 1000;
+  }
+  
+  const reqWords = reqNameLower.split(/\s+/).filter(w => w.length > 3);
+  let wordMatches = 0;
+  for (const w of reqWords) {
+    if (rawLower.includes(w)) wordMatches++;
+  }
+  score += (wordMatches * 100);
+
+  return score;
+}
 
 export function getDeterministicMatches(job: JobProfile, candidate: CandidateProfile) {
   const matches: RequirementMatch[] = [];
@@ -144,23 +199,27 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
         // Use total experience years across all facts
         if (totalExperienceYears >= req.minimum_years) {
            isExact = true;
-           matchedStrength = 'STRONG_SEMANTIC_MATCH';
+           matchedStrength = 'EXACT_MATCH';
         } else if (fact.employment_duration_years >= req.minimum_years) {
            isExact = true;
-           matchedStrength = 'STRONG_SEMANTIC_MATCH';
+           matchedStrength = 'EXACT_MATCH';
         }
       }
 
       // 1e. Location Matching
       if (req.category === 'location') {
-        // Split out hybrid/remote tags and prefixes
-        const baseLocation = reqNameLower.replace(/^location:\s*/gi, '').replace(/\((hybrid|remote|onsite).*?\)/gi, '').trim();
-        if (baseLocation && rawLower.includes(baseLocation)) {
-          isExact = true;
-          if (reqNameLower.includes('hybrid') || reqNameLower.includes('remote')) {
-            if (!rawLower.includes('hybrid') && !rawLower.includes('remote')) {
-              matchedStrength = 'PARTIAL_MATCH'; // Location matches, but mode is unverified
-            }
+        const reqStr = reqNameLower.replace(/^location:\s*/gi, '').trim();
+        const baseLocationStr = reqStr.replace(/\((hybrid|remote|onsite).*?\)/gi, '').replace(/[—-].*$/g, '').trim();
+        const parts = baseLocationStr.split(',').map(p => p.trim()).filter(Boolean);
+        
+        if (parts.length > 0) {
+          let matchedParts = 0;
+          for (const p of parts) {
+            if (rawLower.includes(p)) matchedParts++;
+          }
+          if (matchedParts > 0) {
+            isExact = true;
+            matchedStrength = matchedParts === parts.length ? 'EXACT_MATCH' : 'PARTIAL_MATCH';
           }
         }
       }
@@ -184,7 +243,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       if (reqNameLower.includes('scale') || reqNameLower.includes('research operations')) {
         if (rawLower.includes('scale') || rawLower.includes('research operations') || /\b\d{4,}\b|\d+,\d{3}/.test(rawLower)) {
           isExact = true;
-          matchedStrength = 'STRONG_SEMANTIC_MATCH';
+          matchedStrength = 'EXACT_MATCH';
         }
       }
 
@@ -200,24 +259,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
 
       if (isExact) {
         // Calculate a score to pick the best deterministic match
-        let score = 0;
-        
-        // 1. Base score from priority (Experience > Quantified > Education > Skills)
-        const priorityScore = (10 - (FACT_PRIORITY[fact.type] || 9)) * 100; // e.g., Experience = 900, Skill = 400
-        score += priorityScore;
-        
-        // 2. Quantified Achievement Evidence
-        if (/\d+/.test(rawLower)) {
-          score += 20;
-          if (fact.type === 'experience') {
-             score += 500; // Quantified experience is highly preferred
-             if (reqNameLower.includes('scale') && /\b\d{4,}\b|\d+,\d{3}/.test(rawLower)) {
-               score += 500;
-             }
-          }
-        }
-
-        if (matchedStrength === 'EXACT_MATCH') score += 50;
+        const score = scoreFactForRequirement(fact, req, matchedStrength);
 
         if (score > bestMatchScore) {
           bestMatchScore = score;
@@ -344,38 +386,13 @@ export async function matchRequirements(
           return fId === cId || fId.includes(cId) || cId.includes(fId);
         }) : undefined;
 
-        // ANTI-HALLUCINATION:
+        // ANTI-HALLUCINATION & EVIDENCE RANKING
         if (classification !== 'MISSING' && !validFact) {
-          const expLower = explanation.toLowerCase();
-          const reqLower = req.normalized_name.toLowerCase();
-          const reqWords = reqLower.split(/\s+/).filter(w => w.length > 3);
-          
           let bestFact: CandidateFact | undefined = undefined;
-          let maxScore = -1; // Initialize to -1 to allow 0 scores to win if it's the only one
+          let maxScore = -1; 
           
           for (const f of prioritizedFacts) {
-            let score = 0;
-            const rawLower = f.rawText.toLowerCase();
-            
-            // Base score from priority
-            score += (100 - (FACT_PRIORITY[f.type] || 99)) * 10; // priority dominates
-
-            // Score based on explanation overlap
-            const words = rawLower.split(/\s+/).filter(w => w.length > 4);
-            for (const w of words) {
-              if (expLower.includes(w)) score++;
-            }
-            
-            // Score based on requirement overlap
-            for (const w of Array.from(reqWords)) {
-              if (rawLower.includes(w as string)) score += 2;
-            }
-
-            // Boost for numbers
-            if (/\d+/.test(rawLower)) {
-              score += 15;
-            }
-            
+            const score = scoreFactForRequirement(f, req, 'EXACT_MATCH');
             if (score > maxScore) {
               maxScore = score;
               bestFact = f;
@@ -391,6 +408,33 @@ export async function matchRequirements(
           } else {
             classification = 'MISSING';
             explanation = 'Fallback: System claimed a match but could not cite valid supporting evidence from the resume.';
+          }
+        }
+
+        // If LLM selected a fact, check if there's a substantially stronger fact available 
+        if (validFact && classification !== 'MISSING') {
+          const llmScore = scoreFactForRequirement(validFact, req, classification);
+          let bestAlternative: CandidateFact | undefined;
+          let maxAltScore = llmScore + 1000; // Require alternative to be substantially better
+          
+          for (const f of prioritizedFacts) {
+             if (f.id === validFact.id) continue;
+             
+             const altScore = scoreFactForRequirement(f, req, classification);
+             
+             // Ensure the alternative actually mentions the requirement or is a deterministic match
+             const isDetMatch = (req as any)._fallbackMatch?.evidence?.[0]?.fact_id === f.id;
+             const reqWords = req.normalized_name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+             const hasKeywords = reqWords.length > 0 && reqWords.some(w => f.rawText.toLowerCase().includes(w));
+             
+             if ((isDetMatch || hasKeywords) && altScore > maxAltScore) {
+                maxAltScore = altScore;
+                bestAlternative = f;
+             }
+          }
+          
+          if (bestAlternative) {
+             validFact = bestAlternative;
           }
         }
 
