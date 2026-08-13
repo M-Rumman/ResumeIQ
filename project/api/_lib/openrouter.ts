@@ -553,7 +553,9 @@ HIRING MANAGER ASSESSMENT:
 - The deterministic gapAnalysis, ATS drivers, and resume evidence are authoritative. Mention a missing skill only when it is a supplied job requirement and the gapAnalysis marks it MISSING or PARTIALLY MATCHED.
 - The summary must state the candidate's role alignment, biggest hiring advantage, and biggest hiring concern, with both strengths and weaknesses. Do not invent candidate facts, metrics, employers, projects, or technologies.
 - Every interview/rejection reason must connect a named job requirement or responsibility to exact resume evidence, related evidence, or a documented absence.
-- Return exactly 5 biggest improvements. Each must be specific to the target role and resume evidence. Do not assign scores, probabilities, decisions, or confidence: the backend derives those deterministically.
+- Categorize topReasonsForRejection explicitly into: "Actual hiring risk", "ATS discoverability opportunity", or "Optional wording improvement". Do not say "No material job requirement is marked as not evidenced" if you are simultaneously listing optimization opportunities without clarifying this distinction.
+- Return exactly 5 biggest improvements. Each must be specific to the target role and focus on actual candidate value, not just lexical similarity. Do not recommend wording changes for STRONG_SEMANTIC_MATCH or EXACT_MATCH requirements unless there is a genuine clarity problem. Changing the resume should provide meaningful benefit.
+- Do not assign scores, probabilities, decisions, or confidence: the backend derives those deterministically.
 
 Respond with valid JSON only.`;
 
@@ -573,22 +575,25 @@ Rules:
 - Every "after" bullet MUST begin with a strong, specific action verb. Prefer verbs relevant to the field (e.g., Developed, Designed, Researched, Negotiated, Analyzed, Managed) when they are truthful to the original bullet.
 - Produce a materially stronger bullet, not a light paraphrase. Improve the sentence's clarity, professional tone, domain specificity, and readable action-to-contribution structure while preserving the original meaning.
 - Reject synonym-only rewrites. A rewrite must add resume-supported professional context, purpose, outcome, or ownership clarity beyond merely replacing the opening verb. When the original bullet is weak, aim for a clearly visible quality improvement; make only minor edits when it is already strong.
-- STRICT GROUNDING RULE: You MUST NOT invent an objective, outcome, purpose, business impact, user impact, scope, stakeholder involvement, methodology, or tool.
+- STRICT GROUNDING RULE: You MUST NOT invent an objective, outcome, purpose, business impact, user impact, scope, stakeholder involvement, methodology, or tool. Do not invent metrics, ownership, or responsibilities.
 - Do NOT add phrases like "to identify...", "to improve...", "resulting in...", or "in order to..." unless that exact purpose or outcome is explicitly stated in the source resume facts.
+- Do not infer "designed" from "ran" unless the resume explicitly supports design ownership. Do not exaggerate ownership.
 - If the source bullet does not state a purpose or outcome, the rewritten bullet MUST NOT state one. A conservative, safe rewrite is always preferred over an impressive but unsupported hallucination.
 - Prefer this truthful structure when the source supports it: strong action verb + specific professional work + named methodology/tool.
-- Return a confidence level: High only when every material detail is directly stated in the original bullet; Medium when the rewrite is a conservative wording inference from the original; Low only when the source is too vague for a confident rewrite (and normally omit that bullet instead).
+- Return an inference type: EXPLICITLY_STATED only when every material detail is directly stated in the original bullet; STRONGLY_SUPPORTED_INFERENCE when the rewrite is a conservative wording inference from the original; UNSUPPORTED when adding information that is not present.
+- Return a confidence level: High only for EXPLICITLY_STATED; Medium for STRONGLY_SUPPORTED_INFERENCE; Low for UNSUPPORTED.
 - Surface technical contribution only when the original bullet explicitly provides the relevant technologies, tools, components, methods, or domain context. Do not add technical detail that is not in the supplied bullet.
 - Do not reduce the impact of the original bullet. Preserve all quantified metrics (e.g., 34%, 5,000-person) and original factual strength exactly as provided.
 - You may improve clarity using metrics, outcomes, or information from elsewhere in the candidate's resume ONLY when the relationship is unambiguous and the resulting statement remains factually supported by the resume as a whole. Do NOT invent or exaggerate metrics not found in the resume.
 - Keep each rewrite to one concise resume bullet. Do not add explanations, section headings, contact information, URLs, emails, phone numbers, or LinkedIn references.
-- If a stronger rewrite cannot be safely generated without hallucinating unsupported details, simply return a conservative rewrite that cleans up the grammar/verbs of the original bullet, or omit the bullet entirely.
+- NEVER claim a bullet is weak if no meaningful supported improvement exists. Do not generate a fake rewrite simply to produce an improvement.
+- If a stronger rewrite cannot be safely generated without hallucinating unsupported details, simply omit the bullet entirely. Do not list it in weakBullets.
 
 Required JSON Schema:
 {
   "weakBullets": ["string"],
   "improvedBulletPoints": [
-    { "before": "string", "after": "string", "confidence": "High" | "Medium" | "Low" }
+    { "before": "string", "after": "string", "inferenceType": "EXPLICITLY_STATED" | "STRONGLY_SUPPORTED_INFERENCE" | "UNSUPPORTED", "confidence": "High" | "Medium" | "Low" }
   ]
 }
 

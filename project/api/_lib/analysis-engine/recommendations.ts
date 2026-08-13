@@ -25,30 +25,15 @@ export function generateRecommendations(matchingResult: MatchingResult): Recomme
   const recommendations: Recommendation[] = [];
 
   for (const match of matchingResult.matches) {
-    if (match.classification === 'EXACT_MATCH') {
+    if (match.classification === 'EXACT_MATCH' || match.classification === 'STRONG_SEMANTIC_MATCH') {
       continue;
-    } else if (match.classification === 'STRONG_SEMANTIC_MATCH') {
-      const topEvidence = match.evidence.length > 0 ? match.evidence[0].source_text : 'related experience';
-      const section = match.evidence.length > 0 ? match.evidence[0].source_section : 'Experience';
-      
-      recommendations.push({
-        id: randomUUID(),
-        type: 'weak_bullet',
-        priority: 'optional',
-        requirement: match.requirement.normalized_name,
-        recommendedAction: `Make ${match.requirement.normalized_name} more explicit in the relevant experience bullet`,
-        whyItMatters: 'While you clearly have this experience, using the exact terminology can help ATS parsers.',
-        whereToAdd: `${section} section.`,
-        evidenceStatus: `Your resume already demonstrates this through: "${topEvidence}".`,
-        fabricationWarning: 'Only update your bullet point if the context is completely accurate.'
-      });
     } else if (match.classification === 'MISSING') {
       recommendations.push({
         id: randomUUID(),
         type: 'missing_skill',
         priority: match.requirement.priority === 'required' ? 'critical' : 'optional',
         requirement: match.requirement.normalized_name,
-        recommendedAction: `Add ${match.requirement.normalized_name} to your resume if you have this experience`,
+        recommendedAction: `Suggest adding ${match.requirement.normalized_name} only if it genuinely exists elsewhere in your experience`,
         whyItMatters: `It is a ${match.requirement.priority} requirement for the role.`,
         whereToAdd: 'Experience or Skills section.',
         evidenceStatus: 'No evidence was found in your resume.',
@@ -63,7 +48,7 @@ export function generateRecommendations(matchingResult: MatchingResult): Recomme
         type: 'weak_bullet',
         priority: 'important',
         requirement: match.requirement.normalized_name,
-        recommendedAction: `Reword your experience to explicitly highlight ${match.requirement.normalized_name}`,
+        recommendedAction: `Suggest a truthful rewrite using existing facts to explicitly highlight ${match.requirement.normalized_name}`,
         whyItMatters: 'The ATS and recruiters are looking for this specific term.',
         whereToAdd: `${section} section.`,
         evidenceStatus: `You already have related experience: "${topEvidence}" (${match.explanation}).`,

@@ -143,6 +143,64 @@ const tests: TestCase[] = [
       assert.equal(qualityBreakdown?.explanation.includes('Many bullets do not start with strong action verbs.'), false, 'Critique should not be present');
       assert.equal(qualityBreakdown?.explanation.includes('Bullets start with strong action verbs and avoid passive language.'), true, 'Positive feedback should be present');
     }
+  },
+  {
+    name: 'Rounds matchScore to nearest integer but preserves raw score (82.4 / 94 -> 88%)',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
+      
+      const req1: RequirementMatch = {
+        requirement: { id: '1', category: 'experience', priority: 'required', normalized_name: 'A', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+        classification: 'EXACT_MATCH',
+        confidence: 8.24, // 10 max points * 1.0 contribution * 8.24 = 82.4 achieved points
+        evidence: [], explanation: ''
+      };
+
+      const matches: RequirementMatch[] = [req1];
+      // Add 8 MISSING required core requirements -> 80 max points, 0 achieved
+      for (let i = 0; i < 8; i++) {
+        matches.push({
+          requirement: { id: `req_${i}`, category: 'experience', priority: 'required', normalized_name: 'B', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+          classification: 'MISSING', confidence: 1, evidence: [], explanation: ''
+        });
+      }
+      // Add 4 MISSING nice_to_have requirements -> 4 max points, 0 achieved
+      for (let i = 0; i < 4; i++) {
+        matches.push({
+          requirement: { id: `nth_${i}`, category: 'experience', priority: 'nice_to_have', normalized_name: 'C', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+          classification: 'MISSING', confidence: 1, evidence: [], explanation: ''
+        });
+      }
+
+      const matchingResult: MatchingResult = { matches };
+      const evalResult = evaluateScores(job, baseCandidate, matchingResult);
+      
+      assert.equal(evalResult.matchScoreDetails.totalMaxScore, 94);
+      assert.equal(evalResult.matchScoreDetails.totalAchievedScore, 82.4);
+      assert.equal(evalResult.matchScoreDetails.rawMatchScore, 87.65957446808511);
+      assert.equal(evalResult.matchScore, 88);
+    }
+  },
+  {
+    name: 'Match score handles 100% and 0% correctly',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
+      const reqPerfect: RequirementMatch = {
+        requirement: { id: '1', category: 'hard skill', priority: 'required', normalized_name: 'A', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+        classification: 'EXACT_MATCH', confidence: 1, evidence: [], explanation: ''
+      };
+      const evalPerfect = evaluateScores(job, baseCandidate, { matches: [reqPerfect] });
+      assert.equal(evalPerfect.matchScore, 100);
+      assert.equal(evalPerfect.matchScoreDetails.rawMatchScore, 100);
+
+      const reqZero: RequirementMatch = {
+        requirement: { id: '1', category: 'hard skill', priority: 'required', normalized_name: 'A', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+        classification: 'MISSING', confidence: 1, evidence: [], explanation: ''
+      };
+      const evalZero = evaluateScores(job, baseCandidate, { matches: [reqZero] });
+      assert.equal(evalZero.matchScore, 0);
+      assert.equal(evalZero.matchScoreDetails.rawMatchScore, 0);
+    }
   }
 ];
 

@@ -5,6 +5,7 @@ export type RewritePair = {
   before: string;
   after: string;
   confidence: 'High' | 'Medium' | 'Low';
+  inferenceType: 'EXPLICITLY_STATED' | 'STRONGLY_SUPPORTED_INFERENCE' | 'UNSUPPORTED' | 'NOT_APPLICABLE';
   beforeScore: number;
   afterScore: number;
   improvementScore: number;
@@ -335,20 +336,24 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     const beforeQuality = scoreBulletQuality(before, targetKeywords);
     const afterQuality = scoreBulletQuality(after, targetKeywords);
     
-    // We accept a rewrite if it's strictly better, OR if it has the same score but isn't worse (e.g. cleans up grammar).
-    // The previous bug was rejecting equal score improvements.
-    if (afterQuality.total < beforeQuality.total || hasInvented) {
+    const improvementScore = afterQuality.total - beforeQuality.total;
+    
+    // We accept a rewrite if it's strictly better AND not invented.
+    // If it has a <= 0 improvement score or is invented/unsupported, we preserve the original
+    // and explicitly bypass any hardcoded "whyWeak" strings by NOT generating them.
+    if (improvementScore <= 0 || hasInvented) {
       accepted.push({
         before,
         after: before, // Fall back to original
         confidence: 'High',
+        inferenceType: 'NOT_APPLICABLE',
         beforeScore: beforeQuality.total,
         afterScore: beforeQuality.total,
         improvementScore: 0,
         improvements: [],
-        whyWeak: [],
+        whyWeak: ['No meaningful rewrite recommended.'],
         missingInformation: [],
-        whyStronger: ['No genuine improvement can be made without inventing unsupported information. Your original bullet has been preserved.'],
+        whyStronger: ['This bullet is already strong or cannot be safely improved without inventing facts.'],
       });
       continue;
     }
@@ -360,14 +365,36 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     
     const rawConfidence = typeof pair.confidence === 'string' ? pair.confidence : 'High';
     const confidence = (['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High') as 'High' | 'Medium' | 'Low';
+
+    const rawInferenceType = typeof pair.inferenceType === 'string' ? pair.inferenceType : 'STRONGLY_SUPPORTED_INFERENCE';
+    const inferenceType = (['EXPLICITLY_STATED', 'STRONGLY_SUPPORTED_INFERENCE', 'UNSUPPORTED'].includes(rawInferenceType) ? rawInferenceType : 'STRONGLY_SUPPORTED_INFERENCE') as 'EXPLICITLY_STATED' | 'STRONGLY_SUPPORTED_INFERENCE' | 'UNSUPPORTED';
     
+    // If the LLM self-reported it as UNSUPPORTED, discard the improvement.
+    if (inferenceType === 'UNSUPPORTED') {
+      accepted.push({
+        before,
+        after: before,
+        confidence: 'High',
+        inferenceType: 'NOT_APPLICABLE',
+        beforeScore: beforeQuality.total,
+        afterScore: beforeQuality.total,
+        improvementScore: 0,
+        improvements: [],
+        whyWeak: ['No meaningful rewrite recommended.'],
+        missingInformation: [],
+        whyStronger: ['This bullet is already strong or cannot be safely improved without inventing facts.'],
+      });
+      continue;
+    }
+
     accepted.push({
       before,
       after,
       confidence,
+      inferenceType,
       beforeScore: beforeQuality.total,
       afterScore: afterQuality.total,
-      improvementScore: afterQuality.total - beforeQuality.total,
+      improvementScore,
       improvements,
       whyWeak: guide.whyWeak,
       missingInformation: guide.missingInformation,

@@ -71,12 +71,13 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
   // Fix floating point precision issues (e.g. 98.39999999999999 -> 98.4)
   totalAchievedScore = Math.round(totalAchievedScore * 10) / 10;
 
-  const matchScore = totalMaxScore > 0 ? (totalAchievedScore / totalMaxScore) * 100 : 100;
+  const rawMatchScore = totalMaxScore > 0 ? (totalAchievedScore / totalMaxScore) * 100 : 100;
+  const matchScore = Math.round(rawMatchScore);
   
   const matchScoreDetails = {
     totalMaxScore,
     totalAchievedScore,
-    rawMatchScore: matchScore,
+    rawMatchScore,
     details: scoreDetails
   };
 

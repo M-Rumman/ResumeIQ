@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateAndSanitizeReport } from '../../api/_lib/analysis-engine/validator.js';
+import { validateRewrites } from '../../api/_lib/aiValidation.js';
 import type { AiResumeAnalysisFull } from '../../api/_lib/openrouter.js';
 import type { JobProfile, CandidateProfile } from '../../api/_lib/analysis-engine/types.js';
 
@@ -129,6 +130,77 @@ test('validator.ts strictly verifies properties', async (t: any) => {
   });
 
   await t.test('Wipes interview probability', () => {
-    assert.equal(validated.hiringManagerAssessment.estimatedInterviewProbability, 0);
+    assert.equal(validated.hiringManagerAssessment.estimatedInterviewProbability, undefined);
+  });
+});
+
+test('validateRewrites enforcement rules', async (t: any) => {
+  const resumeText = 'Worked on a personal finance app. Ran usability testing. Mentored 3 UX researchers. Led mixed-methods research resulting in 34% faster delivery.';
+  
+  await t.test('Unchanged or cosmetically changed bullet gets preserved', () => {
+    const raw = [{
+      before: 'Ran usability testing.',
+      after: 'Ran usability testing.',
+      inferenceType: 'EXPLICITLY_STATED',
+      confidence: 'High'
+    }];
+    const result = validateRewrites(raw, resumeText, []);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].improvementScore, 0);
+    assert.equal(result[0].inferenceType, 'NOT_APPLICABLE');
+    assert.deepEqual(result[0].whyWeak, ['No meaningful rewrite recommended.']);
+  });
+
+  await t.test('Stronger action verb gets accepted', () => {
+    // "Worked on a personal finance app." vs "Developed a personal finance app."
+    const raw = [{
+      before: 'Worked on a personal finance app.',
+      after: 'Developed a personal finance app.',
+      inferenceType: 'STRONGLY_SUPPORTED_INFERENCE',
+      confidence: 'Medium'
+    }];
+    const result = validateRewrites(raw, resumeText, []);
+    assert.equal(result.length, 1);
+    assert.ok(result[0].improvementScore > 0);
+    assert.equal(result[0].inferenceType, 'STRONGLY_SUPPORTED_INFERENCE');
+  });
+
+  await t.test('Unsupported metric gets rejected and falls back', () => {
+    const raw = [{
+      before: 'Ran usability testing.',
+      after: 'Ran usability testing, increasing conversion by 20%.',
+      inferenceType: 'UNSUPPORTED',
+      confidence: 'Low'
+    }];
+    const result = validateRewrites(raw, resumeText, []);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].after, 'Ran usability testing.'); // Falls back to original
+    assert.equal(result[0].whyWeak[0], 'No meaningful rewrite recommended.');
+  });
+
+  await t.test('Unsupported ownership gets rejected via UNSUPPORTED flag', () => {
+    // Inference type flagged as UNSUPPORTED should trigger rejection
+    const raw = [{
+      before: 'Ran usability testing.',
+      after: 'Designed usability testing.',
+      inferenceType: 'UNSUPPORTED',
+      confidence: 'Low'
+    }];
+    const result = validateRewrites(raw, resumeText, []);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].after, 'Ran usability testing.');
+  });
+
+  await t.test('Legitimate terminology alignment', () => {
+    const raw = [{
+      before: 'Mentored 3 UX researchers.',
+      after: 'Managed and mentored 3 UX researchers.',
+      inferenceType: 'STRONGLY_SUPPORTED_INFERENCE',
+      confidence: 'Medium'
+    }];
+    const result = validateRewrites(raw, resumeText, ['UX researchers']);
+    assert.equal(result.length, 1);
+    assert.ok(result[0].improvementScore > 0);
+    assert.equal(result[0].after, 'Managed and mentored 3 UX researchers.');
   });
 });

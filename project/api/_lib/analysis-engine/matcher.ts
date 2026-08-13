@@ -23,7 +23,7 @@ You will be given:
    - Facts are ordered by evidence strength (Experience > Education > Projects > Skills).
 
 EVIDENCE RANKING RULES:
-When multiple facts could satisfy a requirement, you MUST select the single strongest fact as the supportingFactId. Rank evidence in this exact order of priority:
+When multiple facts could satisfy a requirement, you MUST select the strongest facts as the supportingFactIds. For requirements that span time (like Years of Experience), you MUST select multiple facts that form a timeline. Rank evidence in this exact order of priority:
 1. Direct responsibility/task evidence (e.g., specific work history demonstrating the task).
 2. Evidence that explicitly demonstrates the requirement's core capability.
 3. Quantified/scaled evidence (e.g., numbers, team sizes, budgets, repository size) when the requirement involves scale.
@@ -32,18 +32,17 @@ When multiple facts could satisfy a requirement, you MUST select the single stro
 6. Generic or tangential evidence (last resort).
 
 Classify the match for EACH requirement exactly into one of these states:
-- EXACT_MATCH: The resume explicitly contains the exact requirement.
-- STRONG_SEMANTIC_MATCH: Different wording, but evidence clearly and directly demonstrates the identical capability or responsibility. Do not require lexical keyword repetition if strong factual evidence proves the requirement.
-- PARTIAL_MATCH: Some evidence exists, but lacks full depth/breadth.
+- EXACT_MATCH: The resume contains the requirement explicitly, or a deterministic structured rule proves it with high confidence. Do not classify something as EXACT merely because the semantic meaning is similar. (e.g. "Mentor junior researchers" matched by "Mentored 3 junior researchers" is an EXACT_MATCH).
+- STRONG_SEMANTIC_MATCH: The resume clearly demonstrates the requirement using different but equivalent wording. (e.g. "Running research at scale" matched by "5,000-person participant panel").
+- PARTIAL_MATCH: The resume provides some relevant evidence but does not fully satisfy the requirement.
 - RELATED_MATCH: Adjacent/tangential evidence exists but doesn't prove the specific requirement.
-- UNDER_EXPRESSED: Relevant evidence EXISTS anywhere in the resume but the evidence is materially weaker, indirect, incomplete, or lacks an important aspect of the requirement. Do NOT use this if the candidate has strong, direct factual evidence demonstrating the capability.
-- MISSING: No reasonable evidence exists anywhere in the resume, even loosely. You MUST search across ALL provided resume content before assigning this.
+- UNDER_EXPRESSED: The candidate clearly has the required experience, but the wording is insufficiently explicit for ATS/recruiter discoverability. Do NOT use this if the candidate has strong, direct factual evidence demonstrating the capability.
+- MISSING: There is no credible resume evidence supporting the requirement. You MUST search across ALL provided resume content before assigning this.
 
 Output a JSON object containing a "matches" array. Each object in the array must have:
 - requirementId: The exact ID string of the requirement.
 - classification: One of EXACT_MATCH, STRONG_SEMANTIC_MATCH, PARTIAL_MATCH, RELATED_MATCH, UNDER_EXPRESSED, MISSING.
-- supportingFactId: The exact ID string of the Candidate Fact, or null.
-- explanation: A string explaining the match.
+- supportingFactIds: An array of exact ID strings of the Candidate Facts, or an empty array.
 
 Example JSON structure:
 {
@@ -51,7 +50,7 @@ Example JSON structure:
     {
       "requirementId": "req-uuid-1",
       "classification": "EXACT_MATCH",
-      "supportingFactId": "fact-uuid-1",
+      "supportingFactIds": ["fact-uuid-1"],
       "explanation": "The candidate has..."
     }
   ]
@@ -64,6 +63,7 @@ CRITICAL RULES:
 - Do not upgrade a requirement merely because related words appear. The classification must remain evidence-grounded.
 - "B.A." vs "Bachelor's degree" is an EXACT_MATCH or STRONG_SEMANTIC_MATCH.
 - If a location matches but the work mode (e.g. remote, hybrid) is unverified in the resume, classify as EXACT_MATCH and note the missing mode in the explanation. Do NOT downgrade to PARTIAL_MATCH or treat it as a generic skill.
+- Composite requirements (e.g. "Qualitative and quantitative research methods"): classify as EXACT_MATCH only if both are explicitly stated. If only one is stated, use PARTIAL_MATCH. If combined using a broader semantic term (e.g. "mixed-methods research"), use STRONG_SEMANTIC_MATCH.
 `;
 
 export function scoreFactForRequirement(fact: CandidateFact, req: import('./types.js').JobRequirement, baseClassification: MatchClassification = 'EXACT_MATCH'): number {
@@ -84,7 +84,9 @@ export function scoreFactForRequirement(fact: CandidateFact, req: import('./type
 
   if (/\b\d+\b/.test(rawLower)) {
     score += 500;
-    if ((reqNameLower.includes('scale') || reqNameLower.includes('research operations')) && /\b\d{4,}\b|\d+,\d{3}/.test(rawLower)) {
+    // Don't match years (19xx, 20xx) as scale
+    const hasScaleNumber = /\b(?:(?!(?:19|20)\d{2}\b)\d{4,}|\d+,\d{3})\b/.test(rawLower);
+    if ((reqNameLower.includes('scale') || reqNameLower.includes('research operations')) && hasScaleNumber) {
       score += 10000;
     }
     if ((reqNameLower.includes('mentor') || reqNameLower.includes('lead') || reqNameLower.includes('manage')) && /\b[1-9]\d?\b/.test(rawLower)) {
@@ -94,7 +96,7 @@ export function scoreFactForRequirement(fact: CandidateFact, req: import('./type
 
   if (fact.type === 'experience' || fact.type === 'project') {
     if (rawLower.split(' ').length > 8) {
-      score += 300;
+      score += 2500; // Prefer descriptive bullets over short headings
     }
   }
 
@@ -168,7 +170,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
         const stem = reqNameLower.replace(/(ing|ed|s|ship)$/, '');
         if (stem.length > 3 && rawLower.includes(stem)) {
           isExact = true;
-          matchedStrength = 'STRONG_SEMANTIC_MATCH';
+          matchedStrength = 'EXACT_MATCH';
         }
       }
 
@@ -241,19 +243,43 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
 
       // 1g. Scale / Research Operations
       if (reqNameLower.includes('scale') || reqNameLower.includes('research operations')) {
-        if (rawLower.includes('scale') || rawLower.includes('research operations') || /\b\d{4,}\b|\d+,\d{3}/.test(rawLower)) {
+        if (rawLower.includes('scale') || rawLower.includes('research operations')) {
           isExact = true;
           matchedStrength = 'EXACT_MATCH';
+        } else if (/\b(?:(?!(?:19|20)\d{2}\b)\d{4,}|\d+,\d{3})\b/.test(rawLower)) {
+          isExact = true;
+          matchedStrength = 'STRONG_SEMANTIC_MATCH';
         }
       }
 
       // 1h. Specific Responsibilities Matching
       if (req.category === 'responsibility') {
         if (reqNameLower.includes('data science') && rawLower.includes('data science')) isExact = true;
-        if (reqNameLower.includes('senior leadership') && (rawLower.includes('vp') || rawLower.includes('c-suite') || rawLower.includes('director'))) isExact = true;
+        if (reqNameLower.includes('senior leadership') && (rawLower.includes('vp') || rawLower.includes('c-suite') || rawLower.includes('director'))) {
+             isExact = true;
+             matchedStrength = 'STRONG_SEMANTIC_MATCH';
+        }
         if (reqNameLower.includes('end-to-end') && rawLower.includes('generative') && rawLower.includes('evaluative')) {
            isExact = true;
            matchedStrength = 'STRONG_SEMANTIC_MATCH';
+        }
+      }
+
+      // 1i. Qualitative and Quantitative Composite Matching
+      if (reqNameLower.includes('qualitative') && reqNameLower.includes('quantitative')) {
+        const hasQual = rawLower.includes('qualitative');
+        const hasQuant = rawLower.includes('quantitative');
+        const hasMixed = rawLower.includes('mixed-methods') || rawLower.includes('mixed methods');
+        
+        if (hasQual && hasQuant) {
+          isExact = true;
+          matchedStrength = 'EXACT_MATCH';
+        } else if (hasMixed) {
+          isExact = true;
+          matchedStrength = 'STRONG_SEMANTIC_MATCH';
+        } else if (hasQual || hasQuant) {
+          isExact = true;
+          matchedStrength = 'PARTIAL_MATCH';
         }
       }
 
@@ -263,18 +289,35 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
 
         if (score > bestMatchScore) {
           bestMatchScore = score;
-          bestExactMatch = {
-            requirement: req,
-            classification: matchedStrength,
-            confidence: 1.0,
-            explanation: 'Deterministic or structured heuristic match found in resume.',
-            evidence: [{
+          
+          let evidence: MatchEvidence[] = [];
+          if (req.minimum_years && totalExperienceYears >= req.minimum_years) {
+            // For total years, use all experience facts with duration as evidence
+            evidence = candidate.facts
+              .filter(f => f.type === 'experience' && f.employment_duration_years)
+              .map(f => ({
+                source_section: f.sourceSection,
+                source_text: f.rawText,
+                fact_id: f.id,
+                relevance: 'direct',
+                evidence_strength: 'primary'
+              }));
+          } else {
+            evidence = [{
               source_section: fact.sourceSection,
               source_text: fact.rawText,
               fact_id: fact.id,
               relevance: 'direct',
               evidence_strength: FACT_PRIORITY[fact.type] <= 3 ? 'primary' : 'secondary'
-            }]
+            }];
+          }
+
+          bestExactMatch = {
+            requirement: req,
+            classification: matchedStrength,
+            confidence: 1.0,
+            explanation: 'Deterministic or structured heuristic match found in resume.',
+            evidence
           };
         }
       }
@@ -316,6 +359,7 @@ export async function matchRequirements(
   const { matches, unmatchedRequirements, prioritizedFacts } = deterministicResult;
 
   // 2. LLM Verification Pass - BATCHED
+  if (unmatchedRequirements.length > 0) {
     try {
       const factListStr = prioritizedFacts.map(f => {
         let meta = `[ID: ${f.id}] [Section: ${f.sourceSection}]`;
@@ -376,18 +420,32 @@ export async function matchRequirements(
         }
 
         let classification: MatchClassification = parsedMatch.classification || 'MISSING';
-        const citedFactId: string | null = parsedMatch.supportingFactId ? String(parsedMatch.supportingFactId) : null;
+        let citedFactIds: string[] = [];
+        if (Array.isArray(parsedMatch.supportingFactIds)) {
+          citedFactIds = parsedMatch.supportingFactIds.map(String);
+        } else if (parsedMatch.supportingFactId) {
+          citedFactIds = [String(parsedMatch.supportingFactId)]; // Fallback if LLM uses old key
+        } else if (parsedMatch.supportingFactIds && typeof parsedMatch.supportingFactIds === 'string') {
+          citedFactIds = [parsedMatch.supportingFactIds];
+        }
+
         let explanation: string = parsedMatch.explanation || '';
 
         // Robust Fact Lookup
-        let validFact = citedFactId ? candidate.facts.find(f => {
-          const fId = f.id.toLowerCase();
-          const cId = citedFactId.toLowerCase();
-          return fId === cId || fId.includes(cId) || cId.includes(fId);
-        }) : undefined;
+        let validFacts: CandidateFact[] = [];
+        for (const cId of citedFactIds) {
+          const cIdLower = cId.toLowerCase();
+          const found = candidate.facts.find(f => {
+            const fId = f.id.toLowerCase();
+            return fId === cIdLower || fId.includes(cIdLower) || cIdLower.includes(fId);
+          });
+          if (found && !validFacts.some(v => v.id === found.id)) {
+            validFacts.push(found);
+          }
+        }
 
         // ANTI-HALLUCINATION & EVIDENCE RANKING
-        if (classification !== 'MISSING' && !validFact) {
+        if (classification !== 'MISSING' && validFacts.length === 0) {
           let bestFact: CandidateFact | undefined = undefined;
           let maxScore = -1; 
           
@@ -400,7 +458,7 @@ export async function matchRequirements(
           }
           
           if (maxScore > 0) {
-            validFact = bestFact;
+            if (bestFact) validFacts.push(bestFact);
             if (classification === 'EXACT_MATCH' || classification === 'STRONG_SEMANTIC_MATCH') {
               classification = 'UNDER_EXPRESSED';
               explanation += ' (Note: Explicit citation missing; fallback evidence used.)';
@@ -411,8 +469,9 @@ export async function matchRequirements(
           }
         }
 
-        // If LLM selected a fact, check if there's a substantially stronger fact available 
-        if (validFact && classification !== 'MISSING') {
+        // If LLM selected a single fact, check if there's a substantially stronger fact available 
+        if (validFacts.length === 1 && classification !== 'MISSING') {
+          const validFact = validFacts[0];
           const llmScore = scoreFactForRequirement(validFact, req, classification);
           let bestAlternative: CandidateFact | undefined;
           let maxAltScore = llmScore + 1000; // Require alternative to be substantially better
@@ -423,7 +482,7 @@ export async function matchRequirements(
              const altScore = scoreFactForRequirement(f, req, classification);
              
              // Ensure the alternative actually mentions the requirement or is a deterministic match
-             const isDetMatch = (req as any)._fallbackMatch?.evidence?.[0]?.fact_id === f.id;
+             const isDetMatch = (req as any)._fallbackMatch?.evidence?.some((e: any) => e.fact_id === f.id);
              const reqWords = req.normalized_name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
              const hasKeywords = reqWords.length > 0 && reqWords.some(w => f.rawText.toLowerCase().includes(w));
              
@@ -434,19 +493,21 @@ export async function matchRequirements(
           }
           
           if (bestAlternative) {
-             validFact = bestAlternative;
+             validFacts = [bestAlternative];
           }
         }
 
         let evidence: MatchEvidence[] = [];
-        if (validFact && classification !== 'MISSING') {
-          evidence.push({
-            source_section: validFact.sourceSection,
-            source_text: validFact.rawText,
-            fact_id: validFact.id,
-            relevance: 'semantic',
-            evidence_strength: FACT_PRIORITY[validFact.type] <= 3 ? 'primary' : 'secondary'
-          });
+        if (validFacts.length > 0 && classification !== 'MISSING') {
+          for (const f of validFacts) {
+            evidence.push({
+              source_section: f.sourceSection,
+              source_text: f.rawText,
+              fact_id: f.id,
+              relevance: 'semantic',
+              evidence_strength: FACT_PRIORITY[f.type] <= 3 ? 'primary' : 'secondary'
+            });
+          }
         }
 
         // Check fallback if LLM failed to find a valid strong match
@@ -464,9 +525,9 @@ export async function matchRequirements(
           evidence
         });
       }
-
-    } catch (error) {
-      console.error(`[matcher] Failed to evaluate batched requirements`, error);
+    } catch (err: any) {
+      console.error('[matcher] Failed to evaluate batched requirements', err);
+      // Fallback: assign remaining unmatched with their deterministic fallback or MISSING
       for (const req of unmatchedRequirements) {
         if ((req as any)._fallbackMatch) {
           matches.push((req as any)._fallbackMatch);
@@ -475,12 +536,15 @@ export async function matchRequirements(
             requirement: req,
             classification: 'ANALYSIS_FAILED',
             confidence: 0,
-            explanation: 'Analysis failed for this requirement.',
+            explanation: 'LLM evaluation failed.',
             evidence: []
           });
         }
       }
     }
+  } else {
+    // No unmatched requirements, skip LLM
+  }
 
   return { matches };
 }
