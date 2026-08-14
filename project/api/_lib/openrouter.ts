@@ -445,10 +445,34 @@ export function extractJsonFromText(text: string): unknown {
   try {
     return JSON.parse(candidate);
   } catch {
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
+    const firstBrace = candidate.indexOf('{');
+    const firstBracket = candidate.indexOf('[');
+    
+    let start = -1;
+    let end = -1;
+    
+    if (firstBrace >= 0 && firstBracket >= 0) {
+      if (firstBrace < firstBracket) {
+        start = firstBrace;
+        end = candidate.lastIndexOf('}');
+      } else {
+        start = firstBracket;
+        end = candidate.lastIndexOf(']');
+      }
+    } else if (firstBrace >= 0) {
+      start = firstBrace;
+      end = candidate.lastIndexOf('}');
+    } else if (firstBracket >= 0) {
+      start = firstBracket;
+      end = candidate.lastIndexOf(']');
+    }
+
     if (start >= 0 && end > start) {
-      return JSON.parse(candidate.slice(start, end + 1));
+      try {
+        return JSON.parse(candidate.slice(start, end + 1));
+      } catch {
+        // Fall through
+      }
     }
     throw new Error('Could not parse JSON from model output');
   }
