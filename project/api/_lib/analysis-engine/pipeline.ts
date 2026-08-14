@@ -20,12 +20,14 @@ export async function runAnalysisPipeline(
   // (DB preflight is tracked in analyze-resume.ts)
 
   // 1. Extraction (Parallel)
+  console.info('[analysis-trace] JD_PARSE_START');
   const extractStart = performance.now();
   const [jobProfile, candidateProfile] = await Promise.all([
     parseJobDescription(context.jobDescriptionText, options),
     context.candidateProfile ? Promise.resolve(context.candidateProfile) : Promise.resolve(extractCandidateProfile(context.resumeText))
   ]);
   const extractEnd = performance.now();
+  console.info(`[analysis-trace] JD_PARSE_END durationMs=${Math.round(extractEnd - extractStart)}`);
 
   // Create a ParsedResume object for legacy compat
   const parsedResume: ParsedResume = {
@@ -76,6 +78,7 @@ export async function runAnalysisPipeline(
   }
 
   // 3. Premium Deep Analysis
+  console.info('[analysis-trace] MATCHER_REWRITER_START');
   const matcherStart = performance.now();
   const deterministicResult = getDeterministicMatches(jobProfile, candidateProfile);
 
@@ -106,6 +109,7 @@ export async function runAnalysisPipeline(
     })
   ]);
   const matcherEnd = performance.now();
+  console.info(`[analysis-trace] MATCHER_REWRITER_END durationMs=${Math.round(matcherEnd - matcherStart)}`);
 
   const evaluatorStart = performance.now();
   const evaluationResult = evaluateScores(jobProfile, candidateProfile, matchingResult);

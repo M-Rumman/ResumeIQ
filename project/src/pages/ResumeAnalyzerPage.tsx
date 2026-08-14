@@ -617,6 +617,9 @@ function analysisErrorMessage(error: unknown): string {
     if (error.pipelineError.code === 'UNAUTHORIZED_API_KEY') {
       return 'OpenRouter rejected your API key. Please check your environment variables or create a new key at openrouter.ai/keys.';
     }
+    if (error.pipelineError.code === 'INTERNAL_SERVER_ERROR') {
+      return 'An unexpected system error occurred during analysis. Please try again in a few moments.';
+    }
 
     switch (error.pipelineError.stage) {
       case 'parser':
@@ -649,6 +652,8 @@ function analysisErrorMessage(error: unknown): string {
       return 'Too many analysis requests were made. Please wait a moment and try again.';
     case 'service_unavailable':
       return 'Resume analysis is temporarily unavailable because the AI service is unavailable. Please try again in a few moments.';
+    case 'internal_server_error':
+      return 'An unexpected system error occurred during analysis. Please try again in a few moments.';
     case 'malformed_response':
       return 'Resume analysis returned an incomplete response. Please try again in a few moments.';
     default:

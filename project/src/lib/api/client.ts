@@ -6,6 +6,7 @@ export type ApiRequestErrorCode =
   | 'unauthorized'
   | 'rate_limited'
   | 'service_unavailable'
+  | 'internal_server_error'
   | 'malformed_response'
   | 'request_failed';
 
@@ -29,7 +30,9 @@ export class ApiRequestError extends Error {
 function errorCodeForStatus(status: number): ApiRequestErrorCode {
   if (status === 401) return 'unauthorized';
   if (status === 429) return 'rate_limited';
-  if (status === 502 || status === 503 || status === 504) return 'service_unavailable';
+  if (status === 504) return 'timeout';
+  if (status === 500) return 'internal_server_error';
+  if (status === 502 || status === 503) return 'service_unavailable';
   return 'request_failed';
 }
 

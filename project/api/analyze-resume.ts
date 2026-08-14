@@ -188,6 +188,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       code: 'REQUEST_FAILED',
       totalDurationMs: Date.now() - observability.startedAt,
     });
-    return respondError(res, 502, CLIENT_ERRORS.AI_ANALYSIS);
+    return res.status(502).json({
+      error: 'An unexpected internal error occurred during analysis.',
+      pipelineError: { stage: 'analyzer', code: 'INTERNAL_SERVER_ERROR' },
+    });
   }
 }
