@@ -33,6 +33,9 @@ const DEFAULT_MODEL = 'google/gemini-1.5-flash';
 
 const MODEL_FALLBACKS = [
   'google/gemma-4-26b-a4b-it:free',
+  'google/gemma-2-9b-it:free',
+  'meta-llama/llama-3-8b-instruct:free',
+  'microsoft/phi-3-mini-128k-instruct:free',
 ] as const;
 
 function hasSourceSummaryHeader(resumeText: string): boolean {
