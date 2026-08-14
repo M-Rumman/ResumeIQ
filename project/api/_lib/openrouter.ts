@@ -446,35 +446,34 @@ export function extractJsonFromText(text: string): unknown {
   try {
     return JSON.parse(candidate);
   } catch {
-    const firstBrace = candidate.indexOf('{');
-    const firstBracket = candidate.indexOf('[');
-    
-    let start = -1;
-    let end = -1;
-    
-    if (firstBrace >= 0 && firstBracket >= 0) {
-      if (firstBrace < firstBracket) {
-        start = firstBrace;
-        end = candidate.lastIndexOf('}');
-      } else {
-        start = firstBracket;
-        end = candidate.lastIndexOf(']');
+    // Attempt to extract by finding matching open/close pairs.
+    // We try to find the outermost complete JSON object or array.
+    const extractAttempt = (startChar: string, endChar: string) => {
+      let firstIdx = candidate.indexOf(startChar);
+      
+      while (firstIdx >= 0) {
+        let lastIdx = candidate.lastIndexOf(endChar);
+        while (lastIdx > firstIdx) {
+          try {
+            const slice = candidate.slice(firstIdx, lastIdx + 1);
+            return JSON.parse(slice);
+          } catch {
+            // Shrink from the right
+            lastIdx = candidate.lastIndexOf(endChar, lastIdx - 1);
+          }
+        }
+        // Shrink from the left
+        firstIdx = candidate.indexOf(startChar, firstIdx + 1);
       }
-    } else if (firstBrace >= 0) {
-      start = firstBrace;
-      end = candidate.lastIndexOf('}');
-    } else if (firstBracket >= 0) {
-      start = firstBracket;
-      end = candidate.lastIndexOf(']');
-    }
+      return null;
+    };
 
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(candidate.slice(start, end + 1));
-      } catch {
-        // Fall through
-      }
-    }
+    let result = extractAttempt('{', '}');
+    if (result !== null) return result;
+
+    result = extractAttempt('[', ']');
+    if (result !== null) return result;
+
     throw new Error('Could not parse JSON from model output');
   }
 }
