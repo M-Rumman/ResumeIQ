@@ -1,4 +1,4 @@
-import type { CandidateProfile, JobProfile, MatchingResult, EvaluationResult, AtsDisplayBreakdownItem, MatchClassification, JobRequirement } from './types.js';
+import type { CandidateProfile, JobProfile, MatchingResult, EvaluationResult, AtsDisplayBreakdownItem, MatchClassification, JobRequirement, CanonicalRequirements } from './types.js';
 
 function getRequirementWeight(req: JobRequirement): number {
   const isCore = ['experience', 'education', 'domain', 'responsibility', 'seniority', 'years', 'location'].includes(req.category);
@@ -25,7 +25,7 @@ function getMatchContribution(classification: MatchClassification): number {
   }
 }
 
-export function evaluateScores(job: JobProfile, candidate: CandidateProfile, matchingResult: MatchingResult): EvaluationResult {
+export function evaluateScores(job: JobProfile, candidate: CandidateProfile, canonical: CanonicalRequirements | MatchingResult): EvaluationResult {
   // 1. Job Match Scoring (Mathematically calculated from requirements)
   let totalMaxScore = 0;
   let totalAchievedScore = 0;
@@ -33,17 +33,23 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, mat
   const weaknesses: string[] = [];
   const scoreDetails = [];
 
-  for (const match of matchingResult.matches) {
+  const matchesArray = 'all' in canonical ? canonical.all : canonical.matches;
+
+  for (const match of matchesArray) {
     const weight = getRequirementWeight(match.requirement);
     const contribution = getMatchContribution(match.classification);
     const confidence = match.confidence > 0 ? match.confidence : 1.0;
     
-    const maxPoints = weight * 10;
+    // Invariant: Failed analysis must not silently contribute zero points as a genuine mismatch.
+    const isFailed = match.classification === 'ANALYSIS_FAILED';
+    const maxPoints = isFailed ? 0 : weight * 10;
     const rawAchieved = maxPoints * contribution * confidence;
     const achievedPoints = Math.round(rawAchieved * 10) / 10;
 
-    totalMaxScore += maxPoints;
-    totalAchievedScore += achievedPoints;
+    if (!isFailed) {
+      totalMaxScore += maxPoints;
+      totalAchievedScore += achievedPoints;
+    }
     
     scoreDetails.push({
       requirement: match.requirement.normalized_name,

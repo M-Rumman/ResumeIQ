@@ -74,12 +74,16 @@ export type MatchClassification =
   | 'MISSING'
   | 'ANALYSIS_FAILED';
 
+export type MatchTier = 'tier_1_deterministic' | 'tier_2_lexical' | 'tier_3_semantic';
+
 export interface MatchEvidence {
   source_section: string;
   source_text: string;
   fact_id: string;
   relevance: string;
   evidence_strength: 'primary' | 'secondary' | 'weak';
+  evidence_type: string;
+  evidence_tier: MatchTier;
 }
 
 export interface RequirementMatch {
@@ -88,10 +92,21 @@ export interface RequirementMatch {
   confidence: number;
   evidence: MatchEvidence[];
   explanation: string;
+  match_tier: MatchTier;
 }
 
 export interface MatchingResult {
   matches: RequirementMatch[];
+}
+
+export interface CanonicalRequirements {
+  exact: RequirementMatch[];
+  semantic: RequirementMatch[];
+  partial: RequirementMatch[];
+  missingCore: RequirementMatch[];
+  missingPreferred: RequirementMatch[];
+  analysisFailed: RequirementMatch[];
+  all: RequirementMatch[];
 }
 
 // ==========================================

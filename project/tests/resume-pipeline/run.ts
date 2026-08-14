@@ -1308,15 +1308,14 @@ B.S. in Construction Management — Colorado State University, 2016`);
       ];
 
       for (const reqType of allTypes) {
-        // Construct a mock matching result
-        const matchingResult = {
-          matches: [{
-            classification: 'MISSING' as const,
+        const canonicalMock: any = {
+          all: [{
+            classification: 'MISSING',
+            match_tier: 'tier_1_deterministic',
             requirement: {
-              id: '1',
-              normalized_name: 'test req',
-              priority: 'required' as const,
               category: reqType,
+              normalized_name: 'test',
+              priority: 'required',
               original_text: 'test',
               source_section: 'test',
               source_span: [0, 0] as [number, number],
@@ -1330,7 +1329,7 @@ B.S. in Construction Management — Colorado State University, 2016`);
           }]
         };
 
-        const result = generateRecommendations(matchingResult as any);
+        const result = generateRecommendations(canonicalMock);
         const warning = result.recommendations[0].fabricationWarning;
 
         // Ensure it doesn't contain bad naive pluralizations like "yearses" or "responsibilitys"

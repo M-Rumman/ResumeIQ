@@ -1,13 +1,8 @@
-import { extractCandidateProfile } from './api/_lib/analysis-engine/resumeExtraction.js';
-import { parseJobDescription } from './api/_lib/analysis-engine/jdParser.js';
-import { runFullAnalysisPipeline } from './api/_lib/analysis-engine/pipeline.js';
+import { runAnalysisPipeline } from './api/_lib/analysis-engine/pipeline.js';
 
 const priyaResume = `
 Priya Chandran
 Chicago, IL
-
-Senior UX Researcher with 7 years of experience leading mixed-methods research in fintech and consumer banking. Skilled at translating complex user behavior into product decisions that improve adoption and trust. Proven track record mentoring researchers and scaling research operations at high-growth companies.
-
 Experience
 
 Senior UX Researcher — Brightledger Bank (Chicago, IL) | 2021–Present
@@ -54,11 +49,13 @@ Qualifications:
 `;
 
 async function testRewrites() {
-  const candidate = await extractCandidateProfile(priyaResume);
-  const jd = await parseJobDescription(priyaJd);
-  
-  const result = await runFullAnalysisPipeline(candidate, jd);
-  console.log(JSON.stringify(result.improvedBulletPoints, null, 2));
+  const result = await runAnalysisPipeline({
+    resumeText: priyaResume,
+    jobDescriptionText: priyaJd,
+    includePremium: true,
+  });
+  console.log('Result length:', result.legacyReport.improvedBulletPoints.length);
+  console.log(JSON.stringify(result.legacyReport.improvedBulletPoints, null, 2));
 }
 
 testRewrites().catch(console.error);

@@ -261,6 +261,7 @@ function KeywordCompatibilityCard({ compatibility }: { compatibility: PremiumRes
     { title: 'Semantic Match', icon: '~', items: compatibility.semanticMatches || [], className: 'border-blue-100 bg-blue-50 text-blue-900', iconClassName: 'text-blue-700' },
     { title: 'Under-Expressed', icon: '!', items: compatibility.underExpressed || [], className: 'border-amber-100 bg-amber-50 text-amber-900', iconClassName: 'text-amber-700' },
     { title: 'Missing', icon: '✗', items: compatibility.missing || [], className: 'border-red-100 bg-red-50 text-red-900', iconClassName: 'text-red-700' },
+    { title: 'Analysis Failed', icon: '?', items: compatibility.analysisFailed || [], className: 'border-gray-200 bg-gray-50 text-gray-900', iconClassName: 'text-gray-500' },
   ];
 
   return (
@@ -298,7 +299,8 @@ function KeywordCompatibilityCard({ compatibility }: { compatibility: PremiumRes
         <span><strong>Exact:</strong> {compatibility.exactMatches?.length || 0}</span>
         <span><strong>Semantic:</strong> {compatibility.semanticMatches?.length || 0}</span>
         <span><strong>Under-Expressed:</strong> {compatibility.underExpressed?.length || 0}</span>
-        <span><strong>Missing:</strong> {compatibility.missing.length}</span>
+        <span><strong>Missing:</strong> {compatibility.missing?.length || 0}</span>
+        {compatibility.analysisFailed?.length > 0 && <span><strong>Failed:</strong> {compatibility.analysisFailed.length}</span>}
       </div>
     </section>
   );

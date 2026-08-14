@@ -145,6 +145,7 @@ export interface AiResumeAnalysisFull {
   existingSkills: string[];
   missingSkills: string[];
   missingKeywords: string[];
+  analysisFailedSkills: string[];
   keywordRecommendations: KeywordRecommendation[];
   keywordGaps: string[];
   missingRequiredSkills: string[];
@@ -921,6 +922,7 @@ export type KeywordCompatibility = {
   semanticMatches: string[];
   underExpressed: string[];
   missing: string[];
+  analysisFailed: string[];
 };
 
 export const COACHING_REPORT_CATEGORIES = [
@@ -2696,6 +2698,7 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
     semanticMatches: validateAndCleanKeywords(arr(rawKeywordCompatibility.semanticMatches)),
     underExpressed: validateAndCleanKeywords(arr(rawKeywordCompatibility.underExpressed)),
     missing: validateAndCleanKeywords(arr(rawKeywordCompatibility.missing)),
+    analysisFailed: validateAndCleanKeywords(arr(rawKeywordCompatibility.analysisFailed)),
   };
   const coachingReport: CoachingReportSection[] = Array.isArray(o.coachingReport)
     ? o.coachingReport.flatMap((section: unknown): CoachingReportSection[] => {
@@ -3335,7 +3338,7 @@ export async function analyzeResumeWithAi(
   };
   try {
     const targetKeywords = gapAnalysis.items.map((item) => item.skill).filter(Boolean);
-    validated = validateAiResumeOutput(combinedRaw, resumeText, jobDescription, validationTelemetry, targetKeywords);
+    validated = validateAiResumeOutput(combinedRaw, resumeText, jobDescription, validationTelemetry, targetKeywords, [...parsedJson.resume.experience, ...parsedJson.resume.projects]);
   } catch (error) {
     console.error('[pipeline] validation failed', {
       errorType: error instanceof Error ? error.name : 'unknown',

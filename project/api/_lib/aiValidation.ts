@@ -317,7 +317,7 @@ export function validateHiringManagerAssessment(
   };
 }
 
-export function validateRewrites(values: unknown, resumeText: string, targetKeywords: string[]): RewritePair[] {
+export function validateRewrites(values: unknown, resumeText: string, targetKeywords: string[], allBullets: string[] = []): RewritePair[] {
   if (!Array.isArray(values)) return [];
   const source = normalize(resumeText);
   const accepted: RewritePair[] = [];
@@ -401,7 +401,36 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
       whyStronger: guide.whyStronger,
     });
   }
-  return accepted;
+
+  // Inject fallback for bullets that were completely omitted by the LLM
+  for (const bullet of allBullets) {
+    if (!bullet || typeof bullet !== 'string') continue;
+    const cleanBullet = bullet.trim();
+    if (!cleanBullet) continue;
+    
+    // Check if we already have this bullet in the accepted array
+    const alreadyProcessed = accepted.some((item) => normalize(item.before) === normalize(cleanBullet));
+    
+    if (!alreadyProcessed) {
+      const bulletQuality = scoreBulletQuality(cleanBullet, targetKeywords);
+      accepted.push({
+        before: cleanBullet,
+        after: cleanBullet, // Fall back to original
+        confidence: 'High',
+        inferenceType: 'NOT_APPLICABLE',
+        beforeScore: bulletQuality.total,
+        afterScore: bulletQuality.total,
+        improvementScore: 0,
+        improvements: [],
+        whyWeak: ['No meaningful rewrite recommended.'],
+        missingInformation: [],
+        whyStronger: ['This bullet is already strong or cannot be safely improved without inventing facts.'],
+      });
+    }
+  }
+
+  // Sort by improvement score descending, so unchanged bullets drop to the bottom
+  return accepted.sort((a, b) => b.improvementScore - a.improvementScore);
 }
 
 /** Validates untrusted LLM resume-analysis output without changing its public schema. */
@@ -411,6 +440,7 @@ export function validateAiResumeOutput(
   jobDescription = '',
   telemetry?: ValidationTelemetry,
   targetKeywords: string[] = [],
+  allBullets: string[] = [],
 ): Record<string, any> {
   const output = { ...raw };
   const seenKeywords = new Set<string>();
@@ -426,7 +456,7 @@ export function validateAiResumeOutput(
   output.keywordSuggestions = dedupeKeywordGroup(output.keywordSuggestions);
   output.keywordGaps = dedupeKeywordGroup(output.keywordGaps);
   output.missingRequiredSkills = dedupeKeywordGroup(output.missingRequiredSkills);
-  output.improvedBulletPoints = validateRewrites(output.improvedBulletPoints, resumeText, targetKeywords);
+  output.improvedBulletPoints = validateRewrites(output.improvedBulletPoints, resumeText, targetKeywords, allBullets);
   output.weakBullets = Array.isArray(output.weakBullets)
     ? output.weakBullets.filter((value: unknown) => typeof value === 'string' && normalize(resumeText).includes(normalize(value)))
     : [];

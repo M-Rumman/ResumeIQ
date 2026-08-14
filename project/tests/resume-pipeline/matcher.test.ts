@@ -10,6 +10,99 @@ type TestCase = { name: string; run: () => Promise<void> };
 
 const tests: TestCase[] = [
   {
+    name: 'LLM Timeout triggers semantic fallback (PARTIAL_MATCH) if word overlap is high',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Project Manager',
+        requirements: [{
+          id: 'req-timeout',
+          category: 'responsibility',
+          normalized_name: 'Stakeholder communication and storytelling skills',
+          original_text: 'Stakeholder communication and storytelling skills',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Stakeholder communication and storytelling skills',
+          priority: 'required',
+          requirement_type: 'responsibility',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-timeout',
+          type: 'experience',
+          normalizedName: 'Communication',
+          rawText: 'Excellent stakeholder communication and strong storytelling skills for executive presentations.',
+          sourceSection: 'Experience',
+          evidence: 'Excellent stakeholder communication and strong storytelling skills for executive presentations.'
+        }],
+        rawStructure: {} as any
+      };
+
+      // Mock LLM timeout/failure
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => { throw new Error('Timeout'); };
+      
+      try {
+        const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
+        // Due to high overlap, fallback should be PARTIAL_MATCH (or UNDER_EXPRESSED if <80% but >=50%)
+        // "Stakeholder communication and storytelling skills" has 5 words > 4 chars: 
+        // stakeholder, communication, storytelling, skills
+        // rawText has all of them, so 100% overlap -> PARTIAL_MATCH
+        assert.equal(result.matches[0].classification, 'PARTIAL_MATCH');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
+    name: 'LLM Timeout triggers ANALYSIS_FAILED if NO word overlap is found',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Project Manager',
+        requirements: [{
+          id: 'req-timeout-2',
+          category: 'responsibility',
+          normalized_name: 'Strategic cross-functional product roadmap alignment',
+          original_text: 'Strategic cross-functional product roadmap alignment',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: 'Strategic cross-functional product roadmap alignment',
+          priority: 'required',
+          requirement_type: 'responsibility',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-timeout-2',
+          type: 'experience',
+          normalizedName: 'Web Development',
+          rawText: 'Built simple HTML websites and designed CSS templates.',
+          sourceSection: 'Experience',
+          evidence: 'Built simple HTML websites and designed CSS templates.'
+        }],
+        rawStructure: {} as any
+      };
+
+      // Mock LLM timeout/failure
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => { throw new Error('Timeout'); };
+      
+      try {
+        const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
+        // No overlap -> ANALYSIS_FAILED
+        assert.equal(result.matches[0].classification, 'ANALYSIS_FAILED');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
+  },
+  {
     name: 'Education exact match: B.E. Mechatronics vs Bachelors Mechatronics',
     run: async () => {
       const job: JobProfile = {
@@ -47,6 +140,7 @@ const tests: TestCase[] = [
 
       const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
       assert.equal(result.matches[0].classification, 'EXACT_MATCH');
+      assert.equal(result.matches[0].match_tier, 'tier_1_deterministic');
       assert.equal(result.matches[0].evidence[0].evidence_strength, 'primary');
     }
   },
@@ -146,6 +240,7 @@ const tests: TestCase[] = [
       try {
         const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
         assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
+        assert.equal(result.matches[0].match_tier, 'tier_3_semantic');
         assert.equal(result.matches[0].evidence.length > 0, true, 'Should attach the evidence');
       } finally {
         globalThis.fetch = originalFetch;

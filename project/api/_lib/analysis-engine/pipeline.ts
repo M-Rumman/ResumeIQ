@@ -5,10 +5,11 @@ import { evaluateScores } from './evaluator.js';
 import { generateRecommendations } from './recommendations.js';
 import { validateAndSanitizeReport } from './validator.js';
 import { validateRewrites } from '../aiValidation.js';
-import type { PipelineContext, EngineResult, AiResumeAnalysisFull } from './types.js';
+import type { PipelineContext, EngineResult, AiResumeAnalysisFull, CanonicalRequirements } from './types.js';
+import { AiPipelineError } from './types.js'; // AiPipelineError from where it's exported or openrouter.ts? Wait, let me check where AiPipelineError is. It's in openrouter.ts usually.
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { ParsedResume, KeywordCompatibility } from '../openrouter.js';
-import { generateBulletRewritesWithAi } from '../openrouter.js';
+import { generateBulletRewritesWithAi, AiPipelineError as OpenRouterPipelineError } from '../openrouter.js';
 
 export async function runAnalysisPipeline(
   context: PipelineContext,
@@ -100,7 +101,7 @@ export async function runAnalysisPipeline(
       deterministicResult.matches.map(m => ({
         skill: m.requirement.normalized_name,
         status: m.classification,
-        evidence: m.evidence.map(e => e.source_text)
+        evidence: [] // Omitted to prevent payload explosion/token limit failures
       })),
       options.observability
     ).catch(err => {
@@ -112,37 +113,38 @@ export async function runAnalysisPipeline(
   console.info(`[analysis-trace] MATCHER_REWRITER_END durationMs=${Math.round(matcherEnd - matcherStart)}`);
 
   const evaluatorStart = performance.now();
-  const evaluationResult = evaluateScores(jobProfile, candidateProfile, matchingResult);
-  const recommendationResult = generateRecommendations(matchingResult);
+
+  const canonical: CanonicalRequirements = {
+    exact: [],
+    semantic: [],
+    partial: [],
+    missingCore: [],
+    missingPreferred: [],
+    analysisFailed: [],
+    all: matchingResult.matches,
+  };
+
+  for (const m of matchingResult.matches) {
+    if (m.classification === 'EXACT_MATCH') canonical.exact.push(m);
+    else if (m.classification === 'STRONG_SEMANTIC_MATCH') canonical.semantic.push(m);
+    else if (m.classification === 'PARTIAL_MATCH' || m.classification === 'RELATED_MATCH' || m.classification === 'UNDER_EXPRESSED') canonical.partial.push(m);
+    else if (m.classification === 'MISSING') {
+      if (m.requirement.priority === 'required') canonical.missingCore.push(m);
+      else canonical.missingPreferred.push(m);
+    } else if (m.classification === 'ANALYSIS_FAILED') canonical.analysisFailed.push(m);
+  }
+
+  const evaluationResult = evaluateScores(jobProfile, candidateProfile, canonical);
+  const recommendationResult = generateRecommendations(canonical);
   const evaluatorEnd = performance.now();
 
   // 4. Keyword & Skill Categorization
-  // Sort requirements so core/required items appear first
-  const sortedMatches = [...matchingResult.matches].sort((a, b) => {
-    if (a.requirement.priority === 'required' && b.requirement.priority !== 'required') return -1;
-    if (a.requirement.priority !== 'required' && b.requirement.priority === 'required') return 1;
-    return 0;
-  });
-
-  const exactSkills = sortedMatches
-    .filter(m => m.classification === 'EXACT_MATCH')
-    .map(m => m.requirement.normalized_name);
-
-  const semanticSkills = sortedMatches
-    .filter(m => m.classification === 'STRONG_SEMANTIC_MATCH')
-    .map(m => m.requirement.normalized_name);
-
-  const partialSkills = sortedMatches
-    .filter(m => ['PARTIAL_MATCH', 'RELATED_MATCH', 'UNDER_EXPRESSED'].includes(m.classification))
-    .map(m => m.requirement.normalized_name);
-
-  const missingCoreSkills = sortedMatches
-    .filter(m => m.classification === 'MISSING' && m.requirement.priority === 'required')
-    .map(m => m.requirement.normalized_name);
-
-  const missingPreferredSkills = sortedMatches
-    .filter(m => m.classification === 'MISSING' && m.requirement.priority !== 'required')
-    .map(m => m.requirement.normalized_name);
+  const exactSkills = canonical.exact.map(m => m.requirement.normalized_name);
+  const semanticSkills = canonical.semantic.map(m => m.requirement.normalized_name);
+  const partialSkills = canonical.partial.map(m => m.requirement.normalized_name);
+  const missingCoreSkills = canonical.missingCore.map(m => m.requirement.normalized_name);
+  const missingPreferredSkills = canonical.missingPreferred.map(m => m.requirement.normalized_name);
+  const analysisFailedSkills = canonical.analysisFailed.map(m => m.requirement.normalized_name);
 
   const allMissingSkills = [...missingCoreSkills, ...missingPreferredSkills];
   const allStrongSkills = [...exactSkills, ...semanticSkills];
@@ -156,6 +158,8 @@ export async function runAnalysisPipeline(
   const contextStrengths = [];
   const contextPartial = [];
 
+  const contextFailed = [];
+
   for (const match of matchingResult.matches) {
     const detail = evaluationResult.matchScoreDetails.details.find(d => d.requirement === match.requirement.normalized_name);
     if (!detail) continue;
@@ -165,13 +169,16 @@ export async function runAnalysisPipeline(
       requirement: match.requirement.normalized_name,
       context: match.explanation,
       tag: match.classification === 'UNDER_EXPRESSED' ? 'Addressable by rewording' as const : 
-           (match.classification === 'MISSING' ? 'Genuine gap' as const : undefined),
+           (match.classification === 'MISSING' ? 'Genuine gap' as const : 
+           (match.classification === 'ANALYSIS_FAILED' ? 'Internal Error' as const : undefined)),
       _pointsLost: pointsLost,
       _achievedPoints: detail.achievedPoints
     };
 
     if (match.classification === 'MISSING') {
       contextGaps.push(item);
+    } else if (match.classification === 'ANALYSIS_FAILED') {
+      contextFailed.push(item);
     } else if (match.classification === 'EXACT_MATCH' || match.classification === 'STRONG_SEMANTIC_MATCH') {
       contextStrengths.push(item);
     } else {
@@ -195,6 +202,7 @@ export async function runAnalysisPipeline(
     existingSkills: allStrongSkills,
     missingSkills: allMissingSkills,
     missingKeywords: allMissingSkills,
+    analysisFailedSkills,
     keywordRecommendations: [],
     keywordGaps: allMissingSkills,
     missingRequiredSkills: missingCoreSkills,
@@ -204,7 +212,7 @@ export async function runAnalysisPipeline(
     formattingIssues: [],
     formattingSuggestions: [],
     weakBullets: bulletRewrites.weakBullets,
-    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name)),
+    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), [...parsedResume.experience, ...parsedResume.projects]),
     improvementSuggestions: improvements,
     optimizationRecommendations: improvements,
     keywordSuggestions: allMissingSkills,
@@ -232,7 +240,8 @@ export async function runAnalysisPipeline(
       exactMatches: exactSkills,
       semanticMatches: semanticSkills,
       underExpressed: partialSkills, 
-      missing: allMissingSkills 
+      missing: allMissingSkills,
+      analysisFailed: analysisFailedSkills
     },
     requirementBreakdown: matchingResult.matches,
     coachingReport: [],
@@ -244,7 +253,10 @@ export async function runAnalysisPipeline(
                        evaluationResult.matchScore >= 50 ? 'Potential Match' : 'Weak Match',
       recruiterSummary: 'Deterministically evaluated candidate profile against requirements.',
       topReasonsToInterview: allStrongSkills.slice(0, 3),
-      topReasonsForRejection: missingCoreSkills.slice(0, 3),
+      topReasonsForRejection: [
+        ...missingCoreSkills,
+        ...analysisFailedSkills.map(req => `Analysis incomplete for: ${req}`)
+      ].slice(0, 3),
       biggestImprovements: improvements.slice(0, 3).map(text => ({ text, estimatedImpact: 5 })),
       confidence: 'High'
     },
@@ -253,6 +265,9 @@ export async function runAnalysisPipeline(
 
   const validatorStart = performance.now();
   const validatedReport = validateAndSanitizeReport(legacyReport, jobProfile, candidateProfile);
+  
+  assertReportInvariants(validatedReport, canonical, evaluationResult.matchScoreDetails);
+  
   const validatorEnd = performance.now();
 
   const pipelineEnd = performance.now();
@@ -270,4 +285,51 @@ export async function runAnalysisPipeline(
       pipeline_total: pipelineEnd - extractStart,
     }
   };
+}
+
+function assertReportInvariants(report: AiResumeAnalysisFull, canonical: CanonicalRequirements, matchScoreDetails: any) {
+  const missingNames = [...canonical.missingCore, ...canonical.missingPreferred].map(m => m.requirement.normalized_name);
+  const failedNames = canonical.analysisFailed.map(m => m.requirement.normalized_name);
+
+  // 1. ANALYSIS_FAILED must not be equivalent to MISSING.
+  for (const f of failedNames) {
+    if (missingNames.includes(f)) throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Requirement ${f} is both missing and failed.`);
+  }
+
+  // 2. Failed analysis must not silently contribute zero points as a genuine mismatch.
+  const failedDetails = matchScoreDetails.details.filter((d: any) => d.classification === 'ANALYSIS_FAILED');
+  for (const f of failedDetails) {
+    if (f.maxPoints !== 0 || f.achievedPoints !== 0) {
+      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} contributed to score.`);
+    }
+  }
+
+  // 3. A requirement classified as matched must not simultaneously appear as missing.
+  const matchedNames = [...canonical.exact, ...canonical.semantic].map(m => m.requirement.normalized_name);
+  for (const m of matchedNames) {
+    if (missingNames.includes(m)) throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Requirement ${m} is both matched and missing.`);
+  }
+
+  // 4. A requirement classified as missing must have no valid supporting evidence.
+  for (const m of [...canonical.missingCore, ...canonical.missingPreferred]) {
+    if (m.evidence && m.evidence.length > 0) throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Missing requirement ${m.requirement.normalized_name} has evidence.`);
+  }
+
+  // 5. "No material requirements are missing" must not be displayed when requirements remain unevaluated.
+  if (failedNames.length > 0 && (!report.hiringManagerAssessment.topReasonsForRejection || report.hiringManagerAssessment.topReasonsForRejection.length === 0)) {
+    throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `UI would falsely claim no material requirements are missing.`);
+  }
+
+  // 7. Keyword counts must derive from the same canonical classifications as the requirement breakdown.
+  if (report.keywordCompatibility.missing.length !== missingNames.length) {
+    throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Keyword compatibility missing count does not match canonical missing count.`);
+  }
+
+  // 10. The final percentage must equal the displayed achieved points divided by the displayed maximum points
+  if (matchScoreDetails.totalMaxScore > 0) {
+    const calcScore = Math.round((matchScoreDetails.totalAchievedScore / matchScoreDetails.totalMaxScore) * 100);
+    if (calcScore !== report.matchScore) {
+      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Match score calculation mismatch. Calculated: ${calcScore}, Displayed: ${report.matchScore}`);
+    }
+  }
 }
