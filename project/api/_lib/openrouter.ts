@@ -265,6 +265,53 @@ export async function callOpenRouter(
     ...textMetadata(prompt),
   });
 
+  const geminiKeys = (process.env.GEMINI_API_KEY || process.env.GEMINI_JOB_MATCH_KEYS || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(Boolean);
+
+  if (geminiKeys.length > 0 && models[0]?.startsWith('google/')) {
+    const geminiKey = geminiKeys[Math.floor(Math.random() * geminiKeys.length)];
+    const geminiModel = models[0].replace('google/', '').replace(':free', '');
+    try {
+      console.info(`[openrouter] trying native Gemini API for ${geminiModel} to bypass OpenRouter...`);
+      const systemMessage = messages.find(m => m.role === 'system');
+      const userMessages = messages.filter(m => m.role !== 'system');
+      
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: systemMessage ? { parts: [{ text: systemMessage.content }] } : undefined,
+          contents: userMessages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+          })),
+          generationConfig: {
+            maxOutputTokens: options.maxTokens ?? 8000,
+            temperature: options.temperature ?? 0.25,
+            responseMimeType: 'application/json'
+          }
+        }),
+        signal: AbortSignal.timeout(openRouterRequestTimeoutMs() + 10000)
+      });
+      
+      if (response.ok) {
+        const body = await response.json() as any;
+        const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          console.info('[openrouter] native Gemini success', { model: geminiModel });
+          return text;
+        }
+      } else {
+        const text = await response.text();
+        console.warn(`[openrouter] native Gemini failed (${response.status}), falling back to OpenRouter: ${text.slice(0, 100)}`);
+      }
+    } catch (e) {
+      console.warn('[openrouter] native Gemini threw exception, falling back to OpenRouter', e);
+    }
+  }
+
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
     const requestStartedAt = Date.now();
