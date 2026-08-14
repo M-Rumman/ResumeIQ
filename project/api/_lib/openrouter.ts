@@ -32,10 +32,11 @@ const MAX_OPENROUTER_REQUEST_TIMEOUT_MS = 60_000;
 const DEFAULT_MODEL = 'google/gemini-1.5-flash';
 
 const MODEL_FALLBACKS = [
-  'google/gemma-4-26b-a4b-it:free',
   'google/gemma-2-9b-it:free',
-  'meta-llama/llama-3-8b-instruct:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
   'microsoft/phi-3-mini-128k-instruct:free',
+  'openrouter/free',
 ] as const;
 
 function hasSourceSummaryHeader(resumeText: string): boolean {
@@ -86,11 +87,10 @@ function getModelCandidates(preferred?: string): string[] {
   return [...new Set(candidates)];
 }
 
-/** Try the next model when a provider is missing or temporarily overloaded. */
 function isRetryableProviderError(status: number, body: string): boolean {
   const lower = body.toLowerCase();
   if (status === 400) return true; // Retry on 400 (e.g., deprecated model, context length limit on specific model)
-  if (status === 404 && /no endpoints found/i.test(body)) return true;
+  if (status === 404) return true; // Always retry on 404, if a fallback model is removed/deprecated we should try the next one
   if (status === 429) return true;
   if (status === 503) return true;
   if (/rate.?limit|temporarily rate-limited|overloaded|capacity|try again/i.test(lower)) {
