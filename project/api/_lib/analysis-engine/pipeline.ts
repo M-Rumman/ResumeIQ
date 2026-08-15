@@ -25,7 +25,14 @@ export async function runAnalysisPipeline(
   console.info('[analysis-trace] JD_PARSE_START');
   const extractStart = performance.now();
   const [jobProfile, candidateProfile] = await Promise.all([
-    parseJobDescription(context.jobDescriptionText, options),
+    parseJobDescription(context.jobDescriptionText, options).catch(err => {
+      console.error('[pipeline] AI JD Parser failed, degrading to empty profile:', err);
+      return {
+        title: 'Target Role',
+        company: '',
+        requirements: []
+      } as JobProfile;
+    }),
     context.candidateProfile ? Promise.resolve(context.candidateProfile) : Promise.resolve(extractCandidateProfile(context.resumeText))
   ]);
   const extractEnd = performance.now();
