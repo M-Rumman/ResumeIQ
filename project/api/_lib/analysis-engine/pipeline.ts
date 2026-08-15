@@ -2,6 +2,7 @@ import { parseJobDescription } from './jdParser.js';
 import { extractCandidateProfile } from './resumeExtraction.js';
 import { matchRequirements, getDeterministicMatches } from './matcher.js';
 import { evaluateScores } from './evaluator.js';
+import { scoreBulletQuality } from './bulletScoring.js';
 import { generateRecommendations } from './recommendations.js';
 import { validateAndSanitizeReport } from './validator.js';
 import { validateRewrites } from '../aiValidation.js';
@@ -83,14 +84,37 @@ export async function runAnalysisPipeline(
   const matcherStart = performance.now();
   const deterministicResult = getDeterministicMatches(jobProfile, candidateProfile);
 
+
+  // Extract true accomplishment bullets instead of raw section lines
+  const candidateBullets = [
+    ...(parsedResume.understanding?.experienceDetails || []).flatMap(e => [...(e.responsibilities || []), ...(e.achievements || [])]),
+    ...(parsedResume.projectDetails || []).flatMap(p => p.bullets || [])
+  ];
+
+  // Fallback to heuristic line filtering if structured understanding failed
+  const fallbackBullets = candidateBullets.length > 0 
+    ? candidateBullets 
+    : [...parsedResume.experience, ...parsedResume.projects].filter(line => line.length > 20 && /^[-*•\s]/.test(line));
+
+  const targetKeywords = jobProfile.requirements.map(r => r.normalized_name);
+  
+  // Score and select only weak bullets (score < 55) for LLM rewriting
+  const weakCandidates = fallbackBullets
+    .map(text => ({ text, score: scoreBulletQuality(text, targetKeywords).total }))
+    .filter(b => b.score < 55)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 15)
+    .map(b => b.text);
+
   const [matchingResult, bulletRewrites] = await Promise.all([
     matchRequirements(jobProfile, candidateProfile, deterministicResult, options).catch(err => {
       console.error('[pipeline] AI Matcher failed, degrading to deterministic:', err);
       return deterministicResult as any; // Fallback to deterministic matcher
     }),
     generateBulletRewritesWithAi(
-      parsedResume.experience,
-      parsedResume.projects,
+      weakCandidates,
+      [], // pass projects empty since weakCandidates contains both
+
       {
         title: jobProfile.title,
         requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
@@ -212,7 +236,7 @@ export async function runAnalysisPipeline(
     formattingIssues: [],
     formattingSuggestions: [],
     weakBullets: bulletRewrites.weakBullets,
-    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), [...parsedResume.experience, ...parsedResume.projects]),
+    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), fallbackBullets),
     improvementSuggestions: improvements,
     optimizationRecommendations: improvements,
     keywordSuggestions: allMissingSkills,
@@ -252,10 +276,15 @@ export async function runAnalysisPipeline(
                        evaluationResult.matchScore >= 75 ? 'Good Match' : 
                        evaluationResult.matchScore >= 50 ? 'Potential Match' : 'Weak Match',
       recruiterSummary: 'Deterministically evaluated candidate profile against requirements.',
-      topReasonsToInterview: allStrongSkills.slice(0, 3),
+      topReasonsToInterview: [
+        ...canonical.exact.map(m => `Strong match for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
+        ...canonical.semantic.map(m => `Strong match for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
+        ...canonical.partial.filter(m => m.requirement.priority === 'preferred' && m.classification !== 'UNDER_EXPRESSED').map(m => `Partial match for preferred ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
+      ].slice(0, 3),
       topReasonsForRejection: [
-        ...missingCoreSkills,
-        ...analysisFailedSkills.map(req => `Analysis incomplete for: ${req}`)
+        ...canonical.missingCore.map(m => `Missing required ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
+        ...canonical.analysisFailed.map(m => `Analysis incomplete for required ${m.requirement.category}: ${m.requirement.normalized_name}. Could not securely evaluate.`),
+        ...canonical.partial.filter(m => m.requirement.priority === 'required' && m.classification !== 'UNDER_EXPRESSED').map(m => `Partial match for required ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
       ].slice(0, 3),
       biggestImprovements: improvements.slice(0, 3).map(text => ({ text, estimatedImpact: 5 })),
       confidence: 'High'

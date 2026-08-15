@@ -29,6 +29,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
   // 1. Job Match Scoring (Mathematically calculated from requirements)
   let totalMaxScore = 0;
   let totalAchievedScore = 0;
+  let bonusBoost = 0;
   const strengths: string[] = [];
   const weaknesses: string[] = [];
   const scoreDetails = [];
@@ -40,15 +41,21 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     const contribution = getMatchContribution(match.classification);
     const confidence = match.confidence > 0 ? match.confidence : 1.0;
     
-    // Invariant: Failed analysis must not silently contribute zero points as a genuine mismatch.
-    const isFailed = match.classification === 'ANALYSIS_FAILED';
-    const maxPoints = isFailed ? 0 : weight * 10;
-    const rawAchieved = maxPoints * contribution * confidence;
-    const achievedPoints = Math.round(rawAchieved * 10) / 10;
+    // Invariant: Failed analysis must NOT silently drop from the denominator,
+    // otherwise the candidate gets a free pass on an unscored requirement.
+    const maxPoints = weight * 10;
+    
+    // Remove the asymmetrical confidence penalty; model uncertainty should not
+    // lower the achieved points while keeping max points the same.
+    const rawAchieved = maxPoints * contribution;
+    const achievedPoints = rawAchieved; // Delay rounding to prevent compounding errors
 
-    if (!isFailed) {
+    if (match.requirement.priority === 'required') {
       totalMaxScore += maxPoints;
       totalAchievedScore += achievedPoints;
+    } else {
+      // Preferred skills act strictly as bonus points (up to 5% per matched skill)
+      bonusBoost += (weight * 10 * contribution);
     }
     
     scoreDetails.push({
@@ -58,7 +65,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
       maxPoints,
       contributionMultiplier: contribution,
       confidenceMultiplier: confidence,
-      achievedPoints
+      achievedPoints: Math.round(achievedPoints * 10) / 10
     });
 
     if (contribution >= 0.85) {
@@ -74,15 +81,13 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     }
   }
 
-  // Fix floating point precision issues (e.g. 98.39999999999999 -> 98.4)
-  totalAchievedScore = Math.round(totalAchievedScore * 10) / 10;
-
-  const rawMatchScore = totalMaxScore > 0 ? (totalAchievedScore / totalMaxScore) * 100 : 100;
+  const coreMatchPercentage = totalMaxScore > 0 ? (totalAchievedScore / totalMaxScore) * 100 : 100;
+  const rawMatchScore = Math.min(100, coreMatchPercentage + bonusBoost);
   const matchScore = Math.round(rawMatchScore);
   
   const matchScoreDetails = {
-    totalMaxScore,
-    totalAchievedScore,
+    totalMaxScore: Math.round(totalMaxScore * 10) / 10,
+    totalAchievedScore: Math.round(totalAchievedScore * 10) / 10,
     rawMatchScore,
     details: scoreDetails
   };

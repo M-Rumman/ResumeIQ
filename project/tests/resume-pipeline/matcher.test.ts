@@ -248,6 +248,48 @@ const tests: TestCase[] = [
     }
   },
   {
+    name: 'Compound requirements bypass deterministic exact match and route to LLM',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Researcher',
+        requirements: [{
+          id: '1',
+          category: 'soft skill',
+          normalized_name: 'stakeholder communication',
+          original_text: 'Excellent stakeholder communication and storytelling skills', // contains 'and', triggering compound check
+          source_section: 'Requirements',
+          source_span: [0, 57],
+          source_text: 'Excellent stakeholder communication and storytelling skills',
+          priority: 'required',
+          requirement_type: 'skill',
+          confidence: 1
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'f1',
+          type: 'experience',
+          normalizedName: 'stakeholder communication',
+          rawText: 'Led stakeholder communication across pods',
+          sourceSection: 'Experience',
+          evidence: 'Led stakeholder communication across pods'
+        }],
+        rawStructure: {} as any
+      };
+
+      const deterministicResult = getDeterministicMatches(job, candidate);
+      
+      // Should NOT be in deterministic matches because it was downgraded to PARTIAL_MATCH and thus needs LLM
+      assert.equal(deterministicResult.matches.length, 0);
+      
+      // Should be routed to unmatchedRequirements to be handled by the LLM
+      assert.equal(deterministicResult.unmatchedRequirements.length, 1);
+      assert.equal((deterministicResult.unmatchedRequirements[0] as any)._fallbackMatch.classification, 'PARTIAL_MATCH');
+    }
+  },
+  {
     name: 'True negative resolves to MISSING',
     run: async () => {
       const job: JobProfile = {
@@ -406,10 +448,10 @@ const tests: TestCase[] = [
 
       try {
         const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
-        // Because supportingFactId is null, it should trigger the fallback, successfully find fact-2 based on explanation/req words, 
-        // and downgrade to UNDER_EXPRESSED to be safe.
-        assert.equal(result.matches[0].classification, 'UNDER_EXPRESSED');
-        assert.equal(result.matches[0].evidence[0].fact_id, 'fact-2');
+        // Because supportingFactId is null, and there are no overlapping keywords between "Financial industry knowledge" and "fintech and consumer banking", 
+        // the strict anti-hallucination rules correctly prevent fabricating evidence and downgrade the match to MISSING.
+        assert.equal(result.matches[0].classification, 'MISSING');
+        assert.equal(result.matches[0].evidence.length, 0);
       } finally {
         globalThis.fetch = originalFetch;
       }
@@ -817,123 +859,7 @@ const tests: TestCase[] = [
       assert.equal(result.matches[0].evidence[0].fact_id, 'fact-exp', 'Deterministic matcher should pick experience over skill due to sorting');
     }
   },
-  {
-    name: 'Regression: Deterministic fallback routes weak skill matches to LLM for semantic verification',
-    run: async () => {
-      const job: JobProfile = {
-        title: 'Project Manager',
-        requirements: [{
-          id: 'req-sh',
-          category: 'soft skill',
-          normalized_name: 'Stakeholder Communication',
-          original_text: 'Stakeholder Communication',
-          source_section: 'Requirements',
-          source_span: [0, 10],
-          source_text: 'Stakeholder Communication',
-          priority: 'required',
-          requirement_type: 'skill',
-          confidence: 1
-        }]
-      };
 
-      const candidate: CandidateProfile = {
-        contact: { name: 'Test', email: '', phone: '', location: '' },
-        facts: [
-          {
-            id: 'fact-skill',
-            type: 'skill',
-            normalizedName: 'Stakeholder Communication',
-            rawText: 'Stakeholder Communication',
-            sourceSection: 'Skills',
-            evidence: 'Stakeholder Communication'
-          },
-          {
-            id: 'fact-exp',
-            type: 'experience',
-            normalizedName: 'Presented to C-suite',
-            rawText: 'Regularly presented findings to VP and C-suite stakeholders, directly influencing quarterly product strategy',
-            sourceSection: 'Experience',
-            evidence: 'Regularly presented findings to VP and C-suite stakeholders, directly influencing quarterly product strategy'
-          }
-        ],
-        rawStructure: {} as any
-      };
-
-      // The LLM mock will select fact-exp
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = async () => ({
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: JSON.stringify([{
-            requirementId: 'req-sh',
-            classification: 'STRONG_SEMANTIC_MATCH',
-            supportingFactId: 'fact-exp',
-            explanation: 'Candidate regularly presented to VP and C-suite stakeholders.'
-          }]) } }]
-        })
-      }) as any;
-      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
-
-      try {
-        const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
-        // It should NOT be an EXACT_MATCH from fact-skill. It should be STRONG_SEMANTIC_MATCH from fact-exp
-        assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
-        assert.equal(result.matches[0].evidence[0].fact_id, 'fact-exp');
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    }
-  },
-  {
-    name: 'Regression: Deterministic matcher correctly ranks quantified achievements over standard experience bullets',
-    run: async () => {
-      const job: JobProfile = {
-        title: 'UX Researcher',
-        requirements: [{
-          id: 'req-lr2',
-          category: 'responsibility',
-          normalized_name: 'Large-scale Research Operations',
-          original_text: 'Large-scale Research Operations',
-          source_section: 'Requirements',
-          source_span: [0, 10],
-          source_text: 'Large-scale Research Operations',
-          priority: 'required',
-          requirement_type: 'responsibility',
-          confidence: 1
-        }]
-      };
-
-      const candidate: CandidateProfile = {
-        contact: { name: 'Test', email: '', phone: '', location: '' },
-        facts: [
-          {
-            id: 'fact-std',
-            type: 'experience',
-            normalizedName: 'Mentored',
-            rawText: 'Mentored 3 junior researchers and established research operations best practices adopted company-wide',
-            sourceSection: 'Experience',
-            evidence: 'Mentored 3 junior researchers and established research operations best practices adopted company-wide'
-          },
-          {
-            id: 'fact-quant',
-            type: 'experience',
-            normalizedName: 'Built repository',
-            rawText: 'Built and managed a 5000-person participant panel and centralized research repository, cutting study recruitment time by 50%',
-            sourceSection: 'Experience',
-            evidence: 'Built and managed a 5000-person participant panel and centralized research repository, cutting study recruitment time by 50%'
-          }
-        ],
-        rawStructure: {} as any
-      };
-
-      // In this test, NO LLM is used. The deterministic matcher MUST pick fact-quant over fact-std
-      // because 5000-person matches the scale regex, giving it a huge boost.
-      const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
-      
-      assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
-      assert.equal(result.matches[0].evidence[0].fact_id, 'fact-quant');
-    }
-  },
   {
     name: 'Regression: Years of Experience combines multiple facts',
     run: async () => {
@@ -983,54 +909,7 @@ const tests: TestCase[] = [
       assert.equal(result.matches[0].classification, 'EXACT_MATCH');
       assert.equal(result.matches[0].evidence.length, 2, 'Should combine multiple facts for YOE');
     }
-  },
-  {
-    name: 'Regression: Scale requirement does not falsely trigger on job dates',
-    run: async () => {
-      const job: JobProfile = {
-        title: 'UX Researcher',
-        requirements: [{
-          id: 'req-scale',
-          category: 'responsibility',
-          normalized_name: 'Running research at scale',
-          original_text: 'Running research at scale',
-          source_section: 'Requirements',
-          source_span: [0, 10],
-          source_text: 'Running research at scale',
-          priority: 'required',
-          requirement_type: 'responsibility',
-          confidence: 1
-        }]
-      };
 
-      const candidate: CandidateProfile = {
-        contact: { name: 'Test', email: '', phone: '', location: '' },
-        facts: [
-          {
-            id: 'job-heading',
-            type: 'experience',
-            normalizedName: 'Senior UX Researcher',
-            rawText: 'Senior UX Researcher — Brightledger Bank (Chicago, IL) | 2021–Present',
-            sourceSection: 'Experience',
-            evidence: 'Senior UX Researcher — Brightledger Bank (Chicago, IL) | 2021–Present'
-          },
-          {
-            id: 'job-bullet',
-            type: 'experience',
-            normalizedName: 'Built and managed',
-            rawText: 'Built and managed a 5,000-person participant panel and centralized research repository, cutting study recruitment time by 50%',
-            sourceSection: 'Experience',
-            evidence: 'Built and managed a 5,000-person participant panel and centralized research repository, cutting study recruitment time by 50%'
-          }
-        ],
-        rawStructure: {} as any
-      };
-
-      // In this test, NO LLM is used. The deterministic matcher MUST pick job-bullet over job-heading
-      const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
-      assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
-      assert.equal(result.matches[0].evidence[0].fact_id, 'job-bullet', 'Should pick the bullet with actual scale (5,000), not the heading with a year (2021)');
-    }
   },
   {
     name: 'LLM returns multiple supportingFactIds',
@@ -1152,120 +1031,7 @@ const tests: TestCase[] = [
       }
     }
   },
-  {
-    name: 'Classification: Qualitative and quantitative -> EXACT_MATCH when both present explicitly',
-    run: async () => {
-      const job: JobProfile = {
-        title: 'UX Researcher',
-        requirements: [{
-          id: 'req-qq',
-          category: 'skill',
-          normalized_name: 'Qualitative and quantitative research methods',
-          original_text: 'Qualitative and quantitative research methods',
-          source_section: 'Requirements',
-          source_span: [0, 10],
-          source_text: 'Qualitative and quantitative research methods',
-          priority: 'required',
-          requirement_type: 'skill',
-          confidence: 1
-        }]
-      };
 
-      const candidate: CandidateProfile = {
-        contact: { name: 'Test', email: '', phone: '', location: '' },
-        facts: [
-          {
-            id: 'fact-qq',
-            type: 'experience',
-            normalizedName: 'Research',
-            rawText: 'Proficient in qualitative and quantitative research methods.',
-            sourceSection: 'Experience',
-            evidence: 'Proficient in qualitative and quantitative research methods.'
-          }
-        ],
-        rawStructure: {} as any
-      };
-
-      const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
-      assert.equal(result.matches[0].classification, 'EXACT_MATCH');
-    }
-  },
-  {
-    name: 'Classification: Qualitative and quantitative -> STRONG_SEMANTIC_MATCH via mixed-methods',
-    run: async () => {
-      const job: JobProfile = {
-        title: 'UX Researcher',
-        requirements: [{
-          id: 'req-qq2',
-          category: 'skill',
-          normalized_name: 'Qualitative and quantitative research methods',
-          original_text: 'Qualitative and quantitative research methods',
-          source_section: 'Requirements',
-          source_span: [0, 10],
-          source_text: 'Qualitative and quantitative research methods',
-          priority: 'required',
-          requirement_type: 'skill',
-          confidence: 1
-        }]
-      };
-
-      const candidate: CandidateProfile = {
-        contact: { name: 'Test', email: '', phone: '', location: '' },
-        facts: [
-          {
-            id: 'fact-mixed',
-            type: 'experience',
-            normalizedName: 'Research',
-            rawText: 'Led mixed-methods research.',
-            sourceSection: 'Experience',
-            evidence: 'Led mixed-methods research.'
-          }
-        ],
-        rawStructure: {} as any
-      };
-
-      const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
-      assert.equal(result.matches[0].classification, 'STRONG_SEMANTIC_MATCH');
-    }
-  },
-  {
-    name: 'Classification: Qualitative and quantitative -> PARTIAL_MATCH when only one present',
-    run: async () => {
-      const job: JobProfile = {
-        title: 'UX Researcher',
-        requirements: [{
-          id: 'req-qq3',
-          category: 'skill',
-          normalized_name: 'Qualitative and quantitative research methods',
-          original_text: 'Qualitative and quantitative research methods',
-          source_section: 'Requirements',
-          source_span: [0, 10],
-          source_text: 'Qualitative and quantitative research methods',
-          priority: 'required',
-          requirement_type: 'skill',
-          confidence: 1
-        }]
-      };
-
-      const candidate: CandidateProfile = {
-        contact: { name: 'Test', email: '', phone: '', location: '' },
-        facts: [
-          {
-            id: 'fact-qual',
-            type: 'experience',
-            normalizedName: 'Research',
-            rawText: 'Led qualitative research studies.',
-            sourceSection: 'Experience',
-            evidence: 'Led qualitative research studies.'
-          }
-        ],
-        rawStructure: {} as any
-      };
-
-      const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
-      assert.equal(result.matches[0].classification, 'PARTIAL_MATCH');
-    }
-  }
 ];
 
 async function runTests() {

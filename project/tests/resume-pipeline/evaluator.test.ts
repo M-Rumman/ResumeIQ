@@ -47,10 +47,70 @@ const tests: TestCase[] = [
       const matchingResult: MatchingResult = { matches: [reqMatch1, reqMatch2] };
       const evalResult = evaluateScores(job, baseCandidate, matchingResult);
 
-      // Total max = (0.8 * 10) for Python + (0.3 * 10) for Java = 8 + 3 = 11.
-      // Achieved = (8 * 1) + 0 = 8.
-      // Match Score = 8/11 = 73%
-      assert.equal(evalResult.matchScore, Math.round((8/11)*100));
+      // New Math: Core denominator is only Required skills (8). Achieved is 8.
+      // Preferred skill (Java) acts as a bonus, but it is missing, so 0 bonus.
+      // Score = 100% Core + 0% Bonus = 100%
+      assert.equal(evalResult.matchScore, 100);
+    }
+  },
+  {
+    name: 'Prevents score inflation when required skill analysis fails (ANALYSIS_FAILED)',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
+      
+      const reqMatch1: RequirementMatch = {
+        requirement: {
+          id: '1', category: 'hard skill', priority: 'required',
+          normalized_name: 'Python', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1
+        },
+        classification: 'EXACT_MATCH',
+        confidence: 1,
+        evidence: [],
+        explanation: ''
+      };
+      
+      const reqMatch2: RequirementMatch = {
+        requirement: {
+          id: '2', category: 'hard skill', priority: 'required',
+          normalized_name: 'React', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1
+        },
+        classification: 'ANALYSIS_FAILED',
+        confidence: 0,
+        evidence: [],
+        explanation: ''
+      };
+
+      const matchingResult: MatchingResult = { matches: [reqMatch1, reqMatch2] };
+      const evalResult = evaluateScores(job, baseCandidate, matchingResult);
+
+      // Denominator: 2 Required skills. Python (0.8) + React (0.8) = 16 max.
+      // Achieved: Python (8) + React (0) = 8.
+      // Score = 8/16 = 50% (prevents artificial inflation to 100%)
+      assert.equal(evalResult.matchScore, 50);
+    }
+  },
+  {
+    name: 'Does not penalize scores asymmetrically due to model uncertainty (Confidence)',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
+      
+      const reqMatch1: RequirementMatch = {
+        requirement: {
+          id: '1', category: 'hard skill', priority: 'required',
+          normalized_name: 'Python', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1
+        },
+        classification: 'EXACT_MATCH',
+        confidence: 0.5, // High model uncertainty
+        evidence: [],
+        explanation: ''
+      };
+
+      const matchingResult: MatchingResult = { matches: [reqMatch1] };
+      const evalResult = evaluateScores(job, baseCandidate, matchingResult);
+
+      // Achieved points should be full contribution (100% of maxPoints), 
+      // not scaled down by 0.5 confidence
+      assert.equal(evalResult.matchScore, 100);
     }
   },
   {

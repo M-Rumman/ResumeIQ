@@ -339,22 +339,8 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     const improvementScore = afterQuality.total - beforeQuality.total;
     
     // We accept a rewrite if it's strictly better AND not invented.
-    // If it has a <= 0 improvement score or is invented/unsupported, we preserve the original
-    // and explicitly bypass any hardcoded "whyWeak" strings by NOT generating them.
-    if (improvementScore <= 0 || hasInvented) {
-      accepted.push({
-        before,
-        after: before, // Fall back to original
-        confidence: 'High',
-        inferenceType: 'NOT_APPLICABLE',
-        beforeScore: beforeQuality.total,
-        afterScore: beforeQuality.total,
-        improvementScore: 0,
-        improvements: [],
-        whyWeak: ['No meaningful rewrite recommended.'],
-        missingInformation: [],
-        whyStronger: ['This bullet is already strong or cannot be safely improved without inventing facts.'],
-      });
+    // If it has a <= 0 improvement score or is invented/unsupported, we drop it.
+    if (improvementScore <= 0 || hasInvented || normalize(before) === normalize(after)) {
       continue;
     }
     
@@ -371,19 +357,6 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     
     // If the LLM self-reported it as UNSUPPORTED, discard the improvement.
     if (inferenceType === 'UNSUPPORTED') {
-      accepted.push({
-        before,
-        after: before,
-        confidence: 'High',
-        inferenceType: 'NOT_APPLICABLE',
-        beforeScore: beforeQuality.total,
-        afterScore: beforeQuality.total,
-        improvementScore: 0,
-        improvements: [],
-        whyWeak: ['No meaningful rewrite recommended.'],
-        missingInformation: [],
-        whyStronger: ['This bullet is already strong or cannot be safely improved without inventing facts.'],
-      });
       continue;
     }
 
@@ -402,32 +375,7 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     });
   }
 
-  // Inject fallback for bullets that were completely omitted by the LLM
-  for (const bullet of allBullets) {
-    if (!bullet || typeof bullet !== 'string') continue;
-    const cleanBullet = bullet.trim();
-    if (!cleanBullet) continue;
-    
-    // Check if we already have this bullet in the accepted array
-    const alreadyProcessed = accepted.some((item) => normalize(item.before) === normalize(cleanBullet));
-    
-    if (!alreadyProcessed) {
-      const bulletQuality = scoreBulletQuality(cleanBullet, targetKeywords);
-      accepted.push({
-        before: cleanBullet,
-        after: cleanBullet, // Fall back to original
-        confidence: 'High',
-        inferenceType: 'NOT_APPLICABLE',
-        beforeScore: bulletQuality.total,
-        afterScore: bulletQuality.total,
-        improvementScore: 0,
-        improvements: [],
-        whyWeak: ['No meaningful rewrite recommended.'],
-        missingInformation: [],
-        whyStronger: ['This bullet is already strong or cannot be safely improved without inventing facts.'],
-      });
-    }
-  }
+
 
   // Sort by improvement score descending, so unchanged bullets drop to the bottom
   return accepted.sort((a, b) => b.improvementScore - a.improvementScore);
