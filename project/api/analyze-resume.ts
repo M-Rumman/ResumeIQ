@@ -174,8 +174,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalDurationMs: Date.now() - observability.startedAt,
       });
       return res.status(502).json({
-        error: 'An unexpected internal error occurred during analysis.',
-        pipelineError: { stage: err.stage, code: 'INTERNAL_SERVER_ERROR' },
+        error: 'Resume analysis could not be completed.',
+        pipelineError: { stage: err.stage, code: err.code },
       });
     }
     console.error('[analyze-resume] unexpected failure', {
