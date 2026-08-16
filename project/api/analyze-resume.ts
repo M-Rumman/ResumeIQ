@@ -69,11 +69,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const dbPreflightStart = performance.now();
-  const [rate, access, billing] = await Promise.all([
-    enforceAiRateLimit(user.id),
-    verifyAiFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS),
-    getReconciledProfileBilling(user.id),
-  ]);
+  let rate: { allowed: boolean; retryAfter?: number }, access: any, billing: any;
+
+  try {
+    [rate, access, billing] = await Promise.all([
+      enforceAiRateLimit(user.id),
+      verifyAiFeatureAccess(user.id, FEATURE_TYPES.RESUME_ANALYSIS),
+      getReconciledProfileBilling(user.id),
+    ]);
+  } catch (error) {
+    console.error('[analyze-resume] Preflight database check failed:', error);
+    return res.status(503).json({ error: 'The service is temporarily unavailable due to a database issue. Please try again in a few moments.' });
+  }
   const dbPreflightEnd = performance.now();
 
   if (!rate.allowed) {
@@ -140,7 +147,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (error instanceof Error && /limit reached/i.test(error.message)) {
         return respondError(res, 429, "You've reached today's free resume analysis limit. Your limit resets tomorrow or you can upgrade to Pro for unlimited analyses.");
       }
-      throw error;
+      // If database persistence fails after a successful AI run, log it and return the analysis anyway!
+      // This ensures the user receives their report even if we couldn't save it to history.
+      console.error('[analyze-resume] Database persistence failed, but returning successful AI analysis to user:', error);
     }
 
     logAiEvent(observability, 'request_completed', {
