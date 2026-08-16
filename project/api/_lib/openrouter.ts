@@ -191,7 +191,7 @@ export interface AiResumeAnalysisFull {
   matchScoreDetails?: any;
 }
 
-export type HiringDecision = 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
+export type HiringDecision = 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match' | 'Analysis Incomplete';
 
 export interface HiringManagerAssessment {
   overallDecision: HiringDecision;

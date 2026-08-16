@@ -281,7 +281,7 @@ function KeywordCompatibilityCard({ compatibility }: { compatibility: PremiumRes
             <p className="text-sm font-bold mb-3">{group.title} ({group.items.length})</p>
             {group.items.length > 0 ? (
               <ul className="space-y-2">
-                {group.items.map((keyword) => (
+                {group.items.map((keyword: string) => (
                   <li key={keyword} className="flex items-start gap-2 text-sm font-medium">
                     <span aria-hidden className={`font-extrabold ${group.iconClassName}`}>{group.icon}</span>
                     <span>{keyword}</span>
@@ -300,7 +300,7 @@ function KeywordCompatibilityCard({ compatibility }: { compatibility: PremiumRes
         <span><strong>Semantic:</strong> {compatibility.semanticMatches?.length || 0}</span>
         <span><strong>Under-Expressed:</strong> {compatibility.underExpressed?.length || 0}</span>
         <span><strong>Missing:</strong> {compatibility.missing?.length || 0}</span>
-        {compatibility.analysisFailed?.length > 0 && <span><strong>Failed:</strong> {compatibility.analysisFailed.length}</span>}
+        {(compatibility.analysisFailed?.length ?? 0) > 0 && <span><strong>Failed:</strong> {compatibility.analysisFailed!.length}</span>}
       </div>
     </section>
   );

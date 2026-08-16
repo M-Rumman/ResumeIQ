@@ -1,4 +1,5 @@
 import type { CandidateProfile, JobProfile, MatchingResult, EvaluationResult, AtsDisplayBreakdownItem, MatchClassification, JobRequirement, CanonicalRequirements } from './types.js';
+import { AiPipelineError } from '../openrouter.js';
 
 function getRequirementWeight(req: JobRequirement): number {
   const isCore = ['experience', 'education', 'domain', 'responsibility', 'seniority', 'years', 'location'].includes(req.category);
@@ -36,26 +37,59 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
 
   const matchesArray = 'all' in canonical ? canonical.all : canonical.matches;
 
+  // 1a. Deduplicate matches and ensure all JD requirements are present
+  const requirementsMap = new Map<string, RequirementMatch>();
+  for (const req of job.requirements) {
+    requirementsMap.set(req.id || req.normalized_name, {
+      requirement: req,
+      classification: 'ANALYSIS_FAILED',
+      confidence: 0,
+      explanation: 'Silently dropped before scoring.',
+      match_tier: 'tier_3_semantic',
+      evidence: []
+    });
+  }
+
   for (const match of matchesArray) {
+    const key = match.requirement.id || match.requirement.normalized_name;
+    const existing = requirementsMap.get(key);
+    
+    // If multiple matches exist for the same requirement, keep the one with the highest contribution
+    if (existing) {
+      if (getMatchContribution(match.classification) > getMatchContribution(existing.classification)) {
+        requirementsMap.set(key, match);
+      }
+    } else {
+      requirementsMap.set(key, match);
+    }
+  }
+
+  const finalizedMatches = Array.from(requirementsMap.values());
+
+  for (const match of finalizedMatches) {
     const weight = getRequirementWeight(match.requirement);
     const contribution = getMatchContribution(match.classification);
     const confidence = match.confidence > 0 ? match.confidence : 1.0;
     
     // Invariant: Failed analysis must NOT silently drop from the denominator,
     // otherwise the candidate gets a free pass on an unscored requirement.
-    const maxPoints = weight * 10;
+    let maxPoints = weight * 10;
     
     // Remove the asymmetrical confidence penalty; model uncertainty should not
     // lower the achieved points while keeping max points the same.
     const rawAchieved = maxPoints * contribution;
-    const achievedPoints = rawAchieved; // Delay rounding to prevent compounding errors
+    let achievedPoints = rawAchieved; // Delay rounding to prevent compounding errors
 
     if (match.requirement.priority === 'required') {
       totalMaxScore += maxPoints;
       totalAchievedScore += achievedPoints;
     } else {
-      // Preferred skills act strictly as bonus points (up to 5% per matched skill)
-      bonusBoost += (weight * 10 * contribution);
+      // Preferred skills act strictly as bonus points to the numerator without increasing denominator.
+      // Up to 5% of totalMaxScore per matched preferred skill.
+      const bonusPoints = (0.05 * totalMaxScore) * contribution;
+      totalAchievedScore += bonusPoints;
+      achievedPoints = bonusPoints;
+      maxPoints = 0; // Does not contribute to denominator
     }
     
     scoreDetails.push({
@@ -81,8 +115,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     }
   }
 
-  const coreMatchPercentage = totalMaxScore > 0 ? (totalAchievedScore / totalMaxScore) * 100 : 100;
-  const rawMatchScore = Math.min(100, coreMatchPercentage + bonusBoost);
+  const rawMatchScore = totalMaxScore > 0 ? Math.min(100, (totalAchievedScore / totalMaxScore) * 100) : 0;
   const matchScore = Math.round(rawMatchScore);
   
   const matchScoreDetails = {

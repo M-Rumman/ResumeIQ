@@ -25,14 +25,7 @@ export async function runAnalysisPipeline(
   console.info('[analysis-trace] JD_PARSE_START');
   const extractStart = performance.now();
   const [jobProfile, candidateProfile] = await Promise.all([
-    parseJobDescription(context.jobDescriptionText, options).catch(err => {
-      console.error('[pipeline] AI JD Parser failed, degrading to empty profile:', err);
-      return {
-        title: 'Target Role',
-        company: '',
-        requirements: []
-      } as JobProfile;
-    }),
+    parseJobDescription(context.jobDescriptionText, options),
     context.candidateProfile ? Promise.resolve(context.candidateProfile) : Promise.resolve(extractCandidateProfile(context.resumeText))
   ]);
   const extractEnd = performance.now();
@@ -199,9 +192,12 @@ export async function runAnalysisPipeline(
     const item = {
       requirement: match.requirement.normalized_name,
       context: match.explanation,
-      tag: match.classification === 'UNDER_EXPRESSED' ? 'Addressable by rewording' as const : 
-           (match.classification === 'MISSING' ? 'Genuine gap' as const : 
-           (match.classification === 'ANALYSIS_FAILED' ? 'Internal Error' as const : undefined)),
+      tag: match.classification === 'UNDER_EXPRESSED' ? 'Presentation Opportunity' as const : 
+           (match.classification === 'MISSING' ? 'Genuine risk' as const : 
+           (match.classification === 'ANALYSIS_FAILED' ? 'Unresolved' as const : 
+           (match.classification === 'PARTIAL_MATCH' ? 'Weakness/Opportunity' as const : 
+           (match.classification === 'STRONG_SEMANTIC_MATCH' ? 'Strong semantic evidence' as const : 
+           (match.classification === 'EXACT_MATCH' ? 'Strong evidence of satisfaction' as const : undefined))))),
       _pointsLost: pointsLost,
       _achievedPoints: detail.achievedPoints
     };
@@ -279,19 +275,24 @@ export async function runAnalysisPipeline(
     atsBreakdown: evaluationResult.atsBreakdown,
     roleStrengths: allStrongSkills,
     hiringManagerAssessment: {
-      overallDecision: evaluationResult.matchScore >= 90 ? 'Strong Match' : 
-                       evaluationResult.matchScore >= 75 ? 'Good Match' : 
-                       evaluationResult.matchScore >= 50 ? 'Potential Match' : 'Weak Match',
-      recruiterSummary: 'Deterministically evaluated candidate profile against requirements.',
+      overallDecision: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length) 
+                       ? 'Analysis Incomplete'
+                       : evaluationResult.matchScore >= 90 ? 'Strong Match' : 
+                         evaluationResult.matchScore >= 75 ? 'Good Match' : 
+                         evaluationResult.matchScore >= 50 ? 'Potential Match' : 'Weak Match',
+      recruiterSummary: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length) 
+                       ? 'The job-match analysis could not be completed securely.' 
+                       : 'Deterministically evaluated candidate profile against requirements.',
       topReasonsToInterview: [
-        ...canonical.exact.map(m => `Strong match for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
-        ...canonical.semantic.map(m => `Strong match for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
-        ...canonical.partial.filter(m => m.requirement.priority === 'preferred' && m.classification !== 'UNDER_EXPRESSED').map(m => `Partial match for preferred ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
+        ...canonical.exact.map(m => `Strong evidence of satisfaction for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
+        ...canonical.semantic.map(m => `Strong evidence with semantic equivalence for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
       ].slice(0, 3),
       topReasonsForRejection: [
-        ...canonical.missingCore.map(m => `Missing required ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
-        ...canonical.analysisFailed.map(m => `Analysis incomplete for required ${m.requirement.category}: ${m.requirement.normalized_name}. Could not securely evaluate.`),
-        ...canonical.partial.filter(m => m.requirement.priority === 'required' && m.classification !== 'UNDER_EXPRESSED').map(m => `Partial match for required ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
+        ...canonical.missingCore.map(m => `Genuine risk: Missing required ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
+        ...canonical.missingPreferred.map(m => `Genuine risk: Missing preferred ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
+        ...canonical.analysisFailed.map(m => `Unresolved: Analysis incomplete for ${m.requirement.category}: ${m.requirement.normalized_name}.`),
+        ...canonical.partial.filter(m => m.classification === 'PARTIAL_MATCH').map(m => `Weakness/Opportunity: Partial match for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
+        ...canonical.partial.filter(m => m.classification === 'UNDER_EXPRESSED').map(m => `Presentation Opportunity: Under-expressed ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
       ].slice(0, 3),
       biggestImprovements: improvements.slice(0, 3).map(text => ({ text, estimatedImpact: 5 })),
       confidence: 'High'
@@ -332,11 +333,15 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
     if (missingNames.includes(f)) throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Requirement ${f} is both missing and failed.`);
   }
 
-  // 2. Failed analysis must not silently contribute zero points as a genuine mismatch.
+  // 2. Failed analysis must NOT drop from the denominator, to prevent a "free pass".
+  // Therefore, maxPoints must be > 0 (for required requirements), and achievedPoints must be 0.
   const failedDetails = matchScoreDetails.details.filter((d: any) => d.classification === 'ANALYSIS_FAILED');
   for (const f of failedDetails) {
-    if (f.maxPoints !== 0 || f.achievedPoints !== 0) {
-      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} contributed to score.`);
+    if (f.achievedPoints !== 0) {
+      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} improperly awarded achieved points.`);
+    }
+    if (f.priority === 'required' && f.maxPoints === 0) {
+      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} was silently dropped from the denominator.`);
     }
   }
 

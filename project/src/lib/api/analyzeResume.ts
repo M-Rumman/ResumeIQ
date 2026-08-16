@@ -105,6 +105,7 @@ export interface AiResumeAnalysisPremium {
     semanticMatches: string[];
     underExpressed: string[];
     missing: string[];
+    analysisFailed?: string[];
   };
   coachingReport: {
     category: 'Summary' | 'Experience' | 'Projects' | 'Skills' | 'Education' | 'ATS Formatting'

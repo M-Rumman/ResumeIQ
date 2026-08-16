@@ -14,6 +14,22 @@ const FACT_PRIORITY: Record<string, number> = {
   'language': 9
 };
 
+export function isValidEvidenceForCategory(factType: string, category: string): boolean {
+  if (category === 'education') {
+    return factType === 'education';
+  }
+  if (category === 'location') {
+    return factType === 'other' || factType === 'experience';
+  }
+  if (category === 'experience' || category === 'responsibility' || category === 'years' || category === 'seniority') {
+    return factType === 'experience' || factType === 'project';
+  }
+  if (category === 'hard skill' || category === 'soft skill' || category === 'methodology' || category === 'tool' || category === 'domain') {
+    return factType === 'skill' || factType === 'tool' || factType === 'methodology' || factType === 'experience' || factType === 'project' || factType === 'other';
+  }
+  return true;
+}
+
 const MATCHER_SYSTEM_PROMPT = `You are an expert technical recruiter and evidence evaluator.
 Your job is to match multiple Job Requirements against Candidate Facts.
 
@@ -38,11 +54,11 @@ Rank evidence in this exact order of priority:
 5. Skills-list evidence (only select this if experience/responsibility evidence is completely unavailable).
 
 Classify the match for EACH requirement exactly into one of these states:
-- EXACT_MATCH: The evidence fully and explicitly supports ALL core components of the Original Text.
-- STRONG_SEMANTIC_MATCH: The evidence supports ALL core components of the Original Text, but relies on semantic equivalence rather than exact phrasing.
+- EXACT_MATCH: The evidence fully and explicitly supports ALL core components of the Original Text WITH SUBSTANTIVE PROOF (e.g., demonstrated in experience or projects). A bare keyword in a skills list is NEVER an EXACT_MATCH.
+- STRONG_SEMANTIC_MATCH: The evidence supports ALL core components of the Original Text, but relies on semantic equivalence rather than exact phrasing. Still requires substantive proof.
 - PARTIAL_MATCH: The evidence explicitly supports AT LEAST ONE core component, but definitively lacks support for others (e.g., candidate has "stakeholder communication" but no evidence of "storytelling").
 - RELATED_MATCH: The evidence is tangentially related to the requirement but does not explicitly support any core component.
-- UNDER_EXPRESSED: The evidence implies the capability, but is too vague to qualify as a strong match.
+- UNDER_EXPRESSED: The evidence implies the capability (e.g., bare keyword in a skills list), but is too vague or lacks demonstrated experience to qualify as a strong match.
 - ANALYSIS_FAILED: You lack sufficient context or confidence to evaluate this requirement. Use sparingly.
 - MISSING: There is no credible resume evidence supporting ANY core component of the requirement.
 
@@ -76,6 +92,8 @@ function getFallbackSemanticMatch(req: import('./types.js').JobRequirement, prio
   let bestOverlap = 0;
 
   for (const fact of prioritizedFacts) {
+    if (!isValidEvidenceForCategory(fact.type, req.category)) continue;
+
     const rawLower = fact.rawText.toLowerCase();
     let overlap = 0;
     for (const rw of reqWords) {
@@ -207,6 +225,8 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
     const reqClean = reqNameLower.replace(/[^a-z0-9]/g, '');
 
     for (const fact of prioritizedFacts) {
+      if (!isValidEvidenceForCategory(fact.type, req.category)) continue;
+
       const factLower = fact.normalizedName.toLowerCase().trim();
       const factClean = factLower.replace(/[^a-z0-9]/g, '');
       const rawLower = fact.rawText.toLowerCase();
@@ -311,9 +331,10 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
     let fallbackMatch: RequirementMatch | null = null;
 
     if (matchedFacts.length > 0) {
-      // Sort by score descending and take up to 5 top facts to avoid evidence bloat
+      // Sort by score descending and take up to 3 top facts that are within 3000 points of the best score to avoid accumulating unrelated weak evidence
       matchedFacts.sort((a, b) => b.score - a.score);
-      const topFacts = matchedFacts.slice(0, 5);
+      const bestScore = matchedFacts[0].score;
+      const topFacts = matchedFacts.filter(mf => mf.score >= bestScore - 3000).slice(0, 3);
       
       let evidence: MatchEvidence[] = [];
       if (req.minimum_years && totalExperienceYears >= req.minimum_years) {
@@ -346,6 +367,16 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       if (topFacts.every(f => f.strength === 'PARTIAL_MATCH')) bestStrength = 'PARTIAL_MATCH';
       else if (topFacts.some(f => f.strength === 'EXACT_MATCH')) bestStrength = 'EXACT_MATCH';
       else if (topFacts.some(f => f.strength === 'STRONG_SEMANTIC_MATCH')) bestStrength = 'STRONG_SEMANTIC_MATCH';
+
+      // Substantive Requirements Validation
+      // If the requirement is a skill, tool, or responsibility, and ALL top evidence comes exclusively 
+      // from bare lists (skills, other) rather than substantive experience/projects, downgrade to UNDER_EXPRESSED.
+      if (['hard skill', 'soft skill', 'tool', 'responsibility', 'methodology'].includes(req.category)) {
+        const hasSubstantiveEvidence = topFacts.some(mf => mf.fact.type === 'experience' || mf.fact.type === 'project');
+        if (!hasSubstantiveEvidence && (bestStrength === 'EXACT_MATCH' || bestStrength === 'STRONG_SEMANTIC_MATCH')) {
+          bestStrength = 'UNDER_EXPRESSED';
+        }
+      }
 
       const bestExactMatch: RequirementMatch = {
         requirement: req,
@@ -476,7 +507,9 @@ export async function matchRequirements(
             return fId === cIdLower || fId.includes(cIdLower) || cIdLower.includes(fId);
           });
           if (found && !validFacts.some(v => v.id === found.id)) {
-            validFacts.push(found);
+            if (isValidEvidenceForCategory(found.type, req.category)) {
+              validFacts.push(found);
+            }
           }
         }
 
@@ -486,6 +519,8 @@ export async function matchRequirements(
           let maxScore = -1; 
           
           for (const f of prioritizedFacts) {
+            if (!isValidEvidenceForCategory(f.type, req.category)) continue;
+
             const isDetMatch = (req as any)._fallbackMatch?.evidence?.some((e: any) => e.fact_id === f.id);
             const reqWords = req.normalized_name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
             const hasKeywords = reqWords.length > 0 && reqWords.some(w => f.rawText.toLowerCase().includes(w));
@@ -520,6 +555,7 @@ export async function matchRequirements(
           
           for (const f of prioritizedFacts) {
              if (f.id === validFact.id) continue;
+             if (!isValidEvidenceForCategory(f.type, req.category)) continue;
              
              const altScore = scoreFactForRequirement(f, req, classification);
              
@@ -556,12 +592,12 @@ export async function matchRequirements(
 
         // Check fallback if LLM failed to find a valid strong match
         const hasFallback = (req as any)._fallbackMatch;
-        if (hasFallback && (classification === 'MISSING' || classification === 'RELATED_MATCH' || classification === 'ANALYSIS_FAILED')) {
+        if (hasFallback && (classification === 'MISSING' || classification === 'RELATED_MATCH')) {
           matches.push((req as any)._fallbackMatch);
           continue;
         }
 
-        if (classification === 'MISSING' || classification === 'ANALYSIS_FAILED') {
+        if (classification === 'MISSING') {
           const semanticFallback = getFallbackSemanticMatch(req, prioritizedFacts);
           if (semanticFallback) {
             matches.push(semanticFallback);
@@ -580,25 +616,17 @@ export async function matchRequirements(
       }
     } catch (err: any) {
       console.error('[matcher] Failed to evaluate batched requirements', err);
-      // Fallback: assign remaining unmatched with their deterministic fallback or MISSING
+      // Fallback: The system cannot reliably evaluate these requirements due to a provider/processing failure.
+      // We MUST NOT silently convert ANALYSIS_FAILED into MISSING or MATCH.
       for (const req of unmatchedRequirements) {
-        if ((req as any)._fallbackMatch) {
-          matches.push((req as any)._fallbackMatch);
-        } else {
-          const semanticFallback = getFallbackSemanticMatch(req, prioritizedFacts);
-          if (semanticFallback) {
-            matches.push(semanticFallback);
-          } else {
-            matches.push({
-              requirement: req,
-              classification: 'ANALYSIS_FAILED',
-              confidence: 0,
-              explanation: 'LLM evaluation failed.',
-              match_tier: 'tier_3_semantic',
-              evidence: []
-            });
-          }
-        }
+        matches.push({
+          requirement: req,
+          classification: 'ANALYSIS_FAILED',
+          confidence: 0,
+          explanation: 'LLM evaluation failed due to a provider/processing error.',
+          match_tier: 'tier_3_semantic',
+          evidence: []
+        });
       }
     }
   } else {

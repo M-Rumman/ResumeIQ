@@ -64,7 +64,7 @@ globalThis.fetch = async (url, init) => {
   const body = JSON.parse(init.body);
   const prompt = body.messages[body.messages.length - 1].content;
   
-  if (prompt.includes('extract_job_profile')) {
+  if (prompt.includes('expert Job Description (JD) analyzer') || prompt.includes('Raw Job Description:')) {
     // Return JD Parse
     return {
       ok: true,
@@ -91,7 +91,7 @@ globalThis.fetch = async (url, init) => {
     };
   }
   
-  if (prompt.includes('match_requirements')) {
+  if (prompt.includes('expert technical recruiter and evidence evaluator') || prompt.includes('Candidate Facts')) {
     return {
       ok: true,
       json: async () => ({
@@ -100,7 +100,7 @@ globalThis.fetch = async (url, init) => {
     };
   }
 
-  if (prompt.includes('jobGapFocus')) {
+  if (prompt.includes('expert resume editor') || prompt.includes('weakBullets')) {
     return {
       ok: true,
       json: async () => ({
