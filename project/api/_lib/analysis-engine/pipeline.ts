@@ -115,7 +115,8 @@ export async function runAnalysisPipeline(
   // Extract true accomplishment bullets using candidate facts to avoid job titles and metadata
   const candidateBullets = candidateProfile.facts
     .filter(f => f.type === 'experience' || f.type === 'project')
-    .map(f => f.evidence)
+    .flatMap(f => f.evidence.split('\n'))
+    .map(text => text.replace(/^[•\-\*·\s]+/, '').trim())
     .filter(text => {
       if (text.length < 30) return false;
       if (/\b(?:19|20)\d{2}\b/.test(text)) return false; // Often contains years -> metadata
@@ -270,6 +271,7 @@ export async function runAnalysisPipeline(
     formattingIssues: [],
     formattingSuggestions: [],
     weakBullets: bulletRewrites.weakBullets,
+    candidateBulletsCount: candidateBullets.length,
     improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), candidateBullets),
     improvementSuggestions: improvements,
     optimizationRecommendations: improvements,

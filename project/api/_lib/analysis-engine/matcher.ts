@@ -322,6 +322,40 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
         }
       }
 
+      // 1f. Heuristic Matches (Problem A, B, C)
+      if (!isExact) {
+        // Research at Scale
+        if (reqNameLower.includes('scale') || reqNameLower.includes('research operations')) {
+          if (rawLower.includes('participant') || rawLower.includes('panel') || rawLower.includes('repository') || rawLower.includes('repositories')) {
+            const hasScaleNumber = /\b(?:(?!(?:19|20)\d{2}\b)\d{4,}|\d+,\d{3})\b/.test(rawLower);
+            if (hasScaleNumber || rawLower.includes('scale')) {
+              isExact = true;
+              matchedStrength = 'STRONG_SEMANTIC_MATCH';
+            }
+          }
+        }
+        
+        // Stakeholder/Leadership Communication
+        if (reqNameLower.includes('executive') || reqNameLower.includes('stakeholder') || reqNameLower.includes('presentation') || reqNameLower.includes('leadership') || reqNameLower.includes('communication')) {
+           if (rawLower.includes('c-suite') || rawLower.includes('vp') || rawLower.includes('executive') || rawLower.includes('director') || rawLower.includes('stakeholder')) {
+              if (fact.type === 'experience' && rawLower.split(' ').length > 6) {
+                 isExact = true;
+                 matchedStrength = 'STRONG_SEMANTIC_MATCH';
+              }
+           }
+        }
+
+        // Qualitative/Quantitative (Methodologies)
+        if (reqNameLower.includes('qualitative') || reqNameLower.includes('quantitative') || reqNameLower.includes('research methods')) {
+           if (rawLower.includes('usability test') || rawLower.includes('interview') || rawLower.includes('survey') || rawLower.includes('diary stud')) {
+              if (fact.type === 'experience') {
+                 isExact = true;
+                 matchedStrength = 'STRONG_SEMANTIC_MATCH';
+              }
+           }
+        }
+      }
+
       if (isExact) {
         const score = scoreFactForRequirement(fact, req, matchedStrength);
         matchedFacts.push({ fact, score, tier: matchedTier, strength: matchedStrength });
@@ -334,14 +368,20 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       // Sort by score descending and take up to 3 top facts that are within 3000 points of the best score to avoid accumulating unrelated weak evidence
       matchedFacts.sort((a, b) => b.score - a.score);
       const bestScore = matchedFacts[0].score;
-      const topFacts = matchedFacts.filter(mf => mf.score >= bestScore - 3000).slice(0, 3);
+      
+      const isCompound = matchedFacts.some(f => f.strength === 'PARTIAL_MATCH') || reqNameLower.includes(' and ');
+      // Keep up to 5 facts for compound/experience requirements to ensure all components are covered, otherwise 3
+      const limit = (isCompound || req.category === 'experience') ? 5 : 3;
+      const topFacts = matchedFacts.filter(mf => mf.score >= bestScore - 5000).slice(0, limit);
       
       let evidence: MatchEvidence[] = [];
       if (req.minimum_years && totalExperienceYears >= req.minimum_years) {
-        // For total years, use all experience facts with duration as evidence
-        evidence = candidate.facts
-          .filter(f => f.type === 'experience' && f.employment_duration_years)
-          .map(f => ({
+        // For total years, use all experience facts with duration, PLUS top substantive bullets
+        const headerFacts = candidate.facts.filter(f => f.type === 'experience' && f.employment_duration_years);
+        const substantiveFacts = topFacts.map(mf => mf.fact).filter(f => !headerFacts.some(hf => hf.id === f.id));
+        const combinedFacts = [...headerFacts, ...substantiveFacts].slice(0, 6);
+        
+        evidence = combinedFacts.map(f => ({
             source_section: f.sourceSection,
             source_text: f.rawText,
             fact_id: f.id,
@@ -349,7 +389,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
             evidence_strength: 'primary',
             evidence_type: f.type,
             evidence_tier: topFacts[0].tier
-          }));
+        }));
       } else {
         evidence = topFacts.map(mf => ({
           source_section: mf.fact.sourceSection,
@@ -357,7 +397,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
           fact_id: mf.fact.id,
           relevance: 'direct',
           evidence_strength: FACT_PRIORITY[mf.fact.type] <= 3 ? 'primary' : 'secondary',
-          evidence_type: mf.fact.type,
+          evidence_type: req.category === 'location' ? 'location' : mf.fact.type,
           evidence_tier: mf.tier
         }));
       }
@@ -596,9 +636,15 @@ export async function matchRequirements(
 
         // Check fallback if LLM failed to find a valid strong match
         const hasFallback = (req as any)._fallbackMatch;
-        if (hasFallback && (classification === 'MISSING' || classification === 'RELATED_MATCH')) {
-          matches.push((req as any)._fallbackMatch);
-          continue;
+        if (hasFallback) {
+          const isFallbackStronger = 
+             (hasFallback.classification === 'EXACT_MATCH' || hasFallback.classification === 'STRONG_SEMANTIC_MATCH') && 
+             (classification === 'MISSING' || classification === 'RELATED_MATCH' || classification === 'UNDER_EXPRESSED' || classification === 'PARTIAL_MATCH');
+             
+          if (isFallbackStronger || classification === 'MISSING' || classification === 'RELATED_MATCH') {
+            matches.push(hasFallback);
+            continue;
+          }
         }
 
         if (classification === 'MISSING') {

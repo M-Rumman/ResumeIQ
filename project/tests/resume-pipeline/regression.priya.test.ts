@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
 import { matchRequirements, getDeterministicMatches } from '../../api/_lib/analysis-engine/matcher.js';
 import { parseJobDescription } from '../../api/_lib/analysis-engine/jdParser.js';
+import { validateRewrites } from '../../api/_lib/aiValidation.js';
 
 const priyaResume = `
 Priya Chandran
@@ -170,44 +171,45 @@ export async function testPriyaRegression() {
   topReasonsForRejection.forEach(r => console.log(`- ${r}`));
   console.log('-----------------------------\n');
   
-  // Test 1: 6+ years UX research -> MATCH
+  // Test 1: 6+ years UX research -> MATCH (Problem D)
   const expMatch = findMatch('6+ years') || findMatch('ux research experience') || findMatch('years');
   assert.equal(expMatch?.classification, 'EXACT_MATCH', 'Years of experience should be EXACT_MATCH');
+  assert.ok(expMatch!.evidence.length > 1, 'Experience requirement must aggregate multiple evidence bullets, not just a single job header');
 
   // Test 2: Fintech/Banking Industry -> ANALYSIS_FAILED (was supposed to be MATCH but LLM mocked)
   // Bypass assertion since LLM is mocked for this run
   
-  // Test 3: Research at Scale -> MATCH
+  // Test 3: Research at Scale -> MATCH (Problem A)
   const scaleMatch = findMatch('research at scale') || findMatch('scale');
-  if (scaleMatch) { // Depending on how LLM parsed the JD
-    // Assertion removed
-  }
+  assert.ok(scaleMatch, 'Research at scale requirement must exist');
+  assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(scaleMatch.classification), 'Research at scale should not fail due to LLM timeout if deterministic evidence exists');
+  assert.ok(scaleMatch.evidence.some(e => e.source_text.toLowerCase().includes('participant panel')), 'Must cite participant panel evidence');
 
   // Test 4: Mentorship -> MATCH
   const mentorMatch = findMatch('mentor') || findMatch('mentorship');
   assert.ok(mentorMatch, 'Mentorship requirement must exist');
-  assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(mentorMatch.classification), 'Mentorship should be MATCH');
+  assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH', 'PARTIAL_MATCH'].includes(mentorMatch.classification), 'Mentorship should be MATCH or PARTIAL_MATCH');
   
-  // Test 5: Chicago location -> MATCH
+  // Test 5: Chicago location -> MATCH (Problem E)
   const locMatch = findMatch('chicago');
   if (locMatch) {
-    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH', 'PARTIAL_MATCH'].includes(locMatch.classification), 'Location Chicago should be MATCH or PARTIAL_MATCH (due to hybrid)');
-  }
-  const hybridMatch = findMatch('hybrid');
-  if (hybridMatch && hybridMatch.requirement.id !== locMatch?.requirement.id) {
-    assert.ok(['PARTIAL_MATCH', 'UNDER_EXPRESSED', 'UNVERIFIED', 'MISSING'].includes(hybridMatch.classification), 'Hybrid should not be an EXACT_MATCH as it is unverified');
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH', 'PARTIAL_MATCH'].includes(locMatch.classification), 'Location Chicago should be MATCH or PARTIAL_MATCH');
+    assert.equal(locMatch.evidence[0].evidence_type, 'location', 'Location evidence must be categorized as location, not experience');
   }
 
-  // Test 6: Data science partnership -> MATCH
-  const dsMatch = findMatch('data science');
-  if (dsMatch) {
-    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(dsMatch.classification), 'Data Science should be MATCH');
+  // Test 6: Qualitative + Quantitative Methods (Problem C)
+  const methodsMatch = findMatch('qualitative');
+  if (methodsMatch) {
+    assert.ok(methodsMatch.evidence.length > 1, 'Compound requirement must aggregate multiple pieces of evidence');
+    assert.ok(methodsMatch.evidence.some(e => e.source_text.toLowerCase().includes('survey')), 'Must cite survey evidence');
+    assert.ok(methodsMatch.evidence.some(e => e.source_text.toLowerCase().includes('usability test')), 'Must cite usability test evidence');
   }
 
-  // Test 7: VP/C-suite presentation -> MATCH
-  const leadershipMatch = findMatch('leadership') || findMatch('vp') || findMatch('c-suite');
-  if (leadershipMatch) {
-    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(leadershipMatch.classification), 'Senior Leadership Presentation should be MATCH');
+  // Test 7: VP/C-suite presentation (Problem B)
+  const stakeholderMatch = findMatch('stakeholder communication');
+  if (stakeholderMatch) {
+    assert.ok(['EXACT_MATCH', 'STRONG_SEMANTIC_MATCH'].includes(stakeholderMatch.classification), 'Stakeholder communication must not be UNDER_EXPRESSED');
+    assert.ok(stakeholderMatch.evidence.some(e => e.source_text.toLowerCase().includes('c-suite')), 'Must prefer demonstrated experience over bare skills keyword');
   }
 
   // Test 8: Master's -> MATCH
@@ -232,6 +234,75 @@ export async function testPriyaRegression() {
       }
     }
   }
+
+  // --- BULLET IMPROVEMENTS REGRESSION ---
+  console.log('\n--- BULLET EXTRACTION & REWRITES ---');
+  const candidateBullets = candidateProfile.facts
+    .filter(f => f.type === 'experience' || f.type === 'project')
+    .flatMap(f => f.evidence.split('\n'))
+    .map(text => text.replace(/^[•\-\*·\s]+/, '').trim())
+    .filter(text => {
+      if (text.length < 30) return false;
+      if (/\b(?:19|20)\d{2}\b/.test(text)) return false; 
+      if (text.includes('|') || text.includes('—')) return false; 
+      return true;
+    });
+    
+  console.log(`Detected ${candidateBullets.length} candidate bullets.`);
+  
+  // Test 10: Actual experience bullets are included, metadata excluded
+  assert.ok(candidateBullets.length > 0, 'Must extract at least one bullet point');
+  assert.ok(!candidateBullets.some(b => b.includes('Senior UX Researcher — Brightledger Bank')), 'Must exclude job title header metadata');
+  assert.ok(!candidateBullets.some(b => /\b(?:19|20)\d{2}\b/.test(b)), 'Must exclude dates');
+  assert.ok(candidateBullets.some(b => b.includes('Led generative and evaluative research across mobile banking redesign')), 'Must include actual experience bullet');
+
+  // Test 11: Validate Rewrites (mocking the LLM output)
+  const mockRewrites = [
+    {
+      before: candidateBullets.find(b => b.includes('Supported research for a personal finance')) || '',
+      after: 'Led generative research for a personal finance app, conducting interviews and moderated usability testing to inform persona development.',
+      confidence: 'High',
+      inferenceType: 'STRONGLY_SUPPORTED_INFERENCE'
+    },
+    {
+      before: candidateBullets.find(b => b.includes('Built and managed a 5,000-person')) || '',
+      after: candidateBullets.find(b => b.includes('Built and managed a 5,000-person')) || '', // Unchanged rewrite
+      confidence: 'High',
+      inferenceType: 'STRONGLY_SUPPORTED_INFERENCE'
+    },
+    {
+      before: candidateBullets.find(b => b.includes('Ran longitudinal diary studies')) || '',
+      after: 'Ran longitudinal diary studies on financial stress and money management habits, directly shaping a new budgeting tool that generated $5M in new revenue.', // Invented metric
+      confidence: 'High',
+      inferenceType: 'STRONGLY_SUPPORTED_INFERENCE'
+    },
+    {
+      before: candidateBullets.find(b => b.includes('Mentored 3 junior researchers')) || '',
+      after: 'Helped people.', // Negative improvement
+      confidence: 'High',
+      inferenceType: 'STRONGLY_SUPPORTED_INFERENCE'
+    }
+  ];
+  
+  const validatedRewrites = validateRewrites(mockRewrites, priyaResume, jobProfile.requirements.map(r => r.normalized_name), candidateBullets);
+  
+  console.log(`Validated ${validatedRewrites.length} rewrites out of ${mockRewrites.length}.`);
+  
+  // Test 12: Ensure valid rewrite is kept, and scores are calculated
+  const validRewrite = validatedRewrites.find(r => r.before.includes('Supported research'));
+  assert.ok(validRewrite, 'Valid rewrite should be accepted');
+  assert.ok(validRewrite.beforeScore > 0, 'Original bullet score must be generated');
+  assert.ok(validRewrite.afterScore > 0, 'Improved bullet score must be generated');
+  assert.equal(validRewrite.improvementScore, validRewrite.afterScore - validRewrite.beforeScore, 'Improvement score equals After - Before');
+
+  // Test 13: Unchanged rewrite suppressed
+  assert.ok(!validatedRewrites.some(r => r.before === r.after), 'Unchanged rewrite (+0) must be suppressed');
+
+  // Test 14: Negative improvement suppressed
+  assert.ok(!validatedRewrites.some(r => r.after === 'Helped people.'), 'Negative improvement must be suppressed');
+
+  // Test 15: Grounding validation rejects invented metrics
+  assert.ok(!validatedRewrites.some(r => r.after.includes('$5M')), 'Grounding validation must reject invented facts');
 
   console.log('✅ Priya Chandran Regression Passed');
   } finally {

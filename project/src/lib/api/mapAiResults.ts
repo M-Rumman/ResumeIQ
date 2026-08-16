@@ -30,6 +30,7 @@ export type PremiumResumeDisplayResults = {
   generalResumeImprovements: ImprovementItem[];
   formattingSuggestions: string[];
   bulletSuggestions: BulletPair[];
+  candidateBulletsCount: number;
   parsed: AiResumeAnalysisPremium['parsed'];
   tier: 'premium';
   source: 'ai';
@@ -131,6 +132,7 @@ function mapAiResumeCore(ai: AiResumeAnalysisPremium): PremiumResumeDisplayResul
     generalResumeImprovements,
     formattingSuggestions: mergeFormattingSuggestions(ai),
     bulletSuggestions: bulletsFromAi(ai),
+    candidateBulletsCount: ai.candidateBulletsCount || 0,
     parsed: ai.parsed,
     tier: 'premium' as const,
     source: 'ai' as const,

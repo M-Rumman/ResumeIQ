@@ -37,7 +37,7 @@ import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
 type AnalysisResults = ResumeDisplayResults;
 type PremiumResults = PremiumResumeDisplayResults;
 
-function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSuggestions'] }) {
+function BulletImprovementGuide({ items, candidateBulletsCount }: { items: PremiumResults['bulletSuggestions'], candidateBulletsCount: number }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-2">
@@ -112,6 +112,10 @@ function BulletImprovementGuide({ items }: { items: PremiumResults['bulletSugges
             );
           })}
         </div>
+      ) : candidateBulletsCount > 0 ? (
+        <p className="text-sm text-gray-700">
+          No meaningful bullet improvements found.
+        </p>
       ) : (
         <p className="text-sm text-gray-700">
           Paste experience or project bullets in your resume to receive grounded improvement guidance.
@@ -1073,7 +1077,7 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
               </div>
             </div>
 
-            <BulletImprovementGuide items={results.bulletSuggestions} />
+            <BulletImprovementGuide items={results.bulletSuggestions} candidateBulletsCount={results.candidateBulletsCount} />
     </>
   );
 }

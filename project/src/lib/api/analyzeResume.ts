@@ -67,6 +67,7 @@ export interface AiResumeAnalysisPremium {
   formattingSuggestions: string[];
   formattingIssues: string[];
   weakBullets: string[];
+  candidateBulletsCount: number;
   improvedBulletPoints: {
     before: string;
     after: string;
