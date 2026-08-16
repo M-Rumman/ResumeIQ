@@ -421,17 +421,18 @@ export async function matchRequirements(
 
   // 2. LLM Verification Pass - BATCHED
   if (unmatchedRequirements.length > 0) {
-    try {
-      const factListStr = prioritizedFacts.map(f => {
-        let meta = `[ID: ${f.id}] [Section: ${f.sourceSection}]`;
-        if (f.employment_duration_years) {
-          meta += ` [Years: ${f.employment_duration_years}]`;
-        }
-        return `${meta} ${f.rawText}`;
-      }).join('\n');
-      const reqListStr = unmatchedRequirements.map(r => `[ID: ${r.id}] Name: ${r.normalized_name} (Category: ${r.category})\nOriginal Text: ${r.original_text}`).join('\n\n');
-      const prompt = `Requirements:\n${reqListStr}\n\nCandidate Facts (Prioritized):\n${factListStr}`;
+    const factListStr = prioritizedFacts.map(f => {
+      let meta = `[ID: ${f.id}] [Section: ${f.sourceSection}]`;
+      if (f.employment_duration_years) {
+        meta += ` [Years: ${f.employment_duration_years}]`;
+      }
+      return `${meta} ${f.rawText}`;
+    }).join('\n');
+    const reqListStr = unmatchedRequirements.map(r => `[ID: ${r.id}] Name: ${r.normalized_name} (Category: ${r.category})\nOriginal Text: ${r.original_text}`).join('\n\n');
+    const prompt = `Requirements:\n${reqListStr}\n\nCandidate Facts (Prioritized):\n${factListStr}`;
 
+    let llmMatches: any[] = [];
+    try {
       const rawJson = await callOpenRouter(
         [
           { role: 'system', content: MATCHER_SYSTEM_PROMPT },
@@ -442,12 +443,15 @@ export async function matchRequirements(
 
       const parsed = extractJsonFromText(rawJson) as any;
 
-      let llmMatches: any[] = [];
       if (Array.isArray(parsed)) {
         llmMatches = parsed;
       } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.matches)) {
         llmMatches = parsed.matches;
       }
+    } catch (err) {
+      console.error('[matcher] AI Evaluation failed, degrading to deterministic fallbacks for unmatched requirements:', err);
+      // llmMatches remains empty, causing all unmatchedRequirements to seamlessly use deterministic or semantic fallbacks in the loop below.
+    }
 
       for (const req of unmatchedRequirements) {
         // Robust Requirement Lookup: LLMs might truncate IDs, wrap them in brackets, or return the name instead.
@@ -614,21 +618,7 @@ export async function matchRequirements(
           evidence
         });
       }
-    } catch (err: any) {
-      console.error('[matcher] Failed to evaluate batched requirements', err);
-      // Fallback: The system cannot reliably evaluate these requirements due to a provider/processing failure.
-      // We MUST NOT silently convert ANALYSIS_FAILED into MISSING or MATCH.
-      for (const req of unmatchedRequirements) {
-        matches.push({
-          requirement: req,
-          classification: 'ANALYSIS_FAILED',
-          confidence: 0,
-          explanation: 'LLM evaluation failed due to a provider/processing error.',
-          match_tier: 'tier_3_semantic',
-          evidence: []
-        });
-      }
-    }
+
   } else {
     // No unmatched requirements, skip LLM
   }

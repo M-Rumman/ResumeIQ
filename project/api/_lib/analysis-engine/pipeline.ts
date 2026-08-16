@@ -112,54 +112,58 @@ export async function runAnalysisPipeline(
   const deterministicResult = getDeterministicMatches(jobProfile, candidateProfile);
 
 
-  // Extract true accomplishment bullets instead of raw section lines
-  const candidateBullets = [
-    ...(parsedResume.understanding?.experienceDetails || []).flatMap(e => [...(e.responsibilities || []), ...(e.achievements || [])]),
-    ...(parsedResume.projectDetails || []).flatMap(p => p.bullets || [])
-  ];
-
-  // Fallback to heuristic line filtering if structured understanding failed
-  const fallbackBullets = candidateBullets.length > 0 
-    ? candidateBullets 
-    : [...parsedResume.experience, ...parsedResume.projects].filter(line => line.length > 20 && /^[-*•\s]/.test(line));
+  // Extract true accomplishment bullets using candidate facts to avoid job titles and metadata
+  const candidateBullets = candidateProfile.facts
+    .filter(f => f.type === 'experience' || f.type === 'project')
+    .map(f => f.evidence)
+    .filter(text => {
+      if (text.length < 30) return false;
+      if (/\b(?:19|20)\d{2}\b/.test(text)) return false; // Often contains years -> metadata
+      if (text.includes('|') || text.includes('—')) return false; // Common separators in headers
+      return true;
+    });
 
   const targetKeywords = jobProfile.requirements.map(r => r.normalized_name);
   
-  // Score and select only weak bullets (score < 55) for LLM rewriting
-  const weakCandidates = fallbackBullets
+  // Score and select candidate bullets for LLM rewriting.
+  // We send bullets with a score < 100 to the LLM, as strong bullets might still be improvable.
+  // The downstream validator will enforce that improvementScore > 0.
+  const weakCandidates = candidateBullets
     .map(text => ({ text, score: scoreBulletQuality(text, targetKeywords).total }))
-    .filter(b => b.score < 55)
+    .filter(b => b.score < 100)
     .sort((a, b) => a.score - b.score)
     .slice(0, 15)
     .map(b => b.text);
 
-  const [matchingResult, bulletRewrites] = await Promise.all([
-    matchRequirements(jobProfile, candidateProfile, deterministicResult, options).catch(err => {
-      console.error('[pipeline] AI Matcher failed, degrading to deterministic:', err);
-      return deterministicResult as any; // Fallback to deterministic matcher
-    }),
-    generateBulletRewritesWithAi(
-      weakCandidates,
-      [], // pass projects empty since weakCandidates contains both
+  // Execute LLM calls sequentially to prevent concurrent provider rate limits (429s)
+  const matchingResult = await matchRequirements(jobProfile, candidateProfile, deterministicResult, options).catch(err => {
+    console.error('[pipeline] AI Matcher failed, degrading to deterministic:', err);
+    return deterministicResult as any; // Fallback to deterministic matcher
+  });
 
-      {
-        title: jobProfile.title,
-        requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
-        preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
-        responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
-      },
-      jobProfile.requirements.map(r => r.normalized_name),
-      deterministicResult.matches.map(m => ({
-        skill: m.requirement.normalized_name,
-        status: m.classification,
-        evidence: [] // Omitted to prevent payload explosion/token limit failures
-      })),
-      options.observability
-    ).catch(err => {
-      console.error('[pipeline] AI Rewriter failed, skipping rewrites:', err);
-      return { improvedBulletPoints: [], weakBullets: [] };
-    })
-  ]);
+  const bulletRewrites = await generateBulletRewritesWithAi(
+    weakCandidates,
+    [], // pass projects empty since weakCandidates contains both
+    {
+      title: jobProfile.title,
+      requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
+      preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
+      responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
+    },
+    jobProfile.requirements.map(r => r.normalized_name),
+    matchingResult.matches.map(m => ({
+      skill: m.requirement.normalized_name,
+      status: m.classification,
+      evidence: [] // Omitted to prevent payload explosion/token limit failures
+    })),
+    options.observability
+  ).catch(err => {
+    console.error('[pipeline] AI Rewriter failed, skipping rewrites:', err);
+    return { improvedBulletPoints: [], weakBullets: [] };
+  });
+
+  console.log(`[DEBUG] weakCandidates length: ${weakCandidates.length}`);
+  console.log(`[DEBUG] raw LLM bulletRewrites:`, bulletRewrites.improvedBulletPoints.length);
   const matcherEnd = performance.now();
   console.info(`[analysis-trace] MATCHER_REWRITER_END durationMs=${Math.round(matcherEnd - matcherStart)}`);
 
@@ -266,7 +270,7 @@ export async function runAnalysisPipeline(
     formattingIssues: [],
     formattingSuggestions: [],
     weakBullets: bulletRewrites.weakBullets,
-    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), fallbackBullets),
+    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), candidateBullets),
     improvementSuggestions: improvements,
     optimizationRecommendations: improvements,
     keywordSuggestions: allMissingSkills,

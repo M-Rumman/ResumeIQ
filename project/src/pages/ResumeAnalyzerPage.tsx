@@ -478,12 +478,18 @@ function RequirementBreakdownCard({ breakdown, actionPlan }: { breakdown: any[];
               </div>
             ) : (
               <>
-                {item.evidence && item.evidence.length > 0 ? (
+                {item.classification === 'ANALYSIS_FAILED' ? (
+                   <div className="mt-2 text-sm text-orange-600">
+                     Unable to evaluate this requirement because the analysis service failed.
+                   </div>
+                ) : item.evidence && item.evidence.length > 0 ? (
                    <div className="mt-2 text-sm text-gray-700">
                      <strong>Evidence ({item.evidence[0].source_section}):</strong> "{item.evidence[0].source_text}"
                    </div>
                 ) : (
-                   <div className="mt-2 text-sm text-red-600">No evidence found in resume.</div>
+                   <div className="mt-2 text-sm text-red-600">
+                     No evidence found in resume.
+                   </div>
                 )}
                 {item.explanation && (
                    <div className="mt-2 text-xs text-gray-600 italic">
