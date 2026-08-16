@@ -1,4 +1,4 @@
-import type { CandidateProfile, JobProfile, MatchingResult, EvaluationResult, AtsDisplayBreakdownItem, MatchClassification, JobRequirement, CanonicalRequirements } from './types.js';
+import type { CandidateProfile, JobProfile, MatchingResult, EvaluationResult, AtsDisplayBreakdownItem, MatchClassification, JobRequirement, CanonicalRequirements, RequirementMatch } from './types.js';
 import { AiPipelineError } from '../openrouter.js';
 
 function getRequirementWeight(req: JobRequirement): number {

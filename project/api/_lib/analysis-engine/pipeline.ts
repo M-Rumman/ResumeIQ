@@ -64,8 +64,35 @@ export async function runAnalysisPipeline(
 
   // 2. Free Tier Fast-Path
   // Free users only get basic parsing and structure check.
-  if (!context.includePremium) {
+  if (jobProfile.requirements.length === 0) {
+    console.info('[analysis-trace] FAST_PATH empty JD');
+    return {
+      tier: 'premium',
+      legacyReport: {
+        tier: 'premium',
+        parsed: parsedResume,
+        atsScore: Math.round(candidateProfile.facts.length * 2), // dummy baseline
+        detectedSections,
+        missingSections,
+        basicFeedback: [],
+        atsScoreExplanation: {
+          strengths: ['Resume extracted successfully'],
+          missingElements: [],
+          formattingIssues: [],
+          keywordIssues: [],
+          whatIncreasedScore: [],
+          whatReducedScore: [],
+          topImprovements: [],
+          estimatedScoreImprovement: 0,
+          potentialAtsScore: 0
+        },
+        improvementSuggestions: [],
+        optimizationRecommendations: []
+      }
+    } as unknown as EngineResult;
+  }
 
+  if (!context.includePremium) {
     return {
       tier: 'free',
       legacyReport: {

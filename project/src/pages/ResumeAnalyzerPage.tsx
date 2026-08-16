@@ -633,7 +633,7 @@ function analysisErrorMessage(error: unknown): string {
         return 'The resume analysis service returned an incomplete analysis. Please try again in a few moments.';
       case 'rewriter':
         return 'The bullet-point improvement service returned an incomplete response. Please try again in a few moments.';
-      case 'validation':
+      case 'validator':
         return 'The generated analysis could not be verified against your resume. Please try again.';
       case 'planner':
         return 'The generated recommendations could not be organized safely. Please try again.';
