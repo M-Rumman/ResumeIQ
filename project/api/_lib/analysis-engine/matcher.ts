@@ -428,7 +428,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
           fact_id: mf.fact.id,
           relevance: 'direct',
           evidence_strength: FACT_PRIORITY[mf.fact.type] <= 3 ? 'primary' : 'secondary',
-          evidence_type: req.category === 'location' ? 'location' : mf.fact.type,
+          evidence_type: mf.fact.type,
           evidence_tier: mf.tier
         }));
       }
@@ -686,9 +686,9 @@ export async function matchRequirements(
         if (hasFallback) {
           const isFallbackStronger = 
              (hasFallback.classification === 'EXACT_MATCH' || hasFallback.classification === 'STRONG_SEMANTIC_MATCH') && 
-             (classification === 'MISSING' || classification === 'RELATED_MATCH' || classification === 'UNDER_EXPRESSED' || classification === 'PARTIAL_MATCH');
+             (classification === 'MISSING' || classification === 'RELATED_MATCH' || classification === 'UNDER_EXPRESSED' || classification === 'PARTIAL_MATCH' || classification === 'ANALYSIS_FAILED');
              
-          if (isFallbackStronger || classification === 'MISSING' || classification === 'RELATED_MATCH') {
+          if (isFallbackStronger || classification === 'MISSING' || classification === 'RELATED_MATCH' || classification === 'ANALYSIS_FAILED') {
             matches.push(hasFallback);
             continue;
           }

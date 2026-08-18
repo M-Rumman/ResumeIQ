@@ -28,6 +28,49 @@ function getMatchContribution(classification: MatchClassification): number {
   }
 }
 
+function getEvidenceTierScore(tier: string): number {
+  switch (tier) {
+    case 'tier_1_deterministic': return 3;
+    case 'tier_2_lexical': return 2;
+    case 'tier_3_semantic': return 1;
+    default: return 0;
+  }
+}
+
+export function sortMatches(matches: RequirementMatch[]): RequirementMatch[] {
+  return [...matches].sort((a, b) => {
+    // 1. Match Contribution (EXACT > SEMANTIC > PARTIAL > RELATED > MISSING > FAILED)
+    const aContrib = getMatchContribution(a.classification);
+    const bContrib = getMatchContribution(b.classification);
+    if (aContrib !== bContrib) return bContrib - aContrib;
+
+    // 2. Requirement Weight / Priority
+    const aWeight = getRequirementWeight(a.requirement);
+    const bWeight = getRequirementWeight(b.requirement);
+    if (aWeight !== bWeight) return bWeight - aWeight;
+
+    // 3. Confidence
+    const aConf = a.confidence || 0;
+    const bConf = b.confidence || 0;
+    if (aConf !== bConf) return bConf - aConf;
+
+    // 4. Evidence Quality
+    const aTier = getEvidenceTierScore(a.match_tier);
+    const bTier = getEvidenceTierScore(b.match_tier);
+    if (aTier !== bTier) return bTier - aTier;
+
+    // 5. Stable tie-breaker (alphabetical)
+    const aName = a.requirement.normalized_name || '';
+    const bName = b.requirement.normalized_name || '';
+    return aName.localeCompare(bName);
+  });
+}
+
+export function rankStrengths(finalizedMatches: RequirementMatch[]): RequirementMatch[] {
+  const strengths = finalizedMatches.filter(m => m.classification === 'EXACT_MATCH' || m.classification === 'STRONG_SEMANTIC_MATCH');
+  return sortMatches(strengths);
+}
+
 export function evaluateScores(job: JobProfile, candidate: CandidateProfile, canonical: CanonicalRequirements | MatchingResult): EvaluationResult {
   // 1. Job Match Scoring (Mathematically calculated from requirements)
   let totalMaxScore = 0;
@@ -290,6 +333,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
       whatIncreasedScore: strengths.slice(0, 5),
       whatReducedScore: weaknesses.slice(0, 5)
     },
-    matchScoreDetails
+    matchScoreDetails,
+    finalizedMatches
   };
 }

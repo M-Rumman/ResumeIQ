@@ -2,7 +2,7 @@ import { parseJobDescription } from './jdParser.js';
 import { randomUUID } from 'node:crypto';
 import { extractCandidateProfile } from './resumeExtraction.js';
 import { matchRequirements, getDeterministicMatches } from './matcher.js';
-import { evaluateScores } from './evaluator.js';
+import { evaluateScores, rankStrengths, sortMatches } from './evaluator.js';
 import { scoreBulletQuality } from './bulletScoring.js';
 import { generateRecommendations } from './recommendations.js';
 import { validateAndSanitizeReport, validateEvidenceAttribution } from './validator.js';
@@ -173,11 +173,11 @@ export async function runAnalysisPipeline(
   const targetKeywords = jobProfile.requirements.map(r => r.normalized_name);
   
   // Score and select candidate bullets for LLM rewriting.
-  // We send bullets with a score < 100 to the LLM, as strong bullets might still be improvable.
+  // We send bullets with a score < 80 to the LLM, as these are genuinely weak and need improvement.
   // The downstream validator will enforce that improvementScore > 0.
   const weakCandidates = candidateBullets
     .map(text => ({ text, score: scoreBulletQuality(text, targetKeywords).total }))
-    .filter(b => b.score < 100)
+    .filter(b => b.score < 80)
     .sort((a, b) => a.score - b.score)
     .slice(0, 15)
     .map(b => b.text);
@@ -346,7 +346,7 @@ export async function runAnalysisPipeline(
       missing: allMissingSkills,
       analysisFailed: analysisFailedSkills
     },
-    requirementBreakdown: matchingResult.matches,
+    requirementBreakdown: sortMatches(evaluationResult.finalizedMatches),
     coachingReport: [],
     atsBreakdown: evaluationResult.atsBreakdown,
     roleStrengths: allStrongSkills,
@@ -359,10 +359,12 @@ export async function runAnalysisPipeline(
       recruiterSummary: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length) 
                        ? 'The job-match analysis could not be completed securely.' 
                        : 'Deterministically evaluated candidate profile against requirements.',
-      topReasonsToInterview: [
-        ...canonical.exact.map(m => `Strong evidence of satisfaction for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
-        ...canonical.semantic.map(m => `Strong evidence with semantic equivalence for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
-      ].slice(0, 3),
+      topReasonsToInterview: rankStrengths(evaluationResult.finalizedMatches)
+        .slice(0, 3)
+        .map(m => m.classification === 'EXACT_MATCH' 
+          ? `Strong evidence of satisfaction for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`
+          : `Strong evidence with semantic equivalence for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`
+        ),
       topReasonsForRejection: [
         ...canonical.missingCore.map(m => `Genuine risk: Missing required ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
         ...canonical.missingPreferred.map(m => `Genuine risk: Missing preferred ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),

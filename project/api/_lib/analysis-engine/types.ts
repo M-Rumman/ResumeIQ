@@ -137,6 +137,7 @@ export interface EvaluationResult {
     whatReducedScore: string[];
   };
   matchScoreDetails: MatchScoreDetails;
+  finalizedMatches: RequirementMatch[];
 }
 
 // ==========================================

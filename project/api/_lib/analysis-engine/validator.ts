@@ -40,6 +40,13 @@ export function validateEvidenceAttribution(
     });
 
     if (validatedEvidence.length === 0 && match.classification !== 'MISSING' && match.classification !== 'ANALYSIS_FAILED') {
+      if (match.match_tier === 'tier_1_deterministic') {
+        return {
+          ...match,
+          evidence: [],
+          explanation: `${match.explanation} (Note: Evidence validation unavailable)`
+        };
+      }
       return {
         ...match,
         evidence: [],

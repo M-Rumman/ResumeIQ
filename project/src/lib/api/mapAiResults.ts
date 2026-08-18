@@ -112,7 +112,7 @@ function mergeKeywords(ai: AiResumeAnalysisPremium): string[] {
 /** Display only server-validated bullet rewrites. */
 function bulletsFromAi(ai: AiResumeAnalysisPremium): BulletPair[] {
   const fromAi = (ai.improvedBulletPoints || [])
-    .filter((b) => b?.before && b?.after)
+    .filter((b) => b?.before && b?.after && typeof b?.improvementScore === 'number' && b.improvementScore > 0)
     .map((b) => ({
       ...b,
       groundingConfidence: b.groundingConfidence === 'Medium' || b.groundingConfidence === 'Low' ? b.groundingConfidence : 'High' as const,

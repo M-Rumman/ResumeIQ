@@ -649,7 +649,7 @@ Rules:
 - If the target job does not overlap with a bullet's supported evidence, improve clarity and impact only; do not force unrelated job terminology into it.
 - Every "after" bullet MUST begin with a strong, specific action verb. Prefer verbs relevant to the field (e.g., Developed, Designed, Researched, Negotiated, Analyzed, Managed) when they are truthful to the original bullet.
 - Produce a materially stronger bullet, not a light paraphrase. Improve the sentence's clarity, professional tone, domain specificity, and readable action-to-contribution structure while preserving the original meaning.
-- Reject synonym-only rewrites. A rewrite must add resume-supported professional context, purpose, outcome, or ownership clarity beyond merely replacing the opening verb. When the original bullet is weak, aim for a clearly visible quality improvement; make only minor edits when it is already strong.
+- You may improve the professional tone, action verbs, and sentence structure even if you cannot add new details. A clearer, more active phrasing is a valid improvement for a weak bullet. When the original bullet is already strong, make only minor edits or leave it unchanged.
 - STRICT GROUNDING RULE: You MUST NOT invent an objective, outcome, purpose, business impact, user impact, scope, stakeholder involvement, methodology, or tool. Do not invent metrics, ownership, or responsibilities.
 - Do NOT add phrases like "to identify...", "to improve...", "resulting in...", or "in order to..." unless that exact purpose or outcome is explicitly stated in the source resume facts.
 - Do not infer "designed" from "ran" unless the resume explicitly supports design ownership. Do not exaggerate ownership.
