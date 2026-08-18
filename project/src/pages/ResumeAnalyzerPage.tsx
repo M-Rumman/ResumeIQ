@@ -82,31 +82,23 @@ function BulletImprovementGuide({ items, candidateBulletsCount }: { items: Premi
                         ? `Improvement Score: ${item.improvementScore >= 0 ? '+' : ''}${item.improvementScore}`
                         : 'Improvement Summary'}
                     </h4>
-                    <span className="text-xs font-bold text-gray-700">Grounding confidence: {item.confidence || 'Medium'}</span>
-                  </div>
-                  <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-emerald-800">
-                    {(item.improvements?.length ? item.improvements : ['More complete, resume-supported explanation of the work']).map((improvement) => <li key={improvement}>+ {improvement}</li>)}
-                  </ul>
-                </div>
-                <div className="grid md:grid-cols-2 gap-px bg-gray-100">
-                  <div className="bg-white p-4">
-                    <h4 className="text-sm font-bold text-gray-900 mb-2">Why it is weak</h4>
-                    <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                      {(item.whyWeak?.length ? item.whyWeak : ['Sentence structure lacks strong professional impact.']).map((reason) => <li key={reason}>{reason}</li>)}
-                    </ul>
-                  </div>
-                  <div className="bg-white p-4">
-                    <h4 className="text-sm font-bold text-gray-900 mb-2">What information is missing</h4>
-                    <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                      {(item.missingInformation?.length ? item.missingInformation : ['No missing context detected.']).map((detail) => <li key={detail}>{detail}</li>)}
-                    </ul>
+                    <span className="text-xs font-bold text-gray-700">Grounding confidence: {item.groundingConfidence || 'Medium'}</span>
                   </div>
                 </div>
                 <div className="bg-white p-4">
-                  <h4 className="text-sm font-bold text-gray-900 mb-2">Why this is stronger</h4>
-                  <ul className="space-y-1.5 text-sm text-gray-700 list-disc pl-5">
-                    {(item.whyStronger?.length ? item.whyStronger : ['Improves sentence clarity and professional tone.']).map((reason) => <li key={reason}>{reason}</li>)}
-                  </ul>
+                  <h4 className="text-sm font-bold text-gray-900 mb-2">Reasoning</h4>
+                  <p className="text-sm text-gray-700">
+                    {item.reasoning || 'No reasoning provided.'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-4 border-t border-gray-100">
+                  <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Score Breakdown</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-700">
+                    <div>Relevance: <span className="font-semibold">{item.scoreBreakdown?.relevance ?? 0}</span>/25</div>
+                    <div>Specificity: <span className="font-semibold">{item.scoreBreakdown?.specificity ?? 0}</span>/25</div>
+                    <div>Impact: <span className="font-semibold">{item.scoreBreakdown?.impact ?? 0}</span>/25</div>
+                    <div>Clarity: <span className="font-semibold">{item.scoreBreakdown?.clarity ?? 0}</span>/25</div>
+                  </div>
                 </div>
               </article>
             );
@@ -643,7 +635,7 @@ function analysisErrorMessage(error: unknown): string {
         return 'The resume analysis service returned an incomplete analysis. Please try again in a few moments.';
       case 'rewriter':
         return 'The bullet-point improvement service returned an incomplete response. Please try again in a few moments.';
-      case 'validator':
+      case 'validation':
         return 'The generated analysis could not be verified against your resume. Please try again.';
       case 'planner':
         return 'The generated recommendations could not be organized safely. Please try again.';

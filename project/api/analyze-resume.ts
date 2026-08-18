@@ -96,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const requestedReportId = typeof body.reportId === 'string' ? body.reportId.trim() : '';
   const unlockedReports = Array.isArray(billing.unlocked_reports)
-    ? billing.unlocked_reports.filter((reportId): reportId is string => typeof reportId === 'string')
+    ? billing.unlocked_reports.filter((reportId: any): reportId is string => typeof reportId === 'string')
     : [];
   const hasReportUnlock = requestedReportId.length > 0 && unlockedReports.includes(requestedReportId);
   // Free users should receive the complete report for their successful daily allowance.

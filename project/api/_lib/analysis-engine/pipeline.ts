@@ -8,7 +8,7 @@ import { generateRecommendations } from './recommendations.js';
 import { validateAndSanitizeReport } from './validator.js';
 import { validateRewrites } from '../aiValidation.js';
 import type { PipelineContext, EngineResult, AiResumeAnalysisFull, CanonicalRequirements } from './types.js';
-import { AiPipelineError } from './types.js'; // AiPipelineError from where it's exported or openrouter.ts? Wait, let me check where AiPipelineError is. It's in openrouter.ts usually.
+
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { ParsedResume, KeywordCompatibility } from '../openrouter.js';
 import { generateBulletRewritesWithAi, AiPipelineError as OpenRouterPipelineError } from '../openrouter.js';
@@ -35,8 +35,8 @@ export async function runAnalysisPipeline(
         .slice(0, 15)
         .map(line => ({
           id: randomUUID(),
-          category: 'other',
-          requirement_type: 'other',
+          category: 'other' as const,
+          requirement_type: 'other' as const,
           normalized_name: line.length > 50 ? line.substring(0, 47) + '...' : line,
           original_text: line,
           source_section: 'Job Description',
@@ -48,7 +48,7 @@ export async function runAnalysisPipeline(
         
       return {
         title: 'Target Role',
-        company: null,
+        company: undefined,
         requirements
       };
     }),
@@ -178,7 +178,7 @@ export async function runAnalysisPipeline(
       responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
     },
     jobProfile.requirements.map(r => r.normalized_name),
-    matchingResult.matches.map(m => ({
+    matchingResult.matches.map((m: any) => ({
       skill: m.requirement.normalized_name,
       status: m.classification,
       evidence: [] // Omitted to prevent payload explosion/token limit failures
@@ -389,7 +389,7 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
 
   // 1. ANALYSIS_FAILED must not be equivalent to MISSING.
   for (const f of failedNames) {
-    if (missingNames.includes(f)) throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Requirement ${f} is both missing and failed.`);
+    if (missingNames.includes(f)) throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Requirement ${f} is both missing and failed.`);
   }
 
   // 2. Failed analysis must NOT drop from the denominator, to prevent a "free pass".
@@ -397,39 +397,39 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
   const failedDetails = matchScoreDetails.details.filter((d: any) => d.classification === 'ANALYSIS_FAILED');
   for (const f of failedDetails) {
     if (f.achievedPoints !== 0) {
-      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} improperly awarded achieved points.`);
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} improperly awarded achieved points.`);
     }
     if (f.priority === 'required' && f.maxPoints === 0) {
-      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} was silently dropped from the denominator.`);
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} was silently dropped from the denominator.`);
     }
   }
 
   // 3. A requirement classified as matched must not simultaneously appear as missing.
   const matchedNames = [...canonical.exact, ...canonical.semantic].map(m => m.requirement.normalized_name);
   for (const m of matchedNames) {
-    if (missingNames.includes(m)) throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Requirement ${m} is both matched and missing.`);
+    if (missingNames.includes(m)) throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Requirement ${m} is both matched and missing.`);
   }
 
   // 4. A requirement classified as missing must have no valid supporting evidence.
   for (const m of [...canonical.missingCore, ...canonical.missingPreferred]) {
-    if (m.evidence && m.evidence.length > 0) throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Missing requirement ${m.requirement.normalized_name} has evidence.`);
+    if (m.evidence && m.evidence.length > 0) throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Missing requirement ${m.requirement.normalized_name} has evidence.`);
   }
 
   // 5. "No material requirements are missing" must not be displayed when requirements remain unevaluated.
   if (failedNames.length > 0 && (!report.hiringManagerAssessment.topReasonsForRejection || report.hiringManagerAssessment.topReasonsForRejection.length === 0)) {
-    throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `UI would falsely claim no material requirements are missing.`);
+    throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `UI would falsely claim no material requirements are missing.`);
   }
 
   // 7. Keyword counts must derive from the same canonical classifications as the requirement breakdown.
   if (report.keywordCompatibility.missing.length !== missingNames.length) {
-    throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Keyword compatibility missing count does not match canonical missing count.`);
+    throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Keyword compatibility missing count does not match canonical missing count.`);
   }
 
   // 10. The final percentage must equal the displayed achieved points divided by the displayed maximum points
   if (matchScoreDetails.totalMaxScore > 0) {
     const calcScore = Math.round((matchScoreDetails.totalAchievedScore / matchScoreDetails.totalMaxScore) * 100);
     if (calcScore !== report.matchScore) {
-      throw new OpenRouterPipelineError('validator', 'INVARIANT_FAILED', `Match score calculation mismatch. Calculated: ${calcScore}, Displayed: ${report.matchScore}`);
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Match score calculation mismatch. Calculated: ${calcScore}, Displayed: ${report.matchScore}`);
     }
   }
 }

@@ -7,15 +7,18 @@ export type ImprovementItem = {
 
 export type BulletPair = { 
   before: string; 
-  after: string; 
-  confidence: 'High' | 'Medium' | 'Low';
   beforeScore: number;
+  after: string; 
   afterScore: number;
   improvementScore: number;
-  improvements: string[];
-  whyWeak: string[];
-  missingInformation: string[];
-  whyStronger: string[];
+  groundingConfidence: 'High' | 'Medium' | 'Low';
+  scoreBreakdown: {
+    relevance: number;
+    specificity: number;
+    impact: number;
+    clarity: number;
+  };
+  reasoning: string;
 };
 
 export type PremiumResumeDisplayResults = {
@@ -112,7 +115,7 @@ function bulletsFromAi(ai: AiResumeAnalysisPremium): BulletPair[] {
     .filter((b) => b?.before && b?.after)
     .map((b) => ({
       ...b,
-      confidence: b.confidence === 'Medium' || b.confidence === 'Low' ? b.confidence : 'High' as const,
+      groundingConfidence: b.groundingConfidence === 'Medium' || b.groundingConfidence === 'Low' ? b.groundingConfidence : 'High' as const,
     }));
   return fromAi.slice(0, 6);
 }

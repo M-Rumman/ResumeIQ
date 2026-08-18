@@ -70,15 +70,18 @@ export interface AiResumeAnalysisPremium {
   candidateBulletsCount: number;
   improvedBulletPoints: {
     before: string;
-    after: string;
-    confidence: 'High' | 'Medium' | 'Low';
     beforeScore: number;
+    after: string;
     afterScore: number;
     improvementScore: number;
-    improvements: string[];
-    whyWeak: string[];
-    missingInformation: string[];
-    whyStronger: string[];
+    groundingConfidence: 'High' | 'Medium' | 'Low';
+    scoreBreakdown: {
+      relevance: number;
+      specificity: number;
+      impact: number;
+      clarity: number;
+    };
+    reasoning: string;
   }[];
   improvementSuggestions: string[];
   optimizationRecommendations: string[];

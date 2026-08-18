@@ -1,21 +1,17 @@
-export type BulletQuality = {
-  total: number;
-  actionVerb: number;
-  keywordRichness: number;
-  measurableImpact: number;
-  sentenceClarity: number;
-  ownershipStructure: number;
+export type ScoreBreakdown = {
+  relevance: number;
+  specificity: number;
+  impact: number;
+  clarity: number;
 };
 
-export const STRONG_BULLET_ACTION_VERBS = new Set([
-  'accelerated', 'achieved', 'analyzed', 'architected', 'assembled', 'automated', 'built',
-  'coordinated', 'created', 'delivered', 'designed', 'developed', 'engineered', 'fabricated',
-  'implemented', 'improved', 'integrated', 'led', 'managed', 'optimized', 'presented',
-  'produced', 'reduced', 'streamlined', 'tested', 'validated',
-]);
+export type BulletScore = {
+  total: number;
+  breakdown: ScoreBreakdown;
+};
 
-export const GENERIC_BULLET_OPENERS = new Set([
-  'assisted', 'helped', 'participated', 'responsible', 'supported', 'worked',
+export const FLUFF_WORDS = new Set([
+  'spearheaded', 'leveraged', 'synergized', 'revolutionized', 'skyrocketed', 'maximized', 'drove', 'championed', 'pioneered', 'supercharged', 'utilized'
 ]);
 
 export function firstWord(text: string) {
@@ -40,82 +36,63 @@ export function supportsTargetKeyword(text: string, keyword: string): boolean {
   return false;
 }
 
-export function scoreBulletQuality(text: string, targetKeywords: string[]): BulletQuality {
-  const words = text.trim().match(/[A-Za-z0-9+#]+/g) || [];
-  const opener = firstWord(text);
-  const actionVerb = STRONG_BULLET_ACTION_VERBS.has(opener) ? 30 : GENERIC_BULLET_OPENERS.has(opener) ? 5 : 15;
-  const measurableImpact = hasQuantification(text) ? (text.includes('[X]') || text.includes('[x]') ? 12 : 20) : 0;
-  const sentenceClarity = words.length >= 12 && words.length <= 42 ? 15 : words.length >= 7 && words.length <= 55 ? 8 : 4;
-  const ownershipStructure = STRONG_BULLET_ACTION_VERBS.has(opener)
-    && words.length >= 10
-    ? 15
-    : 0;
+export function scoreBulletQuality(text: string, targetKeywords: string[]): BulletScore {
+  const words = text.trim().split(/\s+/);
+  const wordCount = words.length;
 
-  const rawKeywordScore = [...new Set(targetKeywords.map((term) => term.trim()).filter(Boolean))]
-    .filter((term) => supportsTargetKeyword(text, term)).length * 10;
-  
-  // Keyword richness is penalized if the bullet lacks a strong action verb or measurable impact (anti-stuffing).
-  let keywordRichness = 0;
-  if (actionVerb === 30 || measurableImpact > 0) {
-    keywordRichness = Math.min(20, rawKeywordScore);
-  } else {
-    keywordRichness = Math.min(5, rawKeywordScore * 0.25);
+  let relevance = 10;
+  const hasKeyword = targetKeywords.some(kw => supportsTargetKeyword(text, kw));
+  if (hasKeyword) {
+    relevance = 25;
   }
 
-  const total = Math.round(actionVerb + keywordRichness + measurableImpact + sentenceClarity + ownershipStructure);
-  return { total, actionVerb, keywordRichness, measurableImpact, sentenceClarity, ownershipStructure };
+  let specificity = 10;
+  if (/\[\s*x\s*\]/i.test(text)) {
+    specificity = 0;
+  } else {
+    const specificTerms = words.filter(w => /^[A-Z]{2,}/.test(w) || /^[a-z]+[A-Z][a-z]+/.test(w) || /\d/.test(w)).length;
+    if (specificTerms >= 3) specificity = 25;
+    else if (specificTerms >= 1) specificity = 15;
+  }
+
+  let impact = 10;
+  if (hasQuantification(text)) {
+    impact = 25;
+  }
+
+  let clarity = 25;
+  if (wordCount > 35) clarity -= 10;
+  if (wordCount < 8) clarity -= 5;
+  const fluffCount = words.filter(w => FLUFF_WORDS.has(w.toLowerCase().replace(/[^a-z]/g, ''))).length;
+  clarity -= (fluffCount * 5);
+  if (clarity < 0) clarity = 0;
+
+  const total = relevance + specificity + impact + clarity;
+
+  return {
+    total,
+    breakdown: { relevance, specificity, impact, clarity }
+  };
 }
 
-export function bulletQualityImprovements(before: BulletQuality, after: BulletQuality) {
-  const improvements = [
-    [after.actionVerb > before.actionVerb, 'Stronger action verb'],
-    [after.keywordRichness > before.keywordRichness, 'Better ATS keywords for this role'],
-    [after.measurableImpact > before.measurableImpact, 'More measurable impact'],
-    [after.sentenceClarity > before.sentenceClarity, 'Clearer sentence structure'],
-    [after.ownershipStructure > before.ownershipStructure, 'Clearer ownership and contribution structure'],
-  ] as const;
-  return improvements.filter(([improved]) => improved).map(([, label]) => label);
-}
-
-export function buildDetailedBulletTeachingGuide(
-  pair: { before: string; after: string },
-  targetKeywords: string[],
-) {
-  const { before, after } = pair;
-  const targetTerms = targetKeywords.filter((term) => containsTerm(after, term) && !containsTerm(before, term));
-  const purpose = after.match(/\bto\s+([^.;]+)/i)?.[1]?.trim();
-  const genericOpening = GENERIC_BULLET_OPENERS.has(firstWord(before));
-  const hasStrongActionVerb = STRONG_BULLET_ACTION_VERBS.has(firstWord(after));
-  const beforeHasQuant = hasQuantification(before);
-
-  const whyWeak: string[] = [];
-  if (genericOpening) {
-    whyWeak.push(`"${firstWord(before).replace(/^./, l => l.toUpperCase())}" communicates limited ownership.`);
-  } else if (!STRONG_BULLET_ACTION_VERBS.has(firstWord(before))) {
-    whyWeak.push(`The sentence structure is passive or uses a weak opening verb.`);
+export function generateReasoning(beforeScore: BulletScore, afterScore: BulletScore): string {
+  if (beforeScore.total === afterScore.total) {
+    if (beforeScore.total >= 80) return "Bullet is already strong across all dimensions.";
+    return "The proposed changes do not meaningfully improve the core dimensions of the bullet without inventing information.";
   }
   
-  if (!beforeHasQuant) {
-    whyWeak.push(`No documented outcome or measurable impact is stated in this bullet.`);
+  const reasons: string[] = [];
+  const bb = beforeScore.breakdown;
+  const ab = afterScore.breakdown;
+
+  if (ab.relevance > bb.relevance) reasons.push("better aligns with target role requirements");
+  if (ab.specificity > bb.specificity) reasons.push("replaces generic descriptions with specific details");
+  if (ab.impact > bb.impact) reasons.push("highlights measurable impact");
+  if (ab.clarity > bb.clarity) reasons.push("improves clarity and conciseness by removing fluff or optimizing length");
+
+  if (reasons.length > 0) {
+    return "Improvement " + reasons.join(", ") + ".";
   }
 
-  const missingInformation: string[] = [];
-  if (targetTerms.length > 0) {
-    missingInformation.push(`Check if you can add specific tools or methodologies to this bullet without inventing them.`);
-  } else if (!beforeHasQuant) {
-    missingInformation.push(`A metric, scope, or performance outcome is absent (only add if supported elsewhere in your resume).`);
-  } else {
-    missingInformation.push(`This bullet is factually complete based on your resume evidence.`);
-  }
-
-  const whyStronger: string[] = [];
-  if (hasStrongActionVerb && !STRONG_BULLET_ACTION_VERBS.has(firstWord(before))) {
-    whyStronger.push(`Uses the stronger action verb "${firstWord(after).replace(/^./, l => l.toUpperCase())}".`);
-  }
-  if (targetTerms.length > 0) {
-    whyStronger.push(`Clarifies alignment with the target role through relevant terminology.`);
-  }
-  whyStronger.push(`Preserves all original facts without inventing outcomes.`);
-
-  return { whyWeak, missingInformation, whyStronger };
+  return "Adjusts phrasing for readability.";
 }

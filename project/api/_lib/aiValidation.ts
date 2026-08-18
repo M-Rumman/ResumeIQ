@@ -1,18 +1,15 @@
 import { containsPhoneNumber } from './resumeParser.js';
-import { scoreBulletQuality, bulletQualityImprovements, buildDetailedBulletTeachingGuide } from './analysis-engine/bulletScoring.js';
+import { scoreBulletQuality, generateReasoning, ScoreBreakdown } from './analysis-engine/bulletScoring.js';
 
 export type RewritePair = {
   before: string;
-  after: string;
-  confidence: 'High' | 'Medium' | 'Low';
-  inferenceType: 'EXPLICITLY_STATED' | 'STRONGLY_SUPPORTED_INFERENCE' | 'UNSUPPORTED' | 'NOT_APPLICABLE';
   beforeScore: number;
+  after: string;
   afterScore: number;
   improvementScore: number;
-  improvements: string[];
-  whyWeak: string[];
-  missingInformation: string[];
-  whyStronger: string[];
+  groundingConfidence: 'High' | 'Medium' | 'Low';
+  scoreBreakdown: ScoreBreakdown;
+  reasoning: string;
 };
 export type ValidationTelemetry = {
   acceptedRecommendations: number;
@@ -326,8 +323,9 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     if (!value || typeof value !== 'object') continue;
     const pair = value as Record<string, unknown>;
     const before = typeof pair.before === 'string' ? pair.before.trim() : '';
-    const after = typeof pair.after === 'string' ? pair.after.trim() : '';
-    if (!before || !after || !source.includes(normalize(before))) continue;
+    let after = typeof pair.after === 'string' ? pair.after.trim() : '';
+    if (!before || !source.includes(normalize(before))) continue;
+    if (!after) after = before;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
     // A rewrite may synthesize appropriately from across the resume,
     // so we check for hallucinated metrics against the entire resume text.
@@ -338,40 +336,46 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     
     const improvementScore = afterQuality.total - beforeQuality.total;
     
-    // We accept a rewrite if it's strictly better AND not invented.
-    // If it has a <= 0 improvement score or is invented/unsupported, we drop it.
-    if (improvementScore <= 0 || hasInvented || normalize(before) === normalize(after)) {
-      continue;
-    }
-    
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
-    
-    const improvements = bulletQualityImprovements(beforeQuality, afterQuality);
-    const guide = buildDetailedBulletTeachingGuide({ before, after }, targetKeywords);
     
     const rawConfidence = typeof pair.confidence === 'string' ? pair.confidence : 'High';
     const confidence = (['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High') as 'High' | 'Medium' | 'Low';
+    
+    let finalAfter = after;
+    let finalAfterQuality = afterQuality;
+    let finalImprovementScore = improvementScore;
+    let finalConfidence = confidence;
 
     const rawInferenceType = typeof pair.inferenceType === 'string' ? pair.inferenceType : 'STRONGLY_SUPPORTED_INFERENCE';
     const inferenceType = (['EXPLICITLY_STATED', 'STRONGLY_SUPPORTED_INFERENCE', 'UNSUPPORTED'].includes(rawInferenceType) ? rawInferenceType : 'STRONGLY_SUPPORTED_INFERENCE') as 'EXPLICITLY_STATED' | 'STRONGLY_SUPPORTED_INFERENCE' | 'UNSUPPORTED';
     
-    // If the LLM self-reported it as UNSUPPORTED, discard the improvement.
-    if (inferenceType === 'UNSUPPORTED') {
-      continue;
+    let isFallback = false;
+
+    if (improvementScore <= 0 || hasInvented || normalize(before) === normalize(after) || inferenceType === 'UNSUPPORTED') {
+      finalAfter = before;
+      finalAfterQuality = beforeQuality;
+      finalImprovementScore = 0;
+      if (hasInvented || inferenceType === 'UNSUPPORTED') {
+        finalConfidence = 'Low';
+      }
+      isFallback = true;
+    }
+
+    let reasoning = generateReasoning(beforeQuality, finalAfterQuality);
+
+    if (isFallback) {
+      reasoning = 'Original bullet preserved. Improvement attempted but required inventing unsupported facts or yielded no significant gain.';
     }
 
     accepted.push({
       before,
-      after,
-      confidence,
-      inferenceType,
       beforeScore: beforeQuality.total,
-      afterScore: afterQuality.total,
-      improvementScore,
-      improvements,
-      whyWeak: guide.whyWeak,
-      missingInformation: guide.missingInformation,
-      whyStronger: guide.whyStronger,
+      after: finalAfter,
+      afterScore: finalAfterQuality.total,
+      improvementScore: finalImprovementScore,
+      groundingConfidence: finalConfidence,
+      scoreBreakdown: finalAfterQuality.breakdown,
+      reasoning,
     });
   }
 

@@ -10,7 +10,7 @@ import {
   sanitizeResumeContentLine,
   type StructuredResume,
 } from './resumeParser.js';
-import { validateAiResumeOutput } from './aiValidation.js';
+import { validateAiResumeOutput, type RewritePair } from './aiValidation.js';
 import {
   planInterviewRecommendations,
   planResumeRecommendations,
@@ -146,6 +146,7 @@ export interface AiResumeAnalysisFull {
   missingSkills: string[];
   missingKeywords: string[];
   analysisFailedSkills: string[];
+  candidateBulletsCount?: number;
   keywordRecommendations: KeywordRecommendation[];
   keywordGaps: string[];
   missingRequiredSkills: string[];
@@ -155,7 +156,7 @@ export interface AiResumeAnalysisFull {
   formattingIssues: string[];
   formattingSuggestions: string[];
   weakBullets: string[];
-  improvedBulletPoints: { before: string; after: string; confidence: 'High' | 'Medium' | 'Low' }[];
+  improvedBulletPoints: RewritePair[];
   improvementSuggestions: string[];
   optimizationRecommendations: string[];
   keywordSuggestions: string[];
@@ -1838,7 +1839,7 @@ export function buildKeywordCompatibility(
   const overallMatch = items.length === 0 ? 0 : Math.round(
     (strongMatches.length + partialMatches.length * 0.5) / items.length * 100,
   );
-  return { overallMatch, exactMatches: strongMatches, semanticMatches: partialMatches, underExpressed: [], missing };
+  return { overallMatch, exactMatches: strongMatches, semanticMatches: partialMatches, underExpressed: [], missing, analysisFailed: [] };
 }
 
 /**
@@ -2671,14 +2672,13 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
   };
 
   const bullets = Array.isArray(o.improvedBulletPoints)
-    ? (o.improvedBulletPoints as { before?: string; after?: string; confidence?: unknown }[])
+    ? (o.improvedBulletPoints as RewritePair[])
         .filter((b) => b?.before && b?.after)
-        .map((b) => {
-          const confidence: 'High' | 'Medium' | 'Low' = b.confidence === 'Medium' || b.confidence === 'Low'
-            ? b.confidence
-            : 'High';
-          return { before: String(b.before), after: String(b.after), confidence };
-        })
+        .map((b) => ({
+          ...b,
+          before: String(b.before),
+          after: String(b.after),
+        }))
     : [];
 
   const atsScore = Math.max(0, Math.min(100, Number(o.atsScore) || 0));
@@ -2790,6 +2790,7 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
     keywordSuggestions,
     keywordGaps,
     missingRequiredSkills: arr(o.missingRequiredSkills),
+    analysisFailedSkills: [],
     educationAlignment,
     detectedSections: arr(o.detectedSections),
     missingSections: arr(o.missingSections),

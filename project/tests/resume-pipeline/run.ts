@@ -675,7 +675,8 @@ Capstone Design Project
           after: 'Built a Kubernetes dashboard for Acme Corp.',
         }],
       }, fixtures.inventedTechnologyResume);
-      assert.strictEqual(result.improvedBulletPoints.length, 0);
+      assert.strictEqual(result.improvedBulletPoints[0].improvementScore, 0);
+      assert.strictEqual(result.improvedBulletPoints[0].after, result.improvedBulletPoints[0].before);
     },
   },
   {
@@ -687,7 +688,8 @@ Capstone Design Project
           after: 'Built a React dashboard used by 500 users.',
         }],
       }, fixtures.inventedMetricResume);
-      assert.strictEqual(result.improvedBulletPoints.length, 0);
+      assert.strictEqual(result.improvedBulletPoints[0].improvementScore, 0);
+      assert.strictEqual(result.improvedBulletPoints[0].after, result.improvedBulletPoints[0].before);
     },
   },
   {
@@ -700,7 +702,8 @@ Capstone Design Project
           after: 'Developed Python and React reporting workflows.',
         }],
       }, resume);
-      assert.strictEqual(result.improvedBulletPoints.length, 0);
+      assert.strictEqual(result.improvedBulletPoints[0].improvementScore, 0);
+      assert.strictEqual(result.improvedBulletPoints[0].after, result.improvedBulletPoints[0].before);
     },
   },
   {
