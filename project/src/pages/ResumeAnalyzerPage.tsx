@@ -354,6 +354,7 @@ function HiringManagerAssessmentCard({ assessment }: { assessment: PremiumResult
     'Potential Match': 'bg-amber-100 text-amber-800',
     'Weak Match': 'bg-orange-100 text-orange-800',
     'Poor Match': 'bg-red-100 text-red-800',
+    'Analysis Incomplete': 'bg-gray-100 text-gray-800',
   } as const;
 
   return (
@@ -371,7 +372,9 @@ function HiringManagerAssessmentCard({ assessment }: { assessment: PremiumResult
       <div className="grid lg:grid-cols-2 gap-5 mt-5">
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
           <p className="text-sm font-bold text-emerald-900 mb-3">Why You Are Likely To Be Interviewed</p>
-          {assessment.topReasonsToInterview.length > 0 ? (
+          {assessment.overallDecision === 'Analysis Incomplete' ? (
+            <p className="text-sm leading-6 text-emerald-950">Cannot determine strengths without job requirements.</p>
+          ) : assessment.topReasonsToInterview.length > 0 ? (
             <ul className="space-y-3">
               {assessment.topReasonsToInterview.map((reason) => (
                 <li key={reason} className="flex gap-2 text-sm leading-6 text-emerald-950"><CheckCircle2 className="w-4 h-4 mt-1 shrink-0 text-emerald-700" />{reason}</li>
@@ -383,7 +386,9 @@ function HiringManagerAssessmentCard({ assessment }: { assessment: PremiumResult
         </div>
         <div className="rounded-xl border border-red-100 bg-red-50 p-4">
           <p className="text-sm font-bold text-red-900 mb-3">Why You Might Be Rejected</p>
-          {assessment.topReasonsForRejection.length > 0 ? (
+          {assessment.overallDecision === 'Analysis Incomplete' ? (
+            <p className="text-sm leading-6 text-red-950">Analysis incomplete. The job description yielded no valid requirements.</p>
+          ) : assessment.topReasonsForRejection.length > 0 ? (
             <ul className="space-y-3">
               {assessment.topReasonsForRejection.map((reason) => (
                 <li key={reason} className="flex gap-2 text-sm leading-6 text-red-950"><AlertCircle className="w-4 h-4 mt-1 shrink-0 text-red-600" />{reason}</li>

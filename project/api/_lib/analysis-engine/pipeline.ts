@@ -5,7 +5,7 @@ import { matchRequirements, getDeterministicMatches } from './matcher.js';
 import { evaluateScores } from './evaluator.js';
 import { scoreBulletQuality } from './bulletScoring.js';
 import { generateRecommendations } from './recommendations.js';
-import { validateAndSanitizeReport } from './validator.js';
+import { validateAndSanitizeReport, validateEvidenceAttribution } from './validator.js';
 import { validateRewrites } from '../aiValidation.js';
 import type { PipelineContext, EngineResult, AiResumeAnalysisFull, CanonicalRequirements } from './types.js';
 
@@ -26,32 +26,7 @@ export async function runAnalysisPipeline(
   console.info('[analysis-trace] JD_PARSE_START');
   const extractStart = performance.now();
   const [jobProfile, candidateProfile] = await Promise.all([
-    parseJobDescription(context.jobDescriptionText, options).catch(err => {
-      console.error('[pipeline] AI JD Parser failed, degrading to deterministic fallback:', err);
-      const requirements = context.jobDescriptionText
-        .split(/\n/)
-        .map(line => line.trim().replace(/^[•\-\*·\s]+/, '').trim())
-        .filter(line => line.length > 10 && line.length < 150)
-        .slice(0, 15)
-        .map(line => ({
-          id: randomUUID(),
-          category: 'other' as const,
-          requirement_type: 'other' as const,
-          normalized_name: line.length > 50 ? line.substring(0, 47) + '...' : line,
-          original_text: line,
-          source_section: 'Job Description',
-          source_span: [-1, -1] as [number, number],
-          source_text: line,
-          priority: 'required' as const,
-          confidence: 0.5,
-        }));
-        
-      return {
-        title: 'Target Role',
-        company: undefined,
-        requirements
-      };
-    }),
+    parseJobDescription(context.jobDescriptionText, options),
     context.candidateProfile ? Promise.resolve(context.candidateProfile) : Promise.resolve(extractCandidateProfile(context.resumeText))
   ]);
   const extractEnd = performance.now();
@@ -98,9 +73,31 @@ export async function runAnalysisPipeline(
         tier: 'premium',
         parsed: parsedResume,
         atsScore: Math.round(candidateProfile.facts.length * 2), // dummy baseline
+        matchScore: 0,
+        existingSkills: [],
+        missingSkills: [],
+        missingKeywords: [],
+        analysisFailedSkills: [],
+        keywordRecommendations: [],
+        keywordGaps: [],
+        missingRequiredSkills: [],
+        educationAlignment: [],
         detectedSections,
         missingSections,
-        basicFeedback: [],
+        formattingIssues: [],
+        formattingSuggestions: [],
+        weakBullets: [],
+        improvedBulletPoints: [],
+        improvementSuggestions: [],
+        optimizationRecommendations: [],
+        keywordSuggestions: [],
+        atsIssues: [],
+        recommendationPriorities: {
+          critical: [],
+          important: [],
+          optional: [],
+        },
+        actionPlan: [],
         atsScoreExplanation: {
           strengths: ['Resume extracted successfully'],
           missingElements: [],
@@ -112,8 +109,31 @@ export async function runAnalysisPipeline(
           estimatedScoreImprovement: 0,
           potentialAtsScore: 0
         },
-        improvementSuggestions: [],
-        optimizationRecommendations: []
+        jobMatchExplanation: {
+          strongMatches: [],
+          partialMatches: [],
+          missingSkills: []
+        },
+        keywordCompatibility: {
+          overallMatch: 0,
+          exactMatches: [],
+          semanticMatches: [],
+          underExpressed: [],
+          missing: [],
+          analysisFailed: []
+        },
+        requirementBreakdown: [],
+        coachingReport: [],
+        atsBreakdown: [],
+        roleStrengths: [],
+        hiringManagerAssessment: {
+          overallDecision: 'Analysis Incomplete',
+          recruiterSummary: 'The job description yielded no valid requirements.',
+          topReasonsToInterview: [],
+          topReasonsForRejection: [],
+          biggestImprovements: [],
+          confidence: 'Low'
+        }
       }
     } as unknown as EngineResult;
   }
@@ -163,10 +183,10 @@ export async function runAnalysisPipeline(
     .map(b => b.text);
 
   // Execute LLM calls sequentially to prevent concurrent provider rate limits (429s)
-  const matchingResult = await matchRequirements(jobProfile, candidateProfile, deterministicResult, options).catch(err => {
-    console.error('[pipeline] AI Matcher failed, degrading to deterministic:', err);
-    return deterministicResult as any; // Fallback to deterministic matcher
-  });
+  const matchingResult = await matchRequirements(jobProfile, candidateProfile, deterministicResult, options);
+
+  // Strict validation of evidence provenance and logic
+  matchingResult.matches = validateEvidenceAttribution(matchingResult.matches, candidateProfile.facts, context.resumeText);
 
   const bulletRewrites = await generateBulletRewritesWithAi(
     weakCandidates,
@@ -184,10 +204,7 @@ export async function runAnalysisPipeline(
       evidence: [] // Omitted to prevent payload explosion/token limit failures
     })),
     options.observability
-  ).catch(err => {
-    console.error('[pipeline] AI Rewriter failed, skipping rewrites:', err);
-    return { improvedBulletPoints: [], weakBullets: [] };
-  });
+  );
 
   console.log(`[DEBUG] weakCandidates length: ${weakCandidates.length}`);
   console.log(`[DEBUG] raw LLM bulletRewrites:`, bulletRewrites.improvedBulletPoints.length);
@@ -393,7 +410,6 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
   }
 
   // 2. Failed analysis must NOT drop from the denominator, to prevent a "free pass".
-  // Therefore, maxPoints must be > 0 (for required requirements), and achievedPoints must be 0.
   const failedDetails = matchScoreDetails.details.filter((d: any) => d.classification === 'ANALYSIS_FAILED');
   for (const f of failedDetails) {
     if (f.achievedPoints !== 0) {
@@ -402,6 +418,39 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
     if (f.priority === 'required' && f.maxPoints === 0) {
       throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} was silently dropped from the denominator.`);
     }
+  }
+
+  // Scoring bounds and consistency invariants
+  for (const d of matchScoreDetails.details) {
+    // 1. Every requirement has a positive valid maximum score.
+    if (d.maxPoints <= 0) {
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Requirement ${d.requirement} has invalid max points: ${d.maxPoints}`);
+    }
+    // 2. 0 <= awarded points <= maximum points
+    if (d.achievedPoints < 0 || d.achievedPoints > d.maxPoints) {
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Requirement ${d.requirement} has invalid achieved points: ${d.achievedPoints} (max: ${d.maxPoints})`);
+    }
+  }
+
+  // 3 & 4. Total awarded points = sum of requirement awarded points. Total max = sum of max.
+  const sumMax = matchScoreDetails.details.reduce((sum: number, d: any) => sum + d.maxPoints, 0);
+  const sumAchieved = matchScoreDetails.details.reduce((sum: number, d: any) => sum + d.achievedPoints, 0);
+  
+  if (Math.abs(sumMax - matchScoreDetails.totalMaxScore) > 0.001) {
+    throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Total max score ${matchScoreDetails.totalMaxScore} does not match sum of details ${sumMax}`);
+  }
+  if (Math.abs(sumAchieved - matchScoreDetails.totalAchievedScore) > 0.001) {
+    throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Total achieved score ${matchScoreDetails.totalAchievedScore} does not match sum of details ${sumAchieved}`);
+  }
+
+  // 5 & 7. Job Match % = total awarded / total maximum * 100, and must match displayed score
+  if (matchScoreDetails.totalMaxScore > 0) {
+    const calcScore = Math.round((matchScoreDetails.totalAchievedScore / matchScoreDetails.totalMaxScore) * 100);
+    if (calcScore !== report.matchScore) {
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Match score calculation mismatch. Calculated: ${calcScore}, Displayed: ${report.matchScore}`);
+    }
+  } else if (report.matchScore !== 0) {
+    throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Match score must be 0 when total max points is 0`);
   }
 
   // 3. A requirement classified as matched must not simultaneously appear as missing.
@@ -423,13 +472,5 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
   // 7. Keyword counts must derive from the same canonical classifications as the requirement breakdown.
   if (report.keywordCompatibility.missing.length !== missingNames.length) {
     throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Keyword compatibility missing count does not match canonical missing count.`);
-  }
-
-  // 10. The final percentage must equal the displayed achieved points divided by the displayed maximum points
-  if (matchScoreDetails.totalMaxScore > 0) {
-    const calcScore = Math.round((matchScoreDetails.totalAchievedScore / matchScoreDetails.totalMaxScore) * 100);
-    if (calcScore !== report.matchScore) {
-      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Match score calculation mismatch. Calculated: ${calcScore}, Displayed: ${report.matchScore}`);
-    }
   }
 }

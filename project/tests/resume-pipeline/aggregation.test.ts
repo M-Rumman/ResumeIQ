@@ -130,6 +130,100 @@ const tests: TestCase[] = [
         globalThis.fetch = originalFetch;
       }
     }
+  },
+  {
+    name: 'evaluateScores: enforces mathematical bounds and precision without intermediate rounding',
+    run: async () => {
+      const { evaluateScores } = await import('../../api/_lib/analysis-engine/evaluator.js');
+      
+      const job: JobProfile = {
+        title: 'Backend Engineer',
+        requirements: [
+          {
+            id: 'req-1',
+            category: 'experience',
+            normalized_name: 'Node.js',
+            original_text: 'Node.js',
+            source_section: 'Requirements',
+            source_span: [0, 10],
+            source_text: 'Node.js',
+            priority: 'required',
+            requirement_type: 'experience',
+            confidence: 1
+          },
+          {
+            id: 'req-2',
+            category: 'skill',
+            normalized_name: 'AWS',
+            original_text: 'AWS',
+            source_section: 'Requirements',
+            source_span: [0, 3],
+            source_text: 'AWS',
+            priority: 'preferred',
+            requirement_type: 'skill',
+            confidence: 1
+          }
+        ]
+      };
+
+      const candidate: CandidateProfile = { contact: {} as any, facts: [], rawStructure: {} as any };
+
+      const canonicalMatches = {
+        matches: [
+          {
+            requirement: job.requirements[0],
+            classification: 'STRONG_SEMANTIC_MATCH' as const, // multiplier 0.85
+            confidence: 0.9,
+            explanation: '',
+            match_tier: 'tier_3_semantic' as const,
+            evidence: []
+          },
+          {
+            requirement: job.requirements[1],
+            classification: 'PARTIAL_MATCH' as const, // multiplier 0.5
+            confidence: 0.8,
+            explanation: '',
+            match_tier: 'tier_3_semantic' as const,
+            evidence: []
+          },
+          {
+            // Hallucinated requirement! Should be ignored because it is not in the JD.
+            requirement: { ...job.requirements[0], id: 'req-hallucinated', normalized_name: 'Hallucinated' },
+            classification: 'EXACT_MATCH' as const,
+            confidence: 1,
+            explanation: '',
+            match_tier: 'tier_3_semantic' as const,
+            evidence: []
+          }
+        ]
+      };
+
+      const result = evaluateScores(job, candidate, canonicalMatches);
+
+      // 1. Hallucinated requirement should be completely ignored from details and denominator.
+      // 2 requirements from JD.
+      assert.equal(result.matchScoreDetails.details.length, 2, 'Should drop hallucinated requirement');
+
+      // Check Req 1
+      const req1Detail = result.matchScoreDetails.details.find(d => d.requirement === 'Node.js');
+      assert.ok(req1Detail, 'Missing req 1 detail');
+      assert.equal(req1Detail.maxPoints, 10, 'Required experience weight = 1.0 -> 10 points');
+      assert.equal(req1Detail.achievedPoints, 8.5, '10 * 0.85 = 8.5 achieved points precisely');
+
+      // Check Req 2
+      const req2Detail = result.matchScoreDetails.details.find(d => d.requirement === 'AWS');
+      assert.ok(req2Detail, 'Missing req 2 detail');
+      assert.equal(req2Detail.maxPoints, 3, 'Preferred non-core skill weight = 0.3 -> 3 points');
+      assert.equal(req2Detail.achievedPoints, 1.5, '3 * 0.5 = 1.5 achieved points precisely');
+
+      // Verify exact aggregation
+      assert.equal(result.matchScoreDetails.totalMaxScore, 13, '10 + 3 = 13 total max');
+      assert.equal(result.matchScoreDetails.totalAchievedScore, 10, '8.5 + 1.5 = 10 total achieved');
+
+      // Verify bounds
+      assert.ok(req1Detail.achievedPoints >= 0 && req1Detail.achievedPoints <= req1Detail.maxPoints);
+      assert.ok(req2Detail.achievedPoints >= 0 && req2Detail.achievedPoints <= req2Detail.maxPoints);
+    }
   }
 ];
 

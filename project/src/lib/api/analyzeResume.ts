@@ -124,7 +124,7 @@ export interface AiResumeAnalysisPremium {
   }[];
   roleStrengths: string[];
   hiringManagerAssessment: {
-    overallDecision: 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match';
+    overallDecision: 'Strong Match' | 'Good Match' | 'Potential Match' | 'Weak Match' | 'Poor Match' | 'Analysis Incomplete';
     recruiterSummary: string;
     topReasonsToInterview: string[];
     topReasonsForRejection: string[];

@@ -1,5 +1,57 @@
 import type { AiResumeAnalysisFull } from '../openrouter.js';
-import type { JobProfile, CandidateProfile } from './types.js';
+import type { JobProfile, CandidateProfile, RequirementMatch, CandidateFact } from './types.js';
+import { isValidEvidenceForCategory } from './matcher.js';
+
+export function validateEvidenceAttribution(
+  matches: RequirementMatch[],
+  candidateFacts: CandidateFact[],
+  resumeText: string
+): RequirementMatch[] {
+  const resumeTextLower = resumeText.toLowerCase().replace(/\s+/g, ' ');
+
+  return matches.map(match => {
+    if (!match.evidence || match.evidence.length === 0) {
+      return match;
+    }
+
+    const validatedEvidence = match.evidence.filter(ev => {
+      // 1. Existence Check
+      if (!ev.source_text || !ev.fact_id) return false;
+
+      // 2. Fact ID Consistency
+      const fact = candidateFacts.find(f => f.id === ev.fact_id);
+      if (!fact) return false;
+
+      // 3. Category Validity
+      if (!isValidEvidenceForCategory(ev.evidence_type, match.requirement.category)) return false;
+
+      // 4. Provenance (Resume Grounding)
+      const evTextLower = ev.source_text.toLowerCase().trim();
+      const factTextLower = fact.rawText.toLowerCase().trim();
+      
+      const isExactFactMatch = evTextLower === factTextLower;
+      const isSubtringInResume = resumeTextLower.includes(evTextLower.replace(/\s+/g, ' '));
+      
+      if (!isExactFactMatch && !isSubtringInResume) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (validatedEvidence.length === 0 && match.classification !== 'MISSING' && match.classification !== 'ANALYSIS_FAILED') {
+      return {
+        ...match,
+        evidence: [],
+        classification: 'ANALYSIS_FAILED',
+        confidence: 0,
+        explanation: `${match.explanation} (Note: Evidence validation failed. System could not confidently establish valid evidence for this requirement.)`
+      };
+    }
+
+    return { ...match, evidence: validatedEvidence };
+  });
+}
 
 export function validateAndSanitizeReport(
   report: AiResumeAnalysisFull,

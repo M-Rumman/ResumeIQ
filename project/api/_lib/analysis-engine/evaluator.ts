@@ -61,8 +61,6 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
       if (getMatchContribution(match.classification) > getMatchContribution(existing.classification)) {
         requirementsMap.set(key, match);
       }
-    } else {
-      requirementsMap.set(key, match);
     }
   }
 
@@ -77,10 +75,9 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     // otherwise the candidate gets a free pass on an unscored requirement.
     let maxPoints = weight * 10;
     
-    // Remove the asymmetrical confidence penalty; model uncertainty should not
-    // lower the achieved points while keeping max points the same.
-    const rawAchieved = maxPoints * contribution;
-    let achievedPoints = rawAchieved; // Delay rounding to prevent compounding errors
+    // Ensure bounds
+    let achievedPoints = maxPoints * contribution;
+    achievedPoints = Math.max(0, Math.min(maxPoints, achievedPoints));
 
     totalMaxScore += maxPoints;
     totalAchievedScore += achievedPoints;
@@ -92,7 +89,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
       maxPoints,
       contributionMultiplier: contribution,
       confidenceMultiplier: confidence,
-      achievedPoints: Math.round(achievedPoints * 10) / 10
+      achievedPoints
     });
 
     if (contribution >= 0.85) {
@@ -112,8 +109,8 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
   const matchScore = Math.round(rawMatchScore);
   
   const matchScoreDetails = {
-    totalMaxScore: Math.round(totalMaxScore * 10) / 10,
-    totalAchievedScore: Math.round(totalAchievedScore * 10) / 10,
+    totalMaxScore,
+    totalAchievedScore,
     rawMatchScore,
     details: scoreDetails
   };

@@ -503,7 +503,6 @@ export async function matchRequirements(
     const prompt = `Requirements:\n${reqListStr}\n\nCandidate Facts (Prioritized):\n${factListStr}`;
 
     let llmMatches: any[] = [];
-    try {
       const rawJson = await callOpenRouter(
         [
           { role: 'system', content: MATCHER_SYSTEM_PROMPT },
@@ -516,12 +515,8 @@ export async function matchRequirements(
 
       if (Array.isArray(parsed)) {
         llmMatches = parsed;
-      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.matches)) {
-        llmMatches = parsed.matches;
-      }
-    } catch (err) {
-      console.error('[matcher] AI Evaluation failed, degrading to deterministic fallbacks for unmatched requirements:', err);
-      // llmMatches remains empty, causing all unmatchedRequirements to seamlessly use deterministic or semantic fallbacks in the loop below.
+    } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.matches)) {
+      llmMatches = parsed.matches;
     }
 
       for (const req of unmatchedRequirements) {

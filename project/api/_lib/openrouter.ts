@@ -2087,7 +2087,7 @@ export function calculateJobMatchScore(
   const experienceEvidence = new Set([...resume.experience, ...resume.projects].map(normalizeGapTerm));
   const projectEvidence = new Set(resume.projects.map(normalizeGapTerm));
   const technicalRequirements = required.filter((item) => !/\b(?:bachelor|degree|mechatronics|electrical|electronics)\b/i.test(item.skill));
-  const technicalExperienceFraction = technicalRequirements.length === 0 ? 1 :
+  const technicalExperienceFraction = technicalRequirements.length === 0 ? 0 :
     technicalRequirements.reduce((total, item) => {
       const inPracticalWork = item.evidence.some((evidence) => experienceEvidence.has(normalizeGapTerm(evidence)));
       if (item.status === 'MATCHED') return total + (inPracticalWork ? 1 : 0.45);
@@ -2096,7 +2096,7 @@ export function calculateJobMatchScore(
     }, 0) / technicalRequirements.length;
   const responsibilityCoverage = responsibilityFraction(requiredGaps.responsibilities);
   const requiredExperience = Math.round((technicalExperienceFraction * 0.8 + responsibilityCoverage * 0.2) * 20);
-  const technicalProjectFraction = technicalRequirements.length === 0 ? 1 :
+  const technicalProjectFraction = technicalRequirements.length === 0 ? 0 :
     technicalRequirements.reduce((total, item) => {
       const inProject = item.evidence.some((evidence) => projectEvidence.has(normalizeGapTerm(evidence)));
       return total + (inProject && item.status === 'MATCHED' ? 1 : inProject && item.status === 'PARTIALLY MATCHED' ? 0.5 : 0);
@@ -2137,7 +2137,7 @@ export function calculateJobMatchScore(
     ...resume.experience,
     ...resume.projects,
   ].join(' '));
-  const keywordCoverage = keywordRequirements.length === 0 ? 5 : Math.round(
+  const keywordCoverage = keywordRequirements.length === 0 ? 0 : Math.round(
     keywordRequirements.reduce((total, requirement) => total + (resumeKeywordText.includes(normalizeGapTerm(requirement)) ? 1 : 0), 0) / keywordRequirements.length * 5,
   );
   const matchedNames = required.filter((item) => item.status === 'MATCHED').map((item) => item.skill);
@@ -2336,7 +2336,8 @@ function buildHiringManagerAssessment(
     matchScore,
     planned,
   );
-  const overallDecision: HiringDecision = matchScore >= 82 && missing.length <= 1 ? 'Strong Match'
+  const overallDecision: HiringDecision = profile.requiredSkills.length === 0 ? 'Analysis Incomplete'
+    : matchScore >= 82 && missing.length <= 1 ? 'Strong Match'
     : matchScore >= 68 && missing.length <= 2 ? 'Good Match'
       : matchScore >= 52 ? 'Potential Match'
         : matchScore >= 36 ? 'Weak Match'

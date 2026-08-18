@@ -1,74 +1,136 @@
-import assert from 'node:assert/strict';
-import { matchRequirements, getDeterministicMatches } from '../../api/_lib/analysis-engine/matcher.js';
-import { extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
+import test from 'node:test';
+import assert from 'node:assert';
+import { validateEvidenceAttribution } from '../../api/_lib/analysis-engine/validator.js';
+import type { RequirementMatch, CandidateFact } from '../../api/_lib/analysis-engine/types.js';
 
-const resumeText = `
-Candidate Name
-Summary
-A professional with 5 years of experience.
-
-Experience
-Software Engineer — Tech Corp (2020 - Present)
-- Responsible for mentoring bachelor students during their internship.
-- Communication with stakeholders and managed expectations across multiple teams.
-
-Skills
-Communication, Java, TypeScript
-
-Education
-B.S. in Computer Science — University of State (2020)
-`;
-
-const candidateProfile = extractCandidateProfile(resumeText);
-console.log(JSON.stringify(candidateProfile.facts, null, 2));
-
-const job = {
-  id: 'job-1',
-  title: 'Test Job',
-  requirements: [
+test('validateEvidenceAttribution strips invalid evidence and downgrades match', () => {
+  const candidateFacts: CandidateFact[] = [
     {
-      id: 'req-edu-1',
-      normalized_name: "Bachelor's Degree",
-      category: 'education' as const,
-      priority: 'required' as const,
-      original_text: "Bachelor's Degree in a related field",
-      degree_level: 'bachelor' as const
+      id: 'fact-1',
+      type: 'experience',
+      normalizedName: 'software engineering',
+      rawText: 'Led development of backend services in Node.js.',
+      sourceSection: 'experience',
+      evidence: 'Led development of backend services in Node.js.'
     },
     {
-      id: 'req-skill-1',
-      normalized_name: "Communication",
-      category: 'soft skill' as const,
-      priority: 'required' as const,
-      original_text: "Communication"
+      id: 'fact-2',
+      type: 'education',
+      normalizedName: 'bachelors degree',
+      rawText: 'B.S. Computer Science, University of Technology',
+      sourceSection: 'education',
+      evidence: 'B.S. Computer Science, University of Technology'
     }
-  ]
-};
+  ];
 
-async function testEvidenceAttribution() {
-  console.log('Testing Evidence Attribution...');
-  
-  // Deterministic matching should find the education requirement matching the B.S. degree, 
-  // NOT the experience bullet containing the word "bachelor".
-  const deterministicResult = getDeterministicMatches(job as any, candidateProfile);
-  
-  const eduMatch = deterministicResult.matches.find(m => m.requirement.id === 'req-edu-1');
-  assert.ok(eduMatch, 'Education match should be found deterministically');
-  
-  const eduEvidence = eduMatch.evidence[0];
-  assert.equal(eduEvidence.evidence_type, 'education', 'Evidence type for education requirement MUST be education');
-  assert.ok(eduEvidence.source_text.includes('B.S. in Computer Science'), 'Evidence text MUST be the actual education fact');
-  
-  const skillMatch = deterministicResult.matches.find(m => m.requirement.id === 'req-skill-1');
-  assert.ok(skillMatch, 'Skill match should be found deterministically');
-  
-  // Communication matches both a skill and an experience bullet.
-  // Rule 5: Soft-skill requirements should prefer actual demonstrated experience over a bare keyword when both exist.
-  // Since experience has a higher priority modifier (4000 vs 2000 in scoring), it should be preferred.
-  const topSkillEvidence = skillMatch.evidence[0];
-  assert.equal(topSkillEvidence.evidence_type, 'experience', 'Evidence type for soft-skill MUST prefer experience over bare skill when both exist');
-  assert.ok(topSkillEvidence.source_text.includes('Communication with stakeholders'), 'Evidence text MUST be the demonstrated experience');
+  const resumeText = 'Led development of backend services in Node.js. B.S. Computer Science, University of Technology';
 
-  console.log('✅ Evidence Attribution Test Passed');
-}
+  const matches: RequirementMatch[] = [
+    {
+      // 1. Valid Match (Category and ID match)
+      requirement: {
+        id: 'req-1',
+        category: 'experience',
+        normalized_name: 'backend development',
+        original_text: 'backend development',
+        source_section: 'Requirements',
+        source_span: [0, 10],
+        source_text: 'backend development',
+        priority: 'required',
+        requirement_type: 'experience',
+        confidence: 0.9
+      },
+      classification: 'EXACT_MATCH',
+      confidence: 0.9,
+      match_tier: 'tier_3_semantic',
+      explanation: 'Matched backend.',
+      evidence: [
+        {
+          fact_id: 'fact-1',
+          source_section: 'experience',
+          source_text: 'Led development of backend services in Node.js.',
+          relevance: 'semantic',
+          evidence_strength: 'primary',
+          evidence_type: 'experience',
+          evidence_tier: 'tier_3_semantic'
+        }
+      ]
+    },
+    {
+      // 2. Invalid Match: Wrong category (Education citing Experience)
+      requirement: {
+        id: 'req-2',
+        category: 'education',
+        normalized_name: 'masters degree',
+        original_text: 'Masters Degree',
+        source_section: 'Requirements',
+        source_span: [0, 10],
+        source_text: 'Masters Degree',
+        priority: 'required',
+        requirement_type: 'education',
+        confidence: 0.9
+      },
+      classification: 'EXACT_MATCH',
+      confidence: 0.9,
+      match_tier: 'tier_3_semantic',
+      explanation: 'Matched masters.',
+      evidence: [
+        {
+          fact_id: 'fact-1', // Points to experience fact!
+          source_section: 'experience',
+          source_text: 'Led development of backend services in Node.js.',
+          relevance: 'semantic',
+          evidence_strength: 'primary',
+          evidence_type: 'experience',
+          evidence_tier: 'tier_3_semantic'
+        }
+      ]
+    },
+    {
+      // 3. Invalid Match: Hallucinated Text (Not in resume or fact)
+      requirement: {
+        id: 'req-3',
+        category: 'experience',
+        normalized_name: 'frontend development',
+        original_text: 'frontend development',
+        source_section: 'Requirements',
+        source_span: [0, 10],
+        source_text: 'frontend development',
+        priority: 'required',
+        requirement_type: 'experience',
+        confidence: 0.9
+      },
+      classification: 'STRONG_SEMANTIC_MATCH',
+      confidence: 0.9,
+      match_tier: 'tier_3_semantic',
+      explanation: 'Matched frontend.',
+      evidence: [
+        {
+          fact_id: 'fact-1', // Points to valid fact
+          source_section: 'experience',
+          source_text: 'Built the entire frontend in React.', // Hallucinated! Not in fact-1
+          relevance: 'semantic',
+          evidence_strength: 'primary',
+          evidence_type: 'experience',
+          evidence_tier: 'tier_3_semantic'
+        }
+      ]
+    }
+  ];
 
-testEvidenceAttribution().catch(console.error);
+  const validatedMatches = validateEvidenceAttribution(matches, candidateFacts, resumeText);
+
+  // 1. Valid match should remain untouched
+  assert.equal(validatedMatches[0].classification, 'EXACT_MATCH');
+  assert.equal(validatedMatches[0].evidence.length, 1);
+
+  // 2. Wrong category match should be stripped and downgraded
+  assert.equal(validatedMatches[1].classification, 'ANALYSIS_FAILED');
+  assert.equal(validatedMatches[1].evidence.length, 0);
+  assert.ok(validatedMatches[1].explanation.includes('Evidence validation failed'));
+
+  // 3. Hallucinated text match should be stripped and downgraded
+  assert.equal(validatedMatches[2].classification, 'ANALYSIS_FAILED');
+  assert.equal(validatedMatches[2].evidence.length, 0);
+  assert.ok(validatedMatches[2].explanation.includes('Evidence validation failed'));
+});
