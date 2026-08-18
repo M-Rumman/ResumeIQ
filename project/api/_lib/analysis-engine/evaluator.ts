@@ -8,6 +8,8 @@ function getRequirementWeight(req: JobRequirement): number {
     return isCore ? 1.0 : 0.8;
   } else if (req.priority === 'preferred') {
     return isCore ? 0.5 : 0.3;
+  } else if (req.priority === 'bonus') {
+    return 0.1;
   } else {
     return 0.1; // nice_to_have or other
   }
@@ -80,17 +82,8 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     const rawAchieved = maxPoints * contribution;
     let achievedPoints = rawAchieved; // Delay rounding to prevent compounding errors
 
-    if (match.requirement.priority === 'required') {
-      totalMaxScore += maxPoints;
-      totalAchievedScore += achievedPoints;
-    } else {
-      // Preferred skills act strictly as bonus points to the numerator without increasing denominator.
-      // Up to 5% of totalMaxScore per matched preferred skill.
-      const bonusPoints = (0.05 * totalMaxScore) * contribution;
-      totalAchievedScore += bonusPoints;
-      achievedPoints = bonusPoints;
-      maxPoints = 0; // Does not contribute to denominator
-    }
+    totalMaxScore += maxPoints;
+    totalAchievedScore += achievedPoints;
     
     scoreDetails.push({
       requirement: match.requirement.normalized_name,

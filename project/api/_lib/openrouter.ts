@@ -668,7 +668,7 @@ Required JSON Schema:
 {
   "weakBullets": ["string"],
   "improvedBulletPoints": [
-    { "before": "string", "after": "string", "inferenceType": "EXPLICITLY_STATED" | "STRONGLY_SUPPORTED_INFERENCE" | "UNSUPPORTED", "confidence": "High" | "Medium" | "Low" }
+    { "before": "string", "after": "string", "whyItIsWeak": "string", "whatInformationIsMissing": "string", "whyThisIsStronger": "string", "inferenceType": "EXPLICITLY_STATED" | "STRONGLY_SUPPORTED_INFERENCE" | "UNSUPPORTED", "confidence": "High" | "Medium" | "Low" }
   ]
 }
 

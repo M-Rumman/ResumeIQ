@@ -8,6 +8,9 @@ export type RewritePair = {
   afterScore: number;
   improvementScore: number;
   groundingConfidence: 'High' | 'Medium' | 'Low';
+  whyItIsWeak: string;
+  whatInformationIsMissing: string;
+  whyThisIsStronger: string;
   scoreBreakdown: ScoreBreakdown;
   reasoning: string;
 };
@@ -31,6 +34,9 @@ const UNSUPPORTED_METRIC_PLACEHOLDER = /\[\s*x\s*\]\s*(?:%|users?|components?|re
 const COMMON_CAPITALIZED_WORDS = new Set([
   'A', 'An', 'And', 'At', 'By', 'Created', 'Delivered', 'Designed', 'Developed', 'For', 'In', 'Implemented',
   'Led', 'Managed', 'On', 'Optimized', 'The', 'To', 'With', 'Using', 'Built', 'Improved', 'Reduced',
+  'Engineered', 'Architected', 'Spearheaded', 'Orchestrated', 'Authored', 'Pioneered', 'Analyzed',
+  'Negotiated', 'Launched', 'Founded', 'Established', 'Formulated', 'Executed', 'Directed',
+  'Wrote', 'Did'
 ]);
 const GENERIC_KEYWORDS = new Set([
   'ability', 'analysis', 'communication', 'development', 'engineering', 'experience', 'leadership',
@@ -367,6 +373,10 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
       reasoning = 'Original bullet preserved. Improvement attempted but required inventing unsupported facts or yielded no significant gain.';
     }
 
+    const whyItIsWeak = typeof pair.whyItIsWeak === 'string' ? pair.whyItIsWeak.trim() : '';
+    const whatInformationIsMissing = typeof pair.whatInformationIsMissing === 'string' ? pair.whatInformationIsMissing.trim() : '';
+    const whyThisIsStronger = typeof pair.whyThisIsStronger === 'string' ? pair.whyThisIsStronger.trim() : '';
+
     accepted.push({
       before,
       beforeScore: beforeQuality.total,
@@ -374,6 +384,9 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
       afterScore: finalAfterQuality.total,
       improvementScore: finalImprovementScore,
       groundingConfidence: finalConfidence,
+      whyItIsWeak: isFallback ? '' : whyItIsWeak,
+      whatInformationIsMissing: isFallback ? '' : whatInformationIsMissing,
+      whyThisIsStronger: isFallback ? '' : whyThisIsStronger,
       scoreBreakdown: finalAfterQuality.breakdown,
       reasoning,
     });

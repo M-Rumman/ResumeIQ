@@ -5,7 +5,7 @@ const targetKeywords = ['React', 'TypeScript', 'Node.js', 'Python', 'AWS', 'Dock
 const resumeText = `
 Experience
 Software Engineer at TechCorp
-• Wrote some code for the backend.
+• Wrote some code for the backend using Node.js and PostgreSQL.
 • Developed a full-stack web application using React and Node.js that scaled to 100,000 monthly active users and generated $1M in revenue.
 • Did some testing and deployment.
 • Built a small script to parse logs.
@@ -16,6 +16,9 @@ console.log("Running Bullet Improvement Pipeline Tests...\n");
 const case1 = {
   before: 'Wrote some code for the backend using Node.js and PostgreSQL.',
   after: 'Engineered a scalable backend system using Node.js and PostgreSQL to improve system reliability.',
+  whyItIsWeak: 'Weak opening verb and vague wording.',
+  whatInformationIsMissing: 'Specific outcome metrics.',
+  whyThisIsStronger: 'Uses a strong action verb and clarifies the purpose.',
   confidence: 'High',
   inferenceType: 'STRONGLY_SUPPORTED_INFERENCE',
 };
@@ -24,6 +27,9 @@ const case1 = {
 const case2 = {
   before: 'Developed a full-stack web application using React and Node.js that scaled to 100,000 monthly active users and generated $1M in revenue.',
   after: 'Developed a full-stack web application using React and Node.js that scaled to 100,000 monthly active users and generated $1M in revenue.',
+  whyItIsWeak: '',
+  whatInformationIsMissing: '',
+  whyThisIsStronger: '',
   confidence: 'High',
   inferenceType: 'EXPLICITLY_STATED',
 };
@@ -32,6 +38,9 @@ const case2 = {
 const case3 = {
   before: 'Did some testing and deployment.',
   after: 'Led a global QA team of 50 engineers to deploy enterprise AWS infrastructure achieving 99.999% uptime.', // Invented metrics
+  whyItIsWeak: 'Too vague.',
+  whatInformationIsMissing: 'None',
+  whyThisIsStronger: 'Highlights impact.',
   confidence: 'Medium',
   inferenceType: 'STRONGLY_SUPPORTED_INFERENCE',
 };
@@ -52,7 +61,7 @@ console.log("\n--- Validating Expected Behaviors ---");
 const getResult = (beforePrefix: string) => results.find(r => r.before.startsWith(beforePrefix));
 
 const res1 = getResult('Wrote some code for the backend using Node.js and PostgreSQL');
-if (res1 && res1.improvementScore > 0) {
+if (res1 && res1.improvementScore > 0 && res1.whyItIsWeak) {
   console.log("✅ Case 1: Positive score improvement for genuinely stronger bullet.");
 } else {
   console.error("❌ Case 1 Failed.", res1);

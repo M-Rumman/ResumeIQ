@@ -86,18 +86,37 @@ function BulletImprovementGuide({ items, candidateBulletsCount }: { items: Premi
                   </div>
                 </div>
                 <div className="bg-white p-4">
-                  <h4 className="text-sm font-bold text-gray-900 mb-2">Reasoning</h4>
+                  {item.whyItIsWeak && (
+                    <div className="mb-3">
+                      <h4 className="text-sm font-bold text-gray-900 mb-1">Why it is weak</h4>
+                      <p className="text-sm text-gray-700">{item.whyItIsWeak}</p>
+                    </div>
+                  )}
+                  {item.whatInformationIsMissing && (
+                    <div className="mb-3">
+                      <h4 className="text-sm font-bold text-gray-900 mb-1">What information is missing</h4>
+                      <p className="text-sm text-gray-700">{item.whatInformationIsMissing}</p>
+                    </div>
+                  )}
+                  {item.whyThisIsStronger && (
+                    <div className="mb-3">
+                      <h4 className="text-sm font-bold text-gray-900 mb-1">Why this is stronger</h4>
+                      <p className="text-sm text-gray-700">{item.whyThisIsStronger}</p>
+                    </div>
+                  )}
+                  <h4 className="text-sm font-bold text-gray-900 mb-2">Scoring Reasoning</h4>
                   <p className="text-sm text-gray-700">
                     {item.reasoning || 'No reasoning provided.'}
                   </p>
                 </div>
                 <div className="bg-gray-50 p-4 border-t border-gray-100">
                   <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Score Breakdown</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-700">
-                    <div>Relevance: <span className="font-semibold">{item.scoreBreakdown?.relevance ?? 0}</span>/25</div>
-                    <div>Specificity: <span className="font-semibold">{item.scoreBreakdown?.specificity ?? 0}</span>/25</div>
-                    <div>Impact: <span className="font-semibold">{item.scoreBreakdown?.impact ?? 0}</span>/25</div>
-                    <div>Clarity: <span className="font-semibold">{item.scoreBreakdown?.clarity ?? 0}</span>/25</div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm text-gray-700">
+                    <div>Relevance: <span className="font-semibold">{item.scoreBreakdown?.relevance ?? 0}</span>/20</div>
+                    <div>Specificity: <span className="font-semibold">{item.scoreBreakdown?.specificity ?? 0}</span>/20</div>
+                    <div>Impact: <span className="font-semibold">{item.scoreBreakdown?.impact ?? 0}</span>/20</div>
+                    <div>Clarity: <span className="font-semibold">{item.scoreBreakdown?.clarity ?? 0}</span>/20</div>
+                    <div>Action: <span className="font-semibold">{item.scoreBreakdown?.action ?? 0}</span>/20</div>
                   </div>
                 </div>
               </article>

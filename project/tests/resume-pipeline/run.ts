@@ -1341,20 +1341,116 @@ B.S. in Construction Management — Colorado State University, 2016`);
         assert.equal(warning.includes(`invent ${expectedPlural} or achievements`), true, `Missing correct pluralization for ${reqType} - Got: ${warning}`);
       }
     }
+  },
+  {
+    name: 'evidence mapping selects direct evidence over generic evidence and reports missing evidence correctly',
+    run: async () => {
+      const resumeText = `
+      Experience
+      Data Scientist at TechCorp
+      - Managed data science projects and led the team.
+      - Presented to VP and C-suite stakeholders on project milestones.
+      - Managed a generic project with some leadership aspects.
+      - Ran extensive A/B tests and usability interviews for new features.
+      - Set up a participant panel and research repository for ops.
+      `;
+
+      const jdText = `
+      Requirements:
+      - Executive Presentations
+      - Data Science Partnership
+      - Mentoring
+      - Research Methods
+      - Research Operations
+      `;
+
+      process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+      const originalFetch = globalThis.fetch;
+      
+      try {
+        globalThis.fetch = async (input, init) => {
+          const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
+          const prompt = body.messages?.[1]?.content || '';
+          
+          if (prompt.includes('Raw Job Description:')) {
+            const mockLlmOutput = {
+              requirements: [
+                { normalized_name: 'Executive Presentations', original_text: 'Executive Presentations', category: 'responsibility', priority: 'required', id: '1' },
+                { normalized_name: 'Data Science Partnership', original_text: 'Data Science Partnership', category: 'responsibility', priority: 'required', id: '2' },
+                { normalized_name: 'Mentoring', original_text: 'Mentoring', category: 'responsibility', priority: 'required', id: '3' },
+                { normalized_name: 'Research Methods', original_text: 'Research Methods', category: 'hard skill', priority: 'required', id: '4' },
+                { normalized_name: 'Research Operations', original_text: 'Research Operations', category: 'responsibility', priority: 'required', id: '5' }
+              ]
+            };
+            return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(mockLlmOutput) } }] }) } as any;
+          }
+
+          if (prompt.includes('Requirements:') && prompt.includes('Candidate Facts')) {
+            const mockMatcherOutput = [
+              { requirementId: '1', classification: 'STRONG_SEMANTIC_MATCH', supportingFactId: 'invalid-id' },
+              { requirementId: '2', classification: 'EXACT_MATCH', supportingFactId: 'invalid-id' },
+              { requirementId: '3', classification: 'EXACT_MATCH', supportingFactId: 'invalid-id' },
+              { requirementId: '4', classification: 'EXACT_MATCH', supportingFactId: 'invalid-id' },
+              { requirementId: '5', classification: 'EXACT_MATCH', supportingFactId: 'invalid-id' }
+            ];
+            return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ matches: mockMatcherOutput }) } }] }) } as any;
+          }
+          return { ok: true, json: async () => ({}) } as any;
+        };
+
+        const job = await import('../../api/_lib/analysis-engine/jdParser.js').then(m => m.parseJobDescription(jdText));
+        const candidate = await import('../../api/_lib/analysis-engine/resumeExtraction.js').then(m => m.extractCandidateProfile(resumeText));
+        
+        const deterministic = import('../../api/_lib/analysis-engine/matcher.js').then(m => m.getDeterministicMatches(job, candidate));
+        const result = await import('../../api/_lib/analysis-engine/matcher.js').then(async m => m.matchRequirements(job, candidate, await deterministic));
+        
+        const execPresMatch = result.matches.find(m => m.requirement.normalized_name === 'Executive Presentations');
+        const dsPartnerMatch = result.matches.find(m => m.requirement.normalized_name === 'Data Science Partnership');
+        const mentoringMatch = result.matches.find(m => m.requirement.normalized_name === 'Mentoring');
+        const methodsMatch = result.matches.find(m => m.requirement.normalized_name === 'Research Methods');
+        const opsMatch = result.matches.find(m => m.requirement.normalized_name === 'Research Operations');
+
+        assert.ok(execPresMatch, 'Executive Presentations requirement not found');
+        assert.match(execPresMatch.evidence[0]?.source_text || '', /Presented to VP and C-suite stakeholders/i, 'Failed to map Executive Presentations to correct bullet');
+
+        assert.ok(dsPartnerMatch, 'Data Science Partnership requirement not found');
+        assert.match(dsPartnerMatch.evidence[0]?.source_text || '', /Managed data science projects/i, 'Failed to map Data Science Partnership to correct bullet');
+
+        assert.ok(methodsMatch, 'Research Methods requirement not found');
+        assert.match(methodsMatch.evidence[0]?.source_text || '', /usability interviews/i, 'Failed to map Research Methods to correct bullet');
+
+        assert.ok(opsMatch, 'Research Operations requirement not found');
+        assert.match(opsMatch.evidence[0]?.source_text || '', /research repository/i, 'Failed to map Research Operations to correct bullet');
+
+        assert.ok(mentoringMatch, 'Mentoring requirement not found');
+        assert.strictEqual(mentoringMatch.classification, 'MISSING', 'Mentoring should be MISSING due to threshold, not incorrectly mapped');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    }
   }
 ];
 
+type AsyncTestCase = { name: string; run: () => void | Promise<void>; expectedFailure?: boolean };
+
 let failures = 0;
-for (const test of tests) {
-  try {
-    test.run();
-    console.log(`PASS ${test.name}`);
-  } catch (error) {
-    failures += 1;
-    console.error(`FAIL ${test.name}`);
-    console.error(error);
+async function runAllTests() {
+  for (const test of tests as AsyncTestCase[]) {
+    try {
+      await test.run();
+      console.log(`PASS ${test.name}`);
+    } catch (error) {
+      failures += 1;
+      console.error(`FAIL ${test.name}`);
+      console.error(error);
+    }
   }
+
+  console.log(`\n${tests.length - failures}/${tests.length} benchmark cases passed.`);
+  if (failures > 0) process.exit(1);
 }
 
-console.log(`\n${tests.length - failures}/${tests.length} benchmark cases passed.`);
-if (failures > 0) process.exitCode = 1;
+runAllTests().catch(err => {
+  console.error(err);
+  process.exit(1);
+});

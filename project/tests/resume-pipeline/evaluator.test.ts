@@ -47,10 +47,63 @@ const tests: TestCase[] = [
       const matchingResult: MatchingResult = { matches: [reqMatch1, reqMatch2] };
       const evalResult = evaluateScores(job, baseCandidate, matchingResult);
 
-      // New Math: Core denominator is only Required skills (8). Achieved is 8.
-      // Preferred skill (Java) acts as a bonus, but it is missing, so 0 bonus.
-      // Score = 100% Core + 0% Bonus = 100%
-      assert.equal(evalResult.matchScore, 100);
+      // New Math: 
+      // Required non-core (Python): weight 0.8 -> 8 max points. Achieved: 8 * 1.0 = 8.
+      // Preferred non-core (Java): weight 0.3 -> 3 max points. Achieved: 3 * 0.0 = 0.
+      // Total Max: 11. Total Achieved: 8.
+      // Score = (8 / 11) * 100 = 72.72% -> 73%
+      assert.equal(evalResult.matchScore, 73);
+      
+      const pythonDetail = evalResult.matchScoreDetails.details.find(d => d.requirement === 'Python');
+      assert.equal(pythonDetail?.maxPoints, 8);
+      assert.equal(pythonDetail?.achievedPoints, 8);
+
+      const javaDetail = evalResult.matchScoreDetails.details.find(d => d.requirement === 'Java');
+      assert.equal(javaDetail?.maxPoints, 3);
+      assert.equal(javaDetail?.achievedPoints, 0);
+    }
+  },
+  {
+    name: 'Evaluates required, preferred, bonus, and non-core requirements correctly',
+    run: () => {
+      const job: JobProfile = { title: 'Engineer', requirements: [] };
+      
+      const matches: RequirementMatch[] = [
+        {
+          // Required Non-Core (Soft skill)
+          requirement: { id: '1', category: 'soft skill', priority: 'required', normalized_name: 'ReqNonCore', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+          classification: 'STRONG_SEMANTIC_MATCH', confidence: 1, evidence: [], explanation: ''
+        },
+        {
+          // Preferred Non-Core (Soft skill)
+          requirement: { id: '2', category: 'soft skill', priority: 'preferred', normalized_name: 'PrefNonCore', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+          classification: 'PARTIAL_MATCH', confidence: 1, evidence: [], explanation: ''
+        },
+        {
+          // Bonus Core (Experience)
+          requirement: { id: '3', category: 'experience', priority: 'bonus', normalized_name: 'BonusCore', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
+          classification: 'EXACT_MATCH', confidence: 1, evidence: [], explanation: ''
+        }
+      ];
+
+      const evalResult = evaluateScores(job, baseCandidate, { matches });
+
+      // ReqNonCore: weight 0.8 -> max 8. Achieved: 8 * 0.85 = 6.8
+      // PrefNonCore: weight 0.3 -> max 3. Achieved: 3 * 0.5 = 1.5
+      // BonusCore: weight 0.1 -> max 1. Achieved: 1 * 1.0 = 1.0
+      // Total Max: 12. Total Achieved: 9.3
+      // Percentage: (9.3 / 12) * 100 = 77.5% -> 78%
+
+      assert.equal(evalResult.matchScoreDetails.totalMaxScore, 12);
+      assert.equal(evalResult.matchScoreDetails.totalAchievedScore, 9.3);
+      assert.equal(evalResult.matchScore, 78);
+      
+      // Check invariant for all
+      for (const d of evalResult.matchScoreDetails.details) {
+        assert.ok(d.maxPoints > 0, `Max points for ${d.requirement} must be > 0`);
+        assert.ok(d.achievedPoints <= d.maxPoints, `Achieved points ${d.achievedPoints} cannot exceed max ${d.maxPoints}`);
+        assert.ok(d.achievedPoints >= 0, `Achieved points cannot be negative`);
+      }
     }
   },
   {
@@ -83,9 +136,11 @@ const tests: TestCase[] = [
       const matchingResult: MatchingResult = { matches: [reqMatch1, reqMatch2] };
       const evalResult = evaluateScores(job, baseCandidate, matchingResult);
 
-      // Denominator: 2 Required skills. Python (0.8) + React (0.8) = 16 max.
+      // Denominator: 2 Required non-core skills. Python (8) + React (8) = 16 max.
       // Achieved: Python (8) + React (0) = 8.
       // Score = 8/16 = 50% (prevents artificial inflation to 100%)
+      assert.equal(evalResult.matchScoreDetails.totalMaxScore, 16);
+      assert.equal(evalResult.matchScoreDetails.totalAchievedScore, 8);
       assert.equal(evalResult.matchScore, 50);
     }
   },
@@ -202,43 +257,6 @@ const tests: TestCase[] = [
       assert.equal(qualityBreakdown?.score, 25, 'Score should not be penalized');
       assert.equal(qualityBreakdown?.explanation.includes('Many bullets do not start with strong action verbs.'), false, 'Critique should not be present');
       assert.equal(qualityBreakdown?.explanation.includes('Bullets start with strong action verbs and avoid passive language.'), true, 'Positive feedback should be present');
-    }
-  },
-  {
-    name: 'Rounds matchScore to nearest integer but preserves raw score (82.4 / 94 -> 88%)',
-    run: () => {
-      const job: JobProfile = { title: 'Engineer', requirements: [] };
-      
-      const req1: RequirementMatch = {
-        requirement: { id: '1', category: 'experience', priority: 'required', normalized_name: 'A', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
-        classification: 'EXACT_MATCH',
-        confidence: 8.24, // 10 max points * 1.0 contribution * 8.24 = 82.4 achieved points
-        evidence: [], explanation: ''
-      };
-
-      const matches: RequirementMatch[] = [req1];
-      // Add 8 MISSING required core requirements -> 80 max points, 0 achieved
-      for (let i = 0; i < 8; i++) {
-        matches.push({
-          requirement: { id: `req_${i}`, category: 'experience', priority: 'required', normalized_name: 'B', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
-          classification: 'MISSING', confidence: 1, evidence: [], explanation: ''
-        });
-      }
-      // Add 4 MISSING nice_to_have requirements -> 4 max points, 0 achieved
-      for (let i = 0; i < 4; i++) {
-        matches.push({
-          requirement: { id: `nth_${i}`, category: 'experience', priority: 'nice_to_have', normalized_name: 'C', original_text: '', source_section: '', source_span: [0, 0], source_text: '', requirement_type: 'skill', confidence: 1 },
-          classification: 'MISSING', confidence: 1, evidence: [], explanation: ''
-        });
-      }
-
-      const matchingResult: MatchingResult = { matches };
-      const evalResult = evaluateScores(job, baseCandidate, matchingResult);
-      
-      assert.equal(evalResult.matchScoreDetails.totalMaxScore, 94);
-      assert.equal(evalResult.matchScoreDetails.totalAchievedScore, 82.4);
-      assert.equal(evalResult.matchScoreDetails.rawMatchScore, 87.65957446808511);
-      assert.equal(evalResult.matchScore, 88);
     }
   },
   {

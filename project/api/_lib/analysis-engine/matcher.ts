@@ -172,7 +172,7 @@ export function scoreFactForRequirement(fact: CandidateFact, req: import('./type
 
   if (fact.type === 'experience' || fact.type === 'project') {
     if (rawLower.split(' ').length > 8) {
-      score += 2500; // Prefer descriptive bullets over short headings
+      score += 500; // Small tie-breaker for descriptive bullets over short headings
     }
   }
 
@@ -182,11 +182,42 @@ export function scoreFactForRequirement(fact: CandidateFact, req: import('./type
     }
   }
   
+  // Semantic Heuristics
+
+  // Executive Presentations
   if (reqNameLower.includes('executive') || reqNameLower.includes('stakeholder') || reqNameLower.includes('presentation') || reqNameLower.includes('leadership')) {
-     if (rawLower.includes('c-suite') || rawLower.includes('vp') || rawLower.includes('executive') || rawLower.includes('director')) {
+     if (rawLower.includes('c-suite') || rawLower.includes('vp') || rawLower.includes('executive') || rawLower.includes('director') || rawLower.includes('board')) {
        score += 5000;
      }
      if (fact.type === 'experience') score += 1000;
+  }
+
+  // Mentoring
+  if (reqNameLower.includes('mentor') || reqNameLower.includes('coach') || reqNameLower.includes('guide')) {
+    if (rawLower.includes('mentor') || rawLower.includes('coach') || rawLower.includes('guide') || rawLower.includes('1:1') || rawLower.includes('onboard')) {
+      score += 5000;
+    }
+  }
+
+  // Data Science / Partnership
+  if (reqNameLower.includes('data science') || reqNameLower.includes('partner') || reqNameLower.includes('collaborat')) {
+    if (rawLower.includes('data science') || rawLower.includes('machine learning') || rawLower.includes('analytics') || rawLower.includes('partner') || rawLower.includes('collaborat')) {
+      score += 5000;
+    }
+  }
+
+  // Research Methods
+  if (reqNameLower.includes('research') || reqNameLower.includes('method')) {
+    if (rawLower.includes('interview') || rawLower.includes('usability') || rawLower.includes('survey') || rawLower.includes('diary stud') || rawLower.includes('a/b test')) {
+      score += 5000;
+    }
+  }
+
+  // Research Operations
+  if (reqNameLower.includes('operation') || reqNameLower.includes('ops') || reqNameLower.includes('repositor') || reqNameLower.includes('panel')) {
+    if (rawLower.includes('repositor') || rawLower.includes('panel') || rawLower.includes('participant') || rawLower.includes('recruit') || rawLower.includes('ops')) {
+      score += 5000;
+    }
   }
   
   const reqWords = reqNameLower.split(/\s+/).filter(w => w.length > 3);
@@ -557,6 +588,26 @@ export async function matchRequirements(
           }
         }
 
+        // Helper to check if a fact semantically supports the requirement even if exact keywords are missing
+        const hasSemanticMatch = (rawLower: string, reqNameLower: string) => {
+          if (reqNameLower.includes('executive') || reqNameLower.includes('stakeholder') || reqNameLower.includes('presentation') || reqNameLower.includes('leadership')) {
+            if (rawLower.includes('c-suite') || rawLower.includes('vp') || rawLower.includes('executive') || rawLower.includes('director') || rawLower.includes('board')) return true;
+          }
+          if (reqNameLower.includes('mentor') || reqNameLower.includes('coach') || reqNameLower.includes('guide')) {
+            if (rawLower.includes('mentor') || rawLower.includes('coach') || rawLower.includes('guide') || rawLower.includes('1:1') || rawLower.includes('onboard')) return true;
+          }
+          if (reqNameLower.includes('data science') || reqNameLower.includes('partner') || reqNameLower.includes('collaborat')) {
+            if (rawLower.includes('data science') || rawLower.includes('machine learning') || rawLower.includes('analytics') || rawLower.includes('partner') || rawLower.includes('collaborat')) return true;
+          }
+          if (reqNameLower.includes('research') || reqNameLower.includes('method')) {
+            if (rawLower.includes('interview') || rawLower.includes('usability') || rawLower.includes('survey') || rawLower.includes('diary stud') || rawLower.includes('a/b test')) return true;
+          }
+          if (reqNameLower.includes('operation') || reqNameLower.includes('ops') || reqNameLower.includes('repositor') || reqNameLower.includes('panel')) {
+            if (rawLower.includes('repositor') || rawLower.includes('panel') || rawLower.includes('participant') || rawLower.includes('recruit') || rawLower.includes('ops')) return true;
+          }
+          return false;
+        };
+
         // ANTI-HALLUCINATION & EVIDENCE RANKING
         if (classification !== 'MISSING' && validFacts.length === 0) {
           let bestFact: CandidateFact | undefined = undefined;
@@ -567,7 +618,7 @@ export async function matchRequirements(
 
             const isDetMatch = (req as any)._fallbackMatch?.evidence?.some((e: any) => e.fact_id === f.id);
             const reqWords = req.normalized_name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-            const hasKeywords = reqWords.length > 0 && reqWords.some(w => f.rawText.toLowerCase().includes(w));
+            const hasKeywords = (reqWords.length > 0 && reqWords.some(w => f.rawText.toLowerCase().includes(w))) || hasSemanticMatch(f.rawText.toLowerCase(), req.normalized_name.toLowerCase());
             
             if (isDetMatch || hasKeywords) {
               const score = scoreFactForRequirement(f, req, 'MISSING');
@@ -578,7 +629,8 @@ export async function matchRequirements(
             }
           }
           
-          if (bestFact) {
+          // Require a minimum baseline of evidence relevance (e.g., at least 2500 points on top of priority)
+          if (bestFact && maxScore >= 2500) {
             validFacts.push(bestFact);
             if (classification === 'EXACT_MATCH' || classification === 'STRONG_SEMANTIC_MATCH') {
               classification = 'UNDER_EXPRESSED';
@@ -586,7 +638,7 @@ export async function matchRequirements(
             }
           } else {
             classification = 'MISSING';
-            explanation = 'Fallback: System claimed a match but could not cite valid supporting evidence from the resume.';
+            explanation = 'Fallback: System claimed a match but could not cite sufficiently relevant supporting evidence from the resume.';
           }
         }
 
@@ -606,7 +658,7 @@ export async function matchRequirements(
              // Ensure the alternative actually mentions the requirement or is a deterministic match
              const isDetMatch = (req as any)._fallbackMatch?.evidence?.some((e: any) => e.fact_id === f.id);
              const reqWords = req.normalized_name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-             const hasKeywords = reqWords.length > 0 && reqWords.some(w => f.rawText.toLowerCase().includes(w));
+             const hasKeywords = (reqWords.length > 0 && reqWords.some(w => f.rawText.toLowerCase().includes(w))) || hasSemanticMatch(f.rawText.toLowerCase(), req.normalized_name.toLowerCase());
              
              if ((isDetMatch || hasKeywords) && altScore > maxAltScore) {
                 maxAltScore = altScore;
