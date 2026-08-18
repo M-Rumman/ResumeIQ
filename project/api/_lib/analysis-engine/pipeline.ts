@@ -1,4 +1,5 @@
 import { parseJobDescription } from './jdParser.js';
+import { randomUUID } from 'node:crypto';
 import { extractCandidateProfile } from './resumeExtraction.js';
 import { matchRequirements, getDeterministicMatches } from './matcher.js';
 import { evaluateScores } from './evaluator.js';
@@ -25,7 +26,32 @@ export async function runAnalysisPipeline(
   console.info('[analysis-trace] JD_PARSE_START');
   const extractStart = performance.now();
   const [jobProfile, candidateProfile] = await Promise.all([
-    parseJobDescription(context.jobDescriptionText, options),
+    parseJobDescription(context.jobDescriptionText, options).catch(err => {
+      console.error('[pipeline] AI JD Parser failed, degrading to deterministic fallback:', err);
+      const requirements = context.jobDescriptionText
+        .split(/\n/)
+        .map(line => line.trim().replace(/^[•\-\*·\s]+/, '').trim())
+        .filter(line => line.length > 10 && line.length < 150)
+        .slice(0, 15)
+        .map(line => ({
+          id: randomUUID(),
+          category: 'other',
+          requirement_type: 'other',
+          normalized_name: line.length > 50 ? line.substring(0, 47) + '...' : line,
+          original_text: line,
+          source_section: 'Job Description',
+          source_span: [-1, -1] as [number, number],
+          source_text: line,
+          priority: 'required' as const,
+          confidence: 0.5,
+        }));
+        
+      return {
+        title: 'Target Role',
+        company: null,
+        requirements
+      };
+    }),
     context.candidateProfile ? Promise.resolve(context.candidateProfile) : Promise.resolve(extractCandidateProfile(context.resumeText))
   ]);
   const extractEnd = performance.now();
