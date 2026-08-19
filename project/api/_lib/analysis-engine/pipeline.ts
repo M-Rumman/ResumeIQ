@@ -159,24 +159,27 @@ export async function runAnalysisPipeline(
 
 
   // Extract true accomplishment bullets using candidate facts to avoid job titles and metadata
-  const candidateBullets = candidateProfile.facts
+  const candidateContexts = candidateProfile.facts
     .filter(f => f.type === 'experience' || f.type === 'project')
-    .flatMap(f => f.evidence.split('\n'))
-    .map(text => text.replace(/^[•\-\*·\s]+/, '').trim())
-    .filter(text => {
+    .flatMap(f => f.evidence.split('\n').map(line => ({
+      text: line.replace(/^[•\-\*·\s]+/, '').trim(),
+      sourceContext: f.rawText
+    })))
+    .filter(b => {
+      const text = b.text;
       if (text.length < 30) return false;
       if (/\b(?:19|20)\d{2}\b/.test(text)) return false; // Often contains years -> metadata
       if (text.includes('|') || text.includes('—')) return false; // Common separators in headers
       return true;
     });
 
+  const candidateBullets = candidateContexts.map(c => c.text);
+
   const targetKeywords = jobProfile.requirements.map(r => r.normalized_name);
   
   // Score and select candidate bullets for LLM rewriting.
-  // We send bullets with a score < 80 to the LLM, as these are genuinely weak and need improvement.
-  // The downstream validator will enforce that improvementScore > 0.
-  const weakCandidates = candidateBullets
-    .map(text => ({ text, score: scoreBulletQuality(text, targetKeywords).total }))
+  const weakCandidates = candidateContexts
+    .map(b => ({ ...b, score: scoreBulletQuality(b.text, targetKeywords).total }))
     .sort((a, b) => a.score - b.score)
     .slice(0, 15)
     .map(b => b.text);
@@ -314,7 +317,7 @@ export async function runAnalysisPipeline(
     formattingSuggestions: [],
     weakBullets: bulletRewrites.weakBullets,
     candidateBulletsCount: candidateBullets.length,
-    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), candidateBullets),
+    improvedBulletPoints: validateRewrites(bulletRewrites.improvedBulletPoints, context.resumeText, jobProfile.requirements.map(r => r.normalized_name), candidateContexts),
     improvementSuggestions: improvements,
     optimizationRecommendations: improvements,
     keywordSuggestions: allMissingSkills,

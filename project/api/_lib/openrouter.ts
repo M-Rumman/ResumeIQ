@@ -3339,7 +3339,7 @@ export async function analyzeResumeWithAi(
   };
   try {
     const targetKeywords = gapAnalysis.items.map((item) => item.skill).filter(Boolean);
-    validated = validateAiResumeOutput(combinedRaw, resumeText, jobDescription, validationTelemetry, targetKeywords, [...parsedJson.resume.experience, ...parsedJson.resume.projects]);
+    validated = validateAiResumeOutput(combinedRaw, resumeText, jobDescription, validationTelemetry, targetKeywords, [...parsedJson.resume.experience, ...parsedJson.resume.projects].map(text => ({ text, sourceContext: text })));
   } catch (error) {
     console.error('[pipeline] validation failed', {
       errorType: error instanceof Error ? error.name : 'unknown',

@@ -327,7 +327,12 @@ export function validateHiringManagerAssessment(
   };
 }
 
-export function validateRewrites(values: unknown, resumeText: string, targetKeywords: string[], allBullets: string[] = []): RewritePair[] {
+export function validateRewrites(
+  values: unknown, 
+  resumeText: string, 
+  targetKeywords: string[], 
+  bulletContexts: { text: string; sourceContext: string }[] = []
+): RewritePair[] {
   if (!Array.isArray(values)) return [];
   const source = normalize(resumeText);
   const accepted: RewritePair[] = [];
@@ -340,10 +345,14 @@ export function validateRewrites(values: unknown, resumeText: string, targetKeyw
     if (!before || !source.includes(normalize(before))) continue;
     if (!after) after = before;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
-    // A rewrite may synthesize appropriately from across the resume,
-    // so we check for hallucinated metrics against the entire resume text.
-    // However, named technical terms MUST be supported by the original bullet itself.
-    const hasInvented = hasInventedMetric(after, resumeText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, before);
+    
+    // Locate the specific experience block for this bullet
+    const bulletCtx = bulletContexts.find(b => normalize(b.text) === normalize(before));
+    const validationContextText = bulletCtx ? bulletCtx.sourceContext : resumeText;
+
+    // We check for hallucinated metrics against the specific context (employer/role) text.
+    // Named technical terms MUST also be supported by the specific context text or the original bullet itself.
+    const hasInvented = hasInventedMetric(after, validationContextText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, validationContextText) || hasInventedNamedTerm(after, before);
     const beforeQuality = scoreBulletQuality(before, targetKeywords);
     const afterQuality = scoreBulletQuality(after, targetKeywords);
     
@@ -412,7 +421,7 @@ export function validateAiResumeOutput(
   jobDescription = '',
   telemetry?: ValidationTelemetry,
   targetKeywords: string[] = [],
-  allBullets: string[] = [],
+  bulletContexts: { text: string; sourceContext: string }[] = [],
 ): Record<string, any> {
   const output = { ...raw };
   const seenKeywords = new Set<string>();
@@ -428,7 +437,7 @@ export function validateAiResumeOutput(
   output.keywordSuggestions = dedupeKeywordGroup(output.keywordSuggestions);
   output.keywordGaps = dedupeKeywordGroup(output.keywordGaps);
   output.missingRequiredSkills = dedupeKeywordGroup(output.missingRequiredSkills);
-  output.improvedBulletPoints = validateRewrites(output.improvedBulletPoints, resumeText, targetKeywords, allBullets);
+  output.improvedBulletPoints = validateRewrites(output.improvedBulletPoints, resumeText, targetKeywords, bulletContexts);
   output.weakBullets = Array.isArray(output.weakBullets)
     ? output.weakBullets.filter((value: unknown) => typeof value === 'string' && normalize(resumeText).includes(normalize(value)))
     : [];
