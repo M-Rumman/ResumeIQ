@@ -177,7 +177,6 @@ export async function runAnalysisPipeline(
   // The downstream validator will enforce that improvementScore > 0.
   const weakCandidates = candidateBullets
     .map(text => ({ text, score: scoreBulletQuality(text, targetKeywords).total }))
-    .filter(b => b.score < 80)
     .sort((a, b) => a.score - b.score)
     .slice(0, 15)
     .map(b => b.text);

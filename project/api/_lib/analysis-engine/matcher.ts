@@ -22,7 +22,7 @@ export function isValidEvidenceForCategory(factType: string, category: string): 
     return factType === 'other' || factType === 'experience';
   }
   if (category === 'experience' || category === 'responsibility' || category === 'years' || category === 'seniority') {
-    return factType === 'experience' || factType === 'project';
+    return factType === 'experience' || factType === 'project' || factType === 'other';
   }
   if (category === 'hard skill' || category === 'soft skill' || category === 'methodology' || category === 'tool' || category === 'domain') {
     return factType === 'skill' || factType === 'tool' || factType === 'methodology' || factType === 'experience' || factType === 'project' || factType === 'other';
@@ -249,11 +249,21 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
     }
   }
 
+  for (const f of candidate.facts) {
+    if (f.type !== 'experience' && f.employment_duration_years) {
+      totalExperienceYears = Math.max(totalExperienceYears, f.employment_duration_years);
+    }
+  }
+
   // 1. Stage 1: Deterministic Matcher (Lexical & Heuristic) Exact Matching
   for (const req of job.requirements) {
     let matchedFacts: { fact: CandidateFact, score: number, tier: import('./types.js').MatchTier, strength: MatchClassification }[] = [];
     const reqNameLower = req.normalized_name.toLowerCase().trim();
     const reqClean = reqNameLower.replace(/[^a-z0-9]/g, '');
+    
+    const textToSearch = req.original_text || req.normalized_name || '';
+    const match = textToSearch.match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i);
+    const reqMinimumYears = req.minimum_years || (match && match[1] ? parseInt(match[1], 10) : 0);
 
     for (const fact of prioritizedFacts) {
       if (!isValidEvidenceForCategory(fact.type, req.category)) continue;
@@ -322,13 +332,12 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       }
 
       // 1d. Tier 1: Years of Experience Matching
-      if (req.minimum_years && fact.type === 'experience' && fact.employment_duration_years) {
-        // Use total experience years across all facts
-        if (totalExperienceYears >= req.minimum_years) {
+      if (reqMinimumYears && fact.employment_duration_years) {
+        if (totalExperienceYears >= reqMinimumYears) {
            isExact = true;
            matchedStrength = 'EXACT_MATCH';
            matchedTier = 'tier_1_deterministic';
-        } else if (fact.employment_duration_years >= req.minimum_years) {
+        } else if (fact.employment_duration_years >= reqMinimumYears) {
            isExact = true;
            matchedStrength = 'EXACT_MATCH';
            matchedTier = 'tier_1_deterministic';
@@ -406,7 +415,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       const topFacts = matchedFacts.filter(mf => mf.score >= bestScore - 5000).slice(0, limit);
       
       let evidence: MatchEvidence[] = [];
-      if (req.minimum_years && totalExperienceYears >= req.minimum_years) {
+      if (reqMinimumYears && totalExperienceYears >= reqMinimumYears) {
         // For total years, use all experience facts with duration, PLUS top substantive bullets
         const headerFacts = candidate.facts.filter(f => f.type === 'experience' && f.employment_duration_years);
         const substantiveFacts = topFacts.map(mf => mf.fact).filter(f => !headerFacts.some(hf => hf.id === f.id));

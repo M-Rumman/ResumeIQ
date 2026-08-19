@@ -72,7 +72,14 @@ function hasInventedMetric(value: string, resumeText: string): boolean {
 function hasInventedNamedTerm(value: string, resumeText: string): boolean {
   const source = normalize(resumeText);
   const terms = value.match(/\b(?:[A-Z]{2,}[A-Z0-9+#.-]*|[A-Z][A-Za-z0-9+#.-]*)\b/g) || [];
-  return terms.some((term) => !COMMON_CAPITALIZED_WORDS.has(term) && !source.includes(term.toLowerCase()));
+  
+  const firstWordMatch = value.match(/^[•\-\*·\s]*([A-Z][A-Za-z0-9+#.-]*)\b/);
+  const firstWord = firstWordMatch ? firstWordMatch[1] : null;
+
+  return terms.some((term) => {
+    if (term === firstWord) return false;
+    return !COMMON_CAPITALIZED_WORDS.has(term) && !source.includes(term.toLowerCase());
+  });
 }
 
 function normalizeForPhraseMatch(value: string): string {

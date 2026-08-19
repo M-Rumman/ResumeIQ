@@ -89,7 +89,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
       requirement: req,
       classification: 'ANALYSIS_FAILED',
       confidence: 0,
-      explanation: 'Silently dropped before scoring.',
+      explanation: 'Analysis could not be completed.',
       match_tier: 'tier_3_semantic',
       evidence: []
     });

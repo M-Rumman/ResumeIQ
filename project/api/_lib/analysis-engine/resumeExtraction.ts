@@ -97,6 +97,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
 
   // Extract summary
   if (structuredResume.summary) {
+    const explicitDuration = parseExplicitDuration(structuredResume.summary);
     facts.push({
       id: crypto.randomUUID(),
       type: 'other',
@@ -104,7 +105,8 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
       rawText: structuredResume.summary,
       sourceSection: 'summary',
       sectionInferred: false,
-      evidence: structuredResume.summary
+      evidence: structuredResume.summary,
+      employment_duration_years: explicitDuration > 0 ? explicitDuration : undefined
     });
   }
 
@@ -147,6 +149,14 @@ export function extractFieldsOfStudy(text: string): string[] {
   if (lower.includes('mechanical')) fields.push('mechanical engineering');
   if (lower.includes('business')) fields.push('business');
   return fields;
+}
+
+export function parseExplicitDuration(text: string): number {
+  const match = text.match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i);
+  if (match && match[1]) {
+    return parseInt(match[1], 10);
+  }
+  return 0;
 }
 
 export function parseExperienceDuration(text: string): number {

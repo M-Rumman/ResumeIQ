@@ -145,6 +145,95 @@ const tests: TestCase[] = [
     }
   },
   {
+    name: 'Explicit 7 years of experience satisfies a 6+ years requirement deterministically',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Senior UX Researcher',
+        requirements: [{
+          id: 'req-dur-1',
+          category: 'experience',
+          normalized_name: '6+ years UX research',
+          original_text: '6+ years of UX research experience',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: '6+ years of UX research experience',
+          priority: 'required',
+          requirement_type: 'experience',
+          confidence: 1,
+          // We intentionally omit minimum_years to test the parseReqMinimumYears fallback
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [{
+          id: 'fact-dur-1',
+          type: 'other',
+          normalizedName: 'Summary',
+          rawText: 'Senior UX Researcher with 7 years of experience.',
+          sourceSection: 'Summary',
+          evidence: 'Senior UX Researcher with 7 years of experience.',
+          employment_duration_years: 7
+        }],
+        rawStructure: {} as any
+      };
+
+      const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
+      assert.equal(result.matches[0].classification, 'EXACT_MATCH');
+      assert.equal(result.matches[0].match_tier, 'tier_1_deterministic');
+    }
+  },
+  {
+    name: 'Experience date ranges can contribute to duration when reliably derivable',
+    run: async () => {
+      const job: JobProfile = {
+        title: 'Senior Engineer',
+        requirements: [{
+          id: 'req-dur-2',
+          category: 'years',
+          normalized_name: '5+ years experience',
+          original_text: '5+ years experience',
+          source_section: 'Requirements',
+          source_span: [0, 10],
+          source_text: '5+ years experience',
+          priority: 'required',
+          requirement_type: 'experience',
+          confidence: 1,
+          minimum_years: 5
+        }]
+      };
+
+      const candidate: CandidateProfile = {
+        contact: { name: 'Test', email: '', phone: '', location: '' },
+        facts: [
+          {
+            id: 'fact-exp-1',
+            type: 'experience',
+            normalizedName: 'Job 1',
+            rawText: '2018 - 2020',
+            sourceSection: 'Experience',
+            evidence: '2018 - 2020',
+            employment_duration_years: 2
+          },
+          {
+            id: 'fact-exp-2',
+            type: 'experience',
+            normalizedName: 'Job 2',
+            rawText: '2020 - 2024',
+            sourceSection: 'Experience',
+            evidence: '2020 - 2024',
+            employment_duration_years: 4
+          }
+        ],
+        rawStructure: {} as any
+      };
+
+      const result = await matchRequirements(job, candidate, getDeterministicMatches(job, candidate));
+      assert.equal(result.matches[0].classification, 'EXACT_MATCH');
+      assert.equal(result.matches[0].match_tier, 'tier_1_deterministic');
+    }
+  },
+  {
     name: 'Missing requirement yields MISSING (e.g. ROS)',
     run: async () => {
       const job: JobProfile = {

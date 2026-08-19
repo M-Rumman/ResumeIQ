@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { normalizeDegree, parseExperienceDuration, extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
+import { normalizeDegree, parseExperienceDuration, parseExplicitDuration, extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
 
 type TestCase = { name: string; run: () => void };
 
@@ -35,6 +35,15 @@ Lead Engineer
 2021–Present`;
       const duration = parseExperienceDuration(text);
       assert.equal(duration >= 8, true); // 2019-2018(1) + 2021-2019(2) + 2026-2021(5) = 8
+    }
+  },
+  {
+    name: 'extracts explicit duration from text',
+    run: () => {
+      assert.equal(parseExplicitDuration('Senior UX Researcher with 7 years of experience'), 7);
+      assert.equal(parseExplicitDuration('5+ years of software engineering experience'), 5);
+      assert.equal(parseExplicitDuration('10 yrs experience in management'), 10);
+      assert.equal(parseExplicitDuration('No explicit years'), 0);
     }
   },
   {
