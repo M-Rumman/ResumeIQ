@@ -475,7 +475,7 @@ export function extractJsonFromText(text: string): unknown {
     result = extractAttempt('[', ']');
     if (result !== null) return result;
 
-    throw new Error('Could not parse JSON from model output');
+    throw new AiPipelineError('analyzer', 'MALFORMED_JSON_OUTPUT', 'Could not parse JSON from model output');
   }
 }
 
