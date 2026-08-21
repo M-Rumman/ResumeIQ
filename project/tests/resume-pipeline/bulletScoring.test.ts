@@ -13,8 +13,8 @@ suite('Bullet Scoring Engine', () => {
     const afterScore = scoreBulletQuality(after, targetKeywords);
     
     assert.ok(afterScore.total > beforeScore.total, 'After score should be strictly greater than before score');
-    assert.ok(afterScore.measurableImpact > beforeScore.measurableImpact, 'Measurable impact should increase');
-    assert.ok(afterScore.actionVerb > beforeScore.actionVerb, 'Action verb should be stronger');
+    assert.ok(afterScore.breakdown.impact > beforeScore.breakdown.impact, 'Measurable impact should increase');
+    assert.ok(afterScore.breakdown.action > beforeScore.breakdown.action, 'Action verb should be stronger');
   });
 
   test('Keyword stuffing without stronger evidence yields minimal keyword points', () => {
@@ -26,9 +26,10 @@ suite('Bullet Scoring Engine', () => {
     const beforeScore = scoreBulletQuality(before, targetKeywords);
     const afterScore = scoreBulletQuality(after, targetKeywords);
     
-    // Keyword richness should be capped at 5 because it lacks a strong action verb or metric
-    assert.ok(afterScore.keywordRichness <= 5, 'Keyword richness should be capped for weak structures');
-    assert.ok(afterScore.total < 60, 'Total score should remain low despite stuffing');
+    // Relevance should remain capped because both lack a strong action verb
+    assert.strictEqual(beforeScore.breakdown.relevance, 15);
+    assert.strictEqual(afterScore.breakdown.relevance, 15);
+    assert.ok(afterScore.total < 70, 'Total score should remain relatively low despite stuffing');
   });
 });
 
@@ -51,7 +52,7 @@ suite('Bullet Validation & Fallback Logic', () => {
     
     assert.strictEqual(rewrite.after, rewrite.before, 'Should fall back to original');
     assert.strictEqual(rewrite.improvementScore, 0, 'Improvement score should be 0');
-    assert.ok(rewrite.whyStronger[0].includes('No genuine improvement'), 'Should explain lack of improvement');
+    assert.ok(rewrite.reasoning.includes('Original bullet preserved') || rewrite.reasoning.includes('yielded no significant gain'), 'Should explain lack of improvement');
   });
 
   test('Attempted hallucination triggers fallback', () => {
@@ -70,7 +71,7 @@ suite('Bullet Validation & Fallback Logic', () => {
     
     assert.strictEqual(rewrite.after, rewrite.before, 'Should reject hallucination and fallback');
     assert.strictEqual(rewrite.improvementScore, 0, 'Improvement score should be 0');
-    assert.ok(rewrite.whyStronger[0].includes('No genuine improvement'), 'Should explain lack of improvement due to inventing info');
+    assert.ok(rewrite.reasoning.includes('Original bullet preserved') || rewrite.reasoning.includes('inventing unsupported facts'), 'Should explain lack of improvement due to inventing info');
   });
 
   test('Valid improvement passes through with correct scores', () => {

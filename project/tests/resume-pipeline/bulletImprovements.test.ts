@@ -110,6 +110,87 @@ const tests: TestCase[] = [
       assert.equal(improvements.length, 1);
       assert.equal(improvements[0].after, 'Orchestrated the backend bug fixes and optimized performance');
     }
+  },
+  {
+    name: '16-20. Grounding rules: explicit metrics, implied research method, no outcome, stronger wording, no safe improvement',
+    run: () => {
+      const resume = `Candidate Name
+SUMMARY
+Software Engineer specializing in API backend performance and user experience research with 10 years experience.
+
+EXPERIENCE
+Acme Corp | Software Engineer
+- Managed a team of 5 engineers, improving backend performance by 20%.
+- Conducted usability interviews for the product.
+- Maintained legacy systems using Java.
+- Fixed bugs in the database.
+- Worked on code.`;
+
+      // 16. A bullet with explicit metrics
+      const mockOutputMetrics = [
+        {
+          before: 'Managed a team of 5 engineers, improving backend performance by 20%.',
+          after: 'Directed a cross-functional team of 5 engineers, optimizing backend systems for 10 clients to improve performance by 20%.',
+          confidence: 'High'
+        }
+      ];
+      const validatedMetrics = validateRewrites(mockOutputMetrics, resume, ['Java'], [mockOutputMetrics[0].before]);
+      const improvementsMetrics = validatedMetrics.filter(v => v.improvementScore > 0);
+      assert.equal(improvementsMetrics.length, 1);
+      assert.equal(improvementsMetrics[0].after, 'Directed a cross-functional team of 5 engineers, optimizing backend systems for 10 clients to improve performance by 20%.');
+
+      // 17. A bullet with implied research method
+      const mockOutputImpliedMethod = [
+        {
+          before: 'Conducted usability interviews for the product.',
+          after: 'Orchestrated user experience research using usability interviews for the product.',
+          confidence: 'High'
+        }
+      ];
+      const validatedImplied = validateRewrites(mockOutputImpliedMethod, resume, ['Java'], [mockOutputImpliedMethod[0].before]);
+      const improvementsImplied = validatedImplied.filter(v => v.improvementScore > 0);
+      assert.equal(improvementsImplied.length, 1);
+      assert.equal(improvementsImplied[0].after, 'Orchestrated user experience research using usability interviews for the product.');
+
+      // 18. A bullet with no outcome (should trigger fallback if outcome/metric is manufactured)
+      const mockOutputNoOutcome = [
+        {
+          before: 'Maintained legacy systems using Java.',
+          after: 'Maintained legacy systems using Java, leading to 15% better uptime.',
+          confidence: 'High'
+        }
+      ];
+      const validatedNoOutcome = validateRewrites(mockOutputNoOutcome, resume, ['Java'], [mockOutputNoOutcome[0].before]);
+      const improvementsNoOutcome = validatedNoOutcome.filter(v => v.improvementScore > 0);
+      assert.equal(improvementsNoOutcome.length, 0);
+      assert.equal(validatedNoOutcome[0].after, 'Maintained legacy systems using Java.');
+
+      // 19. A bullet where stronger wording is possible
+      const mockOutputStrongerWording = [
+        {
+          before: 'Fixed bugs in the database.',
+          after: 'Optimized database query execution to resolve anomalies.',
+          confidence: 'High'
+        }
+      ];
+      const validatedStronger = validateRewrites(mockOutputStrongerWording, resume, ['Java'], [mockOutputStrongerWording[0].before]);
+      const improvementsStronger = validatedStronger.filter(v => v.improvementScore > 0);
+      assert.equal(improvementsStronger.length, 1);
+      assert.equal(improvementsStronger[0].after, 'Optimized database query execution to resolve anomalies.');
+
+      // 20. A bullet where no safe improvement is possible
+      const mockOutputNoSafeImprovement = [
+        {
+          before: 'Worked on code.',
+          after: 'Developed enterprise-level Kubernetes microservices.',
+          confidence: 'High'
+        }
+      ];
+      const validatedNoSafe = validateRewrites(mockOutputNoSafeImprovement, resume, ['Java'], [mockOutputNoSafeImprovement[0].before]);
+      const improvementsNoSafe = validatedNoSafe.filter(v => v.improvementScore > 0);
+      assert.equal(improvementsNoSafe.length, 0);
+      assert.equal(validatedNoSafe[0].after, 'Worked on code.');
+    }
   }
 ];
 

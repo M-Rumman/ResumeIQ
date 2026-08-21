@@ -1428,6 +1428,90 @@ B.S. in Construction Management — Colorado State University, 2016`);
         globalThis.fetch = originalFetch;
       }
     }
+  },
+  {
+    name: 'bullet scoring breakdown independent evaluation, sum, and matching rules',
+    run: async () => {
+      const { scoreBulletQuality } = await import('../../api/_lib/analysis-engine/bulletScoring.js');
+      const { validateRewrites } = await import('../../api/_lib/aiValidation.js');
+
+      // 1. Arbitrary bullets
+      const bullets = [
+        {
+          before: 'Helped clean code on legacy app.',
+          after: 'Architected robust clean code patterns on a legacy app, resulting in 30% fewer bugs.',
+        },
+        {
+          before: 'Responsible for doing testing.',
+          after: 'Engineered automated testing suite, increasing coverage from 20% to 85%.',
+        }
+      ];
+
+      for (const pair of bullets) {
+        // Step 1: Score original and improved bullets independently
+        const beforeScore = scoreBulletQuality(pair.before, ['C++']);
+        const afterScore = scoreBulletQuality(pair.after, ['C++']);
+
+        // Assert 1: Before/After Score equals the sum of the components
+        const sumBefore = beforeScore.breakdown.relevance +
+                          beforeScore.breakdown.specificity +
+                          beforeScore.breakdown.impact +
+                          beforeScore.breakdown.clarity +
+                          beforeScore.breakdown.action;
+        assert.equal(beforeScore.total, sumBefore, 'Before Score must equal sum of original bullet components');
+
+        const sumAfter = afterScore.breakdown.relevance +
+                         afterScore.breakdown.specificity +
+                         afterScore.breakdown.impact +
+                         afterScore.breakdown.clarity +
+                         afterScore.breakdown.action;
+        assert.equal(afterScore.total, sumAfter, 'After Score must equal sum of improved bullet components');
+
+        // Step 2: Validate using validateRewrites
+        const mockOutput = [
+          {
+            before: pair.before,
+            after: pair.after,
+            whyWeak: 'Passive language',
+            whatIsMissing: 'Metrics and strong action verbs',
+            whyStronger: 'Quantification and strong action verb',
+            confidence: 'High'
+          }
+        ];
+
+        // Pass dummy resume text containing the before bullets so they don't get filtered out
+        const dummyResumeText = `Experience: ${pair.before} Architected legacy app, 30% fewer bugs. Engineered automated testing suite, increasing coverage from 20% to 85%.`;
+        const validated = validateRewrites(mockOutput, dummyResumeText, ['C++']);
+        const rewrite = validated[0];
+
+        assert.ok(rewrite, 'Rewrite pair should not be filtered');
+
+        // Assert 2: Improvement Score equals After - Before
+        assert.equal(rewrite.improvementScore, rewrite.afterScore - rewrite.beforeScore, 'Improvement Score must equal After - Before');
+
+        // Assert 3: Improvement score is never negative
+        assert.ok(rewrite.improvementScore >= 0, 'Improvement score must not be negative');
+
+        // Assert 4: Score breakdowns are correctly mapped to their respective bullet versions (not swapped)
+        assert.deepEqual(rewrite.beforeScoreBreakdown, beforeScore.breakdown, 'beforeScoreBreakdown must belong to the original bullet');
+        assert.deepEqual(rewrite.afterScoreBreakdown, afterScore.breakdown, 'afterScoreBreakdown must belong to the improved bullet');
+
+        // Assert 5: Total score is equal to the sum of the breakdowns in the final output
+        const sumFinalBefore = rewrite.beforeScoreBreakdown.relevance +
+                               rewrite.beforeScoreBreakdown.specificity +
+                               rewrite.beforeScoreBreakdown.impact +
+                               rewrite.beforeScoreBreakdown.clarity +
+                               rewrite.beforeScoreBreakdown.action;
+        assert.equal(rewrite.beforeScore, sumFinalBefore, 'Output beforeScore must equal sum of its breakdown components');
+
+        const sumFinalAfter = rewrite.afterScoreBreakdown.relevance +
+                              rewrite.afterScoreBreakdown.specificity +
+                              rewrite.afterScoreBreakdown.impact +
+                              rewrite.afterScoreBreakdown.clarity +
+                              rewrite.afterScoreBreakdown.action;
+        assert.equal(rewrite.afterScore, sumFinalAfter, 'Output afterScore must equal sum of its breakdown components');
+      }
+    }
   }
 ];
 

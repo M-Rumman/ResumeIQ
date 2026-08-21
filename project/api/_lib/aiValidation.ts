@@ -11,6 +11,8 @@ export type RewritePair = {
   whyItIsWeak: string;
   whatInformationIsMissing: string;
   whyThisIsStronger: string;
+  beforeScoreBreakdown: ScoreBreakdown;
+  afterScoreBreakdown: ScoreBreakdown;
   scoreBreakdown: ScoreBreakdown;
   reasoning: string;
 };
@@ -327,6 +329,41 @@ export function validateHiringManagerAssessment(
   };
 }
 
+function hasUnsupportedGroundingClaims(before: string, after: string, resumeText: string): boolean {
+  const normResume = resumeText.toLowerCase();
+  const normBefore = before.toLowerCase();
+  const normAfter = after.toLowerCase();
+
+  const checks = [
+    { pattern: /\b(?:improving|improved|improve)\b/i, roots: ['improv'] },
+    { pattern: /\b(?:increasing|increased|increase)\b/i, roots: ['increas'] },
+    { pattern: /\b(?:driving|drove|driven|drive)\b/i, roots: ['driv'] },
+    { pattern: /\b(?:leading|led|lead)\b/i, roots: ['lead', 'led'] },
+    { pattern: /\b(?:uncovering|uncovered|uncover)\b/i, roots: ['uncover'] },
+    { pattern: /\b(?:proving|proved|prove)\b/i, roots: ['prov'] },
+    { pattern: /\b(?:demonstrating\s+expertise|demonstrated\s+expertise|showcasing\s+expertise|showcased\s+expertise)\b/i, roots: ['expertise'] },
+  ];
+
+  for (const check of checks) {
+    if (check.pattern.test(normAfter)) {
+      // If it's already in the original bullet, it is explicitly supported.
+      if (check.pattern.test(normBefore)) continue;
+      if (check.roots.some(r => r === 'lead' || r === 'led') && /\b(?:led|leading|lead)\b/i.test(normBefore)) continue;
+
+      // Otherwise, the resume text must explicitly support at least one of the roots.
+      const hasSupportInResume = check.roots.some(r => {
+        if (r === 'led') return /\bled\b/i.test(normResume);
+        return normResume.includes(r);
+      });
+
+      if (!hasSupportInResume) {
+        return true; // Unsupported claim detected!
+      }
+    }
+  }
+  return false;
+}
+
 export function validateRewrites(
   values: unknown, 
   resumeText: string, 
@@ -347,12 +384,18 @@ export function validateRewrites(
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
     
     // Locate the specific experience block for this bullet
-    const bulletCtx = bulletContexts.find(b => normalize(b.text) === normalize(before));
-    const validationContextText = bulletCtx ? bulletCtx.sourceContext : resumeText;
+    const bulletCtx = bulletContexts.find(b => {
+      const txt = typeof b === 'string' ? b : (b && typeof b === 'object' && 'text' in b ? String(b.text) : '');
+      return normalize(txt) === normalize(before);
+    });
+    const validationContextText = typeof bulletCtx === 'string' 
+      ? resumeText 
+      : (bulletCtx ? bulletCtx.sourceContext : resumeText);
 
     // We check for hallucinated metrics against the specific context (employer/role) text.
     // Named technical terms MUST also be supported by the specific context text or the original bullet itself.
     const hasInvented = hasInventedMetric(after, validationContextText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, validationContextText) || hasInventedNamedTerm(after, before);
+    const hasUnsupportedClaim = hasUnsupportedGroundingClaims(before, after, validationContextText);
     const beforeQuality = scoreBulletQuality(before, targetKeywords);
     const afterQuality = scoreBulletQuality(after, targetKeywords);
     
@@ -373,11 +416,11 @@ export function validateRewrites(
     
     let isFallback = false;
 
-    if (improvementScore <= 0 || hasInvented || normalize(before) === normalize(after) || inferenceType === 'UNSUPPORTED') {
+    if (improvementScore <= 0 || hasInvented || hasUnsupportedClaim || normalize(before) === normalize(after) || inferenceType === 'UNSUPPORTED') {
       finalAfter = before;
       finalAfterQuality = beforeQuality;
       finalImprovementScore = 0;
-      if (hasInvented || inferenceType === 'UNSUPPORTED') {
+      if (hasInvented || hasUnsupportedClaim || inferenceType === 'UNSUPPORTED') {
         finalConfidence = 'Low';
       }
       isFallback = true;
@@ -403,6 +446,8 @@ export function validateRewrites(
       whyItIsWeak: isFallback ? '' : whyItIsWeak,
       whatInformationIsMissing: isFallback ? '' : whatInformationIsMissing,
       whyThisIsStronger: isFallback ? '' : whyThisIsStronger,
+      beforeScoreBreakdown: beforeQuality.breakdown,
+      afterScoreBreakdown: finalAfterQuality.breakdown,
       scoreBreakdown: finalAfterQuality.breakdown,
       reasoning,
     });

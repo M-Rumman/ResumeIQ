@@ -16,6 +16,20 @@ export type BulletPair = {
   whatInformationIsMissing?: string;
   whyThisIsStronger?: string;
   reasoning?: string;
+  beforeScoreBreakdown?: {
+    relevance: number;
+    specificity: number;
+    impact: number;
+    clarity: number;
+    action?: number;
+  };
+  afterScoreBreakdown?: {
+    relevance: number;
+    specificity: number;
+    impact: number;
+    clarity: number;
+    action?: number;
+  };
   scoreBreakdown?: {
     relevance: number;
     specificity: number;

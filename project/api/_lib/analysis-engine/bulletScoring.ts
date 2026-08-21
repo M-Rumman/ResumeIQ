@@ -45,14 +45,17 @@ export function supportsTargetKeyword(text: string, keyword: string): boolean {
   return false;
 }
 
-export function scoreBulletQuality(text: string, targetKeywords: string[]): BulletScore {
+export function scoreBulletQuality(text: string, targetKeywords?: string[]): BulletScore {
   const words = text.trim().split(/\s+/);
   const wordCount = words.length;
 
-  let relevance = 5;
-  const hasKeyword = targetKeywords.some(kw => supportsTargetKeyword(text, kw));
-  if (hasKeyword) {
+  let relevance = 10;
+  const hasVerb = STRONG_VERBS.has(firstWord(text));
+  const hasSpecific = words.some(w => /^[A-Z]{2,}/.test(w) || /^[a-z]+[A-Z][a-z]+/.test(w) || /\d/.test(w));
+  if (hasVerb && hasSpecific) {
     relevance = 20;
+  } else if (hasVerb || hasSpecific) {
+    relevance = 15;
   }
 
   let specificity = 5;

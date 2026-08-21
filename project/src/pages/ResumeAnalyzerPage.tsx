@@ -109,14 +109,33 @@ function BulletImprovementGuide({ items, candidateBulletsCount }: { items: Premi
                     {item.reasoning || 'No reasoning provided.'}
                   </p>
                 </div>
-                <div className="bg-gray-50 p-4 border-t border-gray-100">
-                  <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Score Breakdown</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm text-gray-700">
-                    <div>Relevance: <span className="font-semibold">{item.scoreBreakdown?.relevance ?? 0}</span>/20</div>
-                    <div>Specificity: <span className="font-semibold">{item.scoreBreakdown?.specificity ?? 0}</span>/20</div>
-                    <div>Impact: <span className="font-semibold">{item.scoreBreakdown?.impact ?? 0}</span>/20</div>
-                    <div>Clarity: <span className="font-semibold">{item.scoreBreakdown?.clarity ?? 0}</span>/20</div>
-                    <div>Action: <span className="font-semibold">{item.scoreBreakdown?.action ?? 0}</span>/20</div>
+                <div className="bg-gray-50 p-4 border-t border-gray-100 grid md:grid-cols-2 gap-6">
+                  {/* Original Bullet Score Breakdown */}
+                  <div>
+                    <h4 className="text-xs font-extrabold text-red-700 uppercase tracking-wider mb-3">
+                      Original Score Breakdown (Total: {item.beforeScore}/100)
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 text-xs text-gray-700">
+                      <div>Relevance: <span className="font-semibold">{item.beforeScoreBreakdown?.relevance ?? 0}</span>/20</div>
+                      <div>Specificity: <span className="font-semibold">{item.beforeScoreBreakdown?.specificity ?? 0}</span>/20</div>
+                      <div>Impact: <span className="font-semibold">{item.beforeScoreBreakdown?.impact ?? 0}</span>/20</div>
+                      <div>Clarity: <span className="font-semibold">{item.beforeScoreBreakdown?.clarity ?? 0}</span>/20</div>
+                      <div>Action: <span className="font-semibold">{item.beforeScoreBreakdown?.action ?? 0}</span>/20</div>
+                    </div>
+                  </div>
+
+                  {/* Improved Bullet Score Breakdown */}
+                  <div>
+                    <h4 className="text-xs font-extrabold text-emerald-700 uppercase tracking-wider mb-3">
+                      Improved Score Breakdown (Total: {item.afterScore}/100)
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 text-xs text-gray-700">
+                      <div>Relevance: <span className="font-semibold">{item.afterScoreBreakdown?.relevance ?? 0}</span>/20</div>
+                      <div>Specificity: <span className="font-semibold">{item.afterScoreBreakdown?.specificity ?? 0}</span>/20</div>
+                      <div>Impact: <span className="font-semibold">{item.afterScoreBreakdown?.impact ?? 0}</span>/20</div>
+                      <div>Clarity: <span className="font-semibold">{item.afterScoreBreakdown?.clarity ?? 0}</span>/20</div>
+                      <div>Action: <span className="font-semibold">{item.afterScoreBreakdown?.action ?? 0}</span>/20</div>
+                    </div>
                   </div>
                 </div>
               </article>
