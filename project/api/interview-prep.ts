@@ -61,6 +61,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = await generateInterviewPrepWithAi(jobRole, experienceLevel, skills);
     let reportId: string | null = null;
     try {
+      if (req.destroyed) {
+        console.warn('[interview-prep] Client connection was destroyed before database persistence. Skipping daily usage commit.');
+        return res.status(499).end();
+      }
+
       const persisted = await persistAiResultAndCommitUsage({
         userId: user.id,
         featureType: FEATURE_TYPES.INTERVIEW_PREP,

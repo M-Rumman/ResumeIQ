@@ -126,6 +126,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let reportId: string | null = null;
     const dbPersistenceStart = performance.now();
     try {
+      if (req.destroyed) {
+        console.warn('[analyze-resume] Client connection was destroyed before database persistence. Skipping daily usage commit.');
+        return res.status(499).end();
+      }
+
       const [persisted] = await Promise.all([
         persistAiResultAndCommitUsage({
           userId: user.id,

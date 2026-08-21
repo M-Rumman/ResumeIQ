@@ -12,13 +12,17 @@ export type BulletPair = {
   afterScore: number;
   improvementScore: number;
   groundingConfidence: 'High' | 'Medium' | 'Low';
-  scoreBreakdown: {
+  whyItIsWeak?: string;
+  whatInformationIsMissing?: string;
+  whyThisIsStronger?: string;
+  reasoning?: string;
+  scoreBreakdown?: {
     relevance: number;
     specificity: number;
     impact: number;
     clarity: number;
+    action?: number;
   };
-  reasoning: string;
 };
 
 export type PremiumResumeDisplayResults = {

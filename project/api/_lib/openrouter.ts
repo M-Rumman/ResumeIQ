@@ -2336,7 +2336,7 @@ function buildHiringManagerAssessment(
     matchScore,
     planned,
   );
-  const overallDecision: HiringDecision = profile.requiredSkills.length === 0 ? 'Analysis Incomplete'
+  const overallDecision: HiringDecision = gapAnalysis.items.length === 0 ? 'Analysis Incomplete'
     : matchScore >= 82 && missing.length <= 1 ? 'Strong Match'
     : matchScore >= 68 && missing.length <= 2 ? 'Good Match'
       : matchScore >= 52 ? 'Potential Match'
