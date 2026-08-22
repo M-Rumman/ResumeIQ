@@ -188,7 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalDurationMs: Date.now() - observability.startedAt,
       });
       return res.status(502).json({
-        error: 'Resume analysis could not be completed.',
+        error: err.message || 'Resume analysis could not be completed.',
         pipelineError: { stage: err.stage, code: err.code },
       });
     }
