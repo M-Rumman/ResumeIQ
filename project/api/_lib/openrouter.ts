@@ -314,11 +314,13 @@ export async function callOpenRouter(
     }
   }
 
-  for (let i = 0; i < models.length; i++) {
+  const maxModelsToTry = Math.min(models.length, 3);
+  for (let i = 0; i < maxModelsToTry; i++) {
     const model = models[i];
     const requestStartedAt = Date.now();
     const controller = new AbortController();
-    const requestTimeoutMs = openRouterRequestTimeoutMs();
+    // Use a shorter timeout (max 15s) for fallback models to fail fast and prevent serverless timeouts
+    const requestTimeoutMs = i === 0 ? openRouterRequestTimeoutMs() : Math.min(openRouterRequestTimeoutMs(), 15000);
     let requestTimedOut = false;
     const requestTimeout = setTimeout(() => {
       requestTimedOut = true;
@@ -371,7 +373,7 @@ export async function callOpenRouter(
         else if (response.status === 404) errorCode = 'PROVIDER_MODEL_NOT_FOUND';
         
         lastError = new AiPipelineError(stage, errorCode, `OpenRouter error ${response.status}: ${text.slice(0, 280)}`);
-        const hasMoreModels = i < models.length - 1;
+        const hasMoreModels = i < maxModelsToTry - 1;
         if (hasMoreModels && isRetryableProviderError(response.status, text)) {
           await sleep(response.status === 429 ? 1500 + i * 500 : 400);
           continue;
@@ -388,7 +390,7 @@ export async function callOpenRouter(
       if (!content) {
         const stage = (options.stage as AiPipelineStage) || 'analyzer';
         lastError = new AiPipelineError(stage, 'PROVIDER_ERROR', `Empty OpenRouter response from model ${model}`);
-        if (i < models.length - 1) {
+        if (i < maxModelsToTry - 1) {
           await sleep(400);
           continue;
         }
@@ -420,7 +422,7 @@ export async function callOpenRouter(
       const stage = (options.stage as AiPipelineStage) || 'analyzer';
       const errorCode = requestTimedOut ? 'PROVIDER_TIMEOUT' : 'PROVIDER_NETWORK_ERROR';
       lastError = isAiPipelineError(err) ? err : new AiPipelineError(stage, errorCode, err instanceof Error ? err.message : String(err));
-      if (i < models.length - 1) {
+      if (i < maxModelsToTry - 1) {
         await sleep(500);
         continue;
       }
