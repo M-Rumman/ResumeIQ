@@ -63,6 +63,18 @@ function resolveOpenRouterApiKey(): string {
   const key = readOpenRouterKeyFromEnv();
 
   if (!key) {
+    const hasGeminiKeys = [
+      process.env.GEMINI_API_KEY,
+      process.env.GEMINI_JOB_MATCH_KEYS,
+      process.env.GEMINI_KEY_1,
+      process.env.GEMINI_KEY_2,
+      process.env.GEMINI_KEY_3
+    ].some(k => k && k.trim().length > 10);
+
+    if (hasGeminiKeys) {
+      return 'sk-or-mock_key_for_bypass';
+    }
+
     throw new Error(
       'OPENROUTER_API_KEY is not configured. On Vercel: Project Settings → Environment Variables → add OPENROUTER_API_KEY (no VITE_ prefix), then redeploy Production.',
     );
@@ -267,8 +279,14 @@ export async function callOpenRouter(
     ...textMetadata(prompt),
   });
 
-  const geminiKeys = (process.env.GEMINI_API_KEY || process.env.GEMINI_JOB_MATCH_KEYS || '')
-    .split(',')
+  const geminiKeys = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_JOB_MATCH_KEYS,
+    process.env.GEMINI_KEY_1,
+    process.env.GEMINI_KEY_2,
+    process.env.GEMINI_KEY_3
+  ]
+    .flatMap(k => (k || '').split(','))
     .map(k => k.trim())
     .filter(Boolean);
 
