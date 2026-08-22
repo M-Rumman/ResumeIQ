@@ -285,7 +285,7 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
   };
 }
 
-export function generateReasoning(beforeScore: BulletScore, afterScore: BulletScore): string {
+export function generateReasoning(beforeScore: BulletScore, afterScore: BulletScore, beforeText?: string, afterText?: string): string {
   if (beforeScore.total === afterScore.total) {
     if (beforeScore.total >= 80) return "Bullet is already strong across all dimensions.";
     return "The proposed changes do not meaningfully improve the core dimensions of the bullet without inventing information.";
@@ -297,7 +297,15 @@ export function generateReasoning(beforeScore: BulletScore, afterScore: BulletSc
 
   if (ab.relevance > bb.relevance) reasons.push("better aligns with target role requirements");
   if (ab.specificity > bb.specificity) reasons.push("replaces generic descriptions with specific details");
-  if (ab.impact > bb.impact) reasons.push("highlights measurable impact");
+  if (ab.impact > bb.impact) {
+    const beforeHasMetric = beforeText ? hasQuantification(beforeText) : false;
+    const afterHasMetric = afterText ? hasQuantification(afterText) : false;
+    if (afterHasMetric && !beforeHasMetric) {
+      reasons.push("highlights measurable impact");
+    } else {
+      reasons.push("strengthens qualitative impact or contribution framing");
+    }
+  }
   if (ab.action > bb.action) reasons.push("strengthens action and ownership framing");
   if (ab.clarity > bb.clarity) reasons.push("improves clarity and conciseness by removing fluff or optimizing length");
   if (ab.evidence > bb.evidence) reasons.push("strengthens grounding and credibility");

@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { test, suite } from 'node:test';
 import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
-import { scoreBulletQuality } from '../../api/_lib/analysis-engine/bulletScoring.js';
+import { scoreBulletQuality, generateReasoning } from '../../api/_lib/analysis-engine/bulletScoring.js';
 
 suite('Bullet Scoring Engine', () => {
   test('Genuine improvement increases score', () => {
@@ -225,6 +225,16 @@ Associate UX Researcher — Meterly | 2018–2019
       const repeatedScore = scoreBulletQuality(bullet, targetKeywords).total;
       assert.equal(repeatedScore, firstScore);
     }
+  });
+
+  test('11. Dynamic reasoning generation avoids boilerplate mismatch', () => {
+    const beforeText = 'Worked on the backend API.';
+    const afterText = 'Developed the backend API.'; // Action verb improved, no metrics added
+    const beforeScore = scoreBulletQuality(beforeText);
+    const afterScore = scoreBulletQuality(afterText);
+    const reasoning = generateReasoning(beforeScore, afterScore, beforeText, afterText);
+    assert.ok(reasoning.includes('action and ownership'), 'Should mention action verb improvement');
+    assert.equal(reasoning.includes('measurable impact'), false, 'Should NOT claim measurable impact since no metric was added');
   });
 });
 

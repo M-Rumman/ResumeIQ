@@ -33,6 +33,8 @@ CRITICAL INSTRUCTIONS:
 2. If the JD does not mention a technology (e.g., Git, ROS), it MUST NOT become a job requirement.
 3. Clearly distinguish REQUIRED from PREFERRED / NICE TO HAVE. Never treat preferred qualifications as mandatory requirements.
 4. "original_text" and "source_text" MUST be exact quotes from the provided JD.
+5. You MUST consistently extract seniority requirements (e.g., "Senior", "Lead") as category "seniority".
+6. You MUST consistently extract location, hybrid/remote work mode, and work authorization constraints (e.g., "Chicago, IL Hybrid", "U.S. citizen") as category "location" or "other".
 `;
 
 export function validateAndProcessRequirements(parsedRequirements: any[], jobDescriptionText: string): JobRequirement[] {

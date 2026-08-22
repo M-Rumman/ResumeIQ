@@ -445,7 +445,7 @@ export function validateRewrites(
         reasoning = "Original bullet preserved. Improvement attempted but required inventing unsupported facts or yielded no significant gain.";
       }
     } else {
-      reasoning = generateReasoning(beforeQuality, finalAfterQuality);
+      reasoning = generateReasoning(beforeQuality, finalAfterQuality, before, finalAfter);
     }
 
     const whyItIsWeak = typeof pair.whyItIsWeak === 'string' ? pair.whyItIsWeak.trim() : '';
