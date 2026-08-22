@@ -40,7 +40,7 @@ export async function understandAndRank(baseProfile: CandidateProfile, jobs: Nor
   if (!keys().length) throw new Error('No Gemini API keys are configured');
   const model = process.env.GEMINI_JOB_MATCH_MODEL || 'gemini-1.5-pro';
   for (const key of keys()) try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.1 } }), signal: AbortSignal.timeout(45000) });
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0.1 } }), signal: AbortSignal.timeout(45000) });
     if (!response.ok) { const detail = (await response.text()).slice(0, 300); console.error('[gemini-job-match] provider response', { status: response.status, model, detail }); last = new Error(`Gemini ${response.status}`); if (response.status === 429 || response.status >= 500) continue; throw last; }
     const body = await response.json() as any;
     const parsed = json(body.candidates?.[0]?.content?.parts?.[0]?.text || '') as any;

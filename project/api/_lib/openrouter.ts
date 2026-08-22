@@ -325,7 +325,7 @@ export async function callOpenRouter(
       const systemMessage = messages.find(m => m.role === 'system');
       const userMessages = messages.filter(m => m.role !== 'system');
       
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/${geminiModel}:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
