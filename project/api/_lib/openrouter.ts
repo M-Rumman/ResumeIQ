@@ -96,6 +96,30 @@ function getModelCandidates(preferred?: string): string[] {
   const candidates = [preferred, fromEnv, DEFAULT_MODEL, ...MODEL_FALLBACKS].filter(
     (m): m is string => Boolean(m),
   );
+
+  // Safeguard: If running without an OpenRouter key, force Gemini to the front to trigger native API bypass
+  const hasOpenRouter = readOpenRouterKeyFromEnv().startsWith('sk-or-');
+  if (!hasOpenRouter) {
+    const hasGeminiKeys = [
+      process.env.GEMINI_API_KEY,
+      process.env.GEMINI_JOB_MATCH_KEYS,
+      process.env.GEMINI_KEY_1,
+      process.env.GEMINI_KEY_2,
+      process.env.GEMINI_KEY_3
+    ].some(k => k && k.trim().length > 10);
+
+    if (hasGeminiKeys) {
+      const googleIdx = candidates.findIndex(m => m.startsWith('google/'));
+      if (googleIdx > 0) {
+        const temp = candidates[0];
+        candidates[0] = candidates[googleIdx];
+        candidates[googleIdx] = temp;
+      } else if (googleIdx === -1) {
+        candidates.unshift(DEFAULT_MODEL);
+      }
+    }
+  }
+
   return [...new Set(candidates)];
 }
 
@@ -329,9 +353,30 @@ export async function callOpenRouter(
       } else {
         const text = await response.text();
         console.warn(`[openrouter] native Gemini failed (${response.status}), falling back to OpenRouter: ${text.slice(0, 100)}`);
+        if (apiKey === 'sk-or-mock_key_for_bypass') {
+          let errorMsg = `Native Gemini API returned status ${response.status}: ${text}`;
+          try {
+            const parsedError = JSON.parse(text);
+            if (parsedError.error?.message) {
+              errorMsg = `Gemini API Error: ${parsedError.error.message}`;
+            }
+          } catch {}
+          throw new AiPipelineError(
+            (options.stage as AiPipelineStage) || 'analyzer',
+            'PROVIDER_ERROR',
+            errorMsg
+          );
+        }
       }
     } catch (e) {
       console.warn('[openrouter] native Gemini threw exception, falling back to OpenRouter', e);
+      if (apiKey === 'sk-or-mock_key_for_bypass') {
+        throw new AiPipelineError(
+          (options.stage as AiPipelineStage) || 'analyzer',
+          'PROVIDER_ERROR',
+          `Native Gemini exception: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
     }
   }
 
