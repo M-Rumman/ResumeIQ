@@ -1457,14 +1457,16 @@ B.S. in Construction Management — Colorado State University, 2016`);
                           beforeScore.breakdown.specificity +
                           beforeScore.breakdown.impact +
                           beforeScore.breakdown.clarity +
-                          beforeScore.breakdown.action;
+                          beforeScore.breakdown.action +
+                          beforeScore.breakdown.evidence;
         assert.equal(beforeScore.total, sumBefore, 'Before Score must equal sum of original bullet components');
 
         const sumAfter = afterScore.breakdown.relevance +
                          afterScore.breakdown.specificity +
                          afterScore.breakdown.impact +
                          afterScore.breakdown.clarity +
-                         afterScore.breakdown.action;
+                         afterScore.breakdown.action +
+                         afterScore.breakdown.evidence;
         assert.equal(afterScore.total, sumAfter, 'After Score must equal sum of improved bullet components');
 
         // Step 2: Validate using validateRewrites
@@ -1501,14 +1503,16 @@ B.S. in Construction Management — Colorado State University, 2016`);
                                rewrite.beforeScoreBreakdown.specificity +
                                rewrite.beforeScoreBreakdown.impact +
                                rewrite.beforeScoreBreakdown.clarity +
-                               rewrite.beforeScoreBreakdown.action;
+                               rewrite.beforeScoreBreakdown.action +
+                               (rewrite.beforeScoreBreakdown.evidence ?? 0);
         assert.equal(rewrite.beforeScore, sumFinalBefore, 'Output beforeScore must equal sum of its breakdown components');
 
         const sumFinalAfter = rewrite.afterScoreBreakdown.relevance +
                               rewrite.afterScoreBreakdown.specificity +
                               rewrite.afterScoreBreakdown.impact +
                               rewrite.afterScoreBreakdown.clarity +
-                              rewrite.afterScoreBreakdown.action;
+                              rewrite.afterScoreBreakdown.action +
+                              (rewrite.afterScoreBreakdown.evidence ?? 0);
         assert.equal(rewrite.afterScore, sumFinalAfter, 'Output afterScore must equal sum of its breakdown components');
       }
     }

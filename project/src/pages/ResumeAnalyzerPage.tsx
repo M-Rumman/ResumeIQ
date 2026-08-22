@@ -117,10 +117,11 @@ function BulletImprovementGuide({ items, candidateBulletsCount }: { items: Premi
                     </h4>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 text-xs text-gray-700">
                       <div>Relevance: <span className="font-semibold">{item.beforeScoreBreakdown?.relevance ?? 0}</span>/20</div>
-                      <div>Specificity: <span className="font-semibold">{item.beforeScoreBreakdown?.specificity ?? 0}</span>/20</div>
+                      <div>Specificity: <span className="font-semibold">{item.beforeScoreBreakdown?.specificity ?? 0}</span>/15</div>
                       <div>Impact: <span className="font-semibold">{item.beforeScoreBreakdown?.impact ?? 0}</span>/20</div>
-                      <div>Clarity: <span className="font-semibold">{item.beforeScoreBreakdown?.clarity ?? 0}</span>/20</div>
-                      <div>Action: <span className="font-semibold">{item.beforeScoreBreakdown?.action ?? 0}</span>/20</div>
+                      <div>Action: <span className="font-semibold">{item.beforeScoreBreakdown?.action ?? 0}</span>/15</div>
+                      <div>Clarity: <span className="font-semibold">{item.beforeScoreBreakdown?.clarity ?? 0}</span>/15</div>
+                      <div>Evidence: <span className="font-semibold">{item.beforeScoreBreakdown?.evidence ?? 0}</span>/15</div>
                     </div>
                   </div>
 
@@ -131,10 +132,11 @@ function BulletImprovementGuide({ items, candidateBulletsCount }: { items: Premi
                     </h4>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 text-xs text-gray-700">
                       <div>Relevance: <span className="font-semibold">{item.afterScoreBreakdown?.relevance ?? 0}</span>/20</div>
-                      <div>Specificity: <span className="font-semibold">{item.afterScoreBreakdown?.specificity ?? 0}</span>/20</div>
+                      <div>Specificity: <span className="font-semibold">{item.afterScoreBreakdown?.specificity ?? 0}</span>/15</div>
                       <div>Impact: <span className="font-semibold">{item.afterScoreBreakdown?.impact ?? 0}</span>/20</div>
-                      <div>Clarity: <span className="font-semibold">{item.afterScoreBreakdown?.clarity ?? 0}</span>/20</div>
-                      <div>Action: <span className="font-semibold">{item.afterScoreBreakdown?.action ?? 0}</span>/20</div>
+                      <div>Action: <span className="font-semibold">{item.afterScoreBreakdown?.action ?? 0}</span>/15</div>
+                      <div>Clarity: <span className="font-semibold">{item.afterScoreBreakdown?.clarity ?? 0}</span>/15</div>
+                      <div>Evidence: <span className="font-semibold">{item.afterScoreBreakdown?.evidence ?? 0}</span>/15</div>
                     </div>
                   </div>
                 </div>

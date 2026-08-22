@@ -31,7 +31,7 @@ type HiringManagerAssessmentInput = {
 
 const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
 const URL_PATTERN = /(?:https?:\/\/|www\.)\S+/i;
-const METRIC_PATTERN = /\b\d+(?:\.\d+)?%?\b/g;
+const METRIC_PATTERN = /(?:\$\s*)?\b\d+(?:[\d,]*\d)?(?:\.\d+)?(?:%|[kK]|[mM]|[bB])?\b/g;
 const UNSUPPORTED_METRIC_PLACEHOLDER = /\[\s*x\s*\]\s*(?:%|users?|components?|requests?)/i;
 const COMMON_CAPITALIZED_WORDS = new Set([
   'A', 'An', 'And', 'At', 'By', 'Created', 'Delivered', 'Designed', 'Developed', 'For', 'In', 'Implemented',
@@ -392,44 +392,60 @@ export function validateRewrites(
       ? resumeText 
       : (bulletCtx ? bulletCtx.sourceContext : resumeText);
 
-    // We check for hallucinated metrics against the specific context (employer/role) text.
-    // Named technical terms MUST also be supported by the specific context text or the original bullet itself.
+    // 1. Validate Grounding (hard constraint)
     const hasInvented = hasInventedMetric(after, validationContextText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, validationContextText) || hasInventedNamedTerm(after, before);
     const hasUnsupportedClaim = hasUnsupportedGroundingClaims(before, after, validationContextText);
-    const beforeQuality = scoreBulletQuality(before, targetKeywords);
-    const afterQuality = scoreBulletQuality(after, targetKeywords);
-    
-    const improvementScore = afterQuality.total - beforeQuality.total;
-    
-    if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
     
     const rawConfidence = typeof pair.confidence === 'string' ? pair.confidence : 'High';
-    const confidence = (['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High') as 'High' | 'Medium' | 'Low';
+    let confidence = (['High', 'Medium', 'Low'].includes(rawConfidence) ? rawConfidence : 'High') as 'High' | 'Medium' | 'Low';
     
-    let finalAfter = after;
-    let finalAfterQuality = afterQuality;
-    let finalImprovementScore = improvementScore;
-    let finalConfidence = confidence;
-
     const rawInferenceType = typeof pair.inferenceType === 'string' ? pair.inferenceType : 'STRONGLY_SUPPORTED_INFERENCE';
     const inferenceType = (['EXPLICITLY_STATED', 'STRONGLY_SUPPORTED_INFERENCE', 'UNSUPPORTED'].includes(rawInferenceType) ? rawInferenceType : 'STRONGLY_SUPPORTED_INFERENCE') as 'EXPLICITLY_STATED' | 'STRONGLY_SUPPORTED_INFERENCE' | 'UNSUPPORTED';
-    
+
+    const isUngrounded = hasInvented || hasUnsupportedClaim || inferenceType === 'UNSUPPORTED';
+
+    let finalAfter = after;
+    let beforeQuality = scoreBulletQuality(before, targetKeywords);
+    let finalAfterQuality: typeof beforeQuality;
+    let finalImprovementScore = 0;
     let isFallback = false;
 
-    if (improvementScore <= 0 || hasInvented || hasUnsupportedClaim || normalize(before) === normalize(after) || inferenceType === 'UNSUPPORTED') {
+    if (isUngrounded || normalize(before) === normalize(after)) {
+      // Reject the improvement. Skip scoring the improved candidate entirely.
       finalAfter = before;
       finalAfterQuality = beforeQuality;
       finalImprovementScore = 0;
-      if (hasInvented || hasUnsupportedClaim || inferenceType === 'UNSUPPORTED') {
-        finalConfidence = 'Low';
+      if (isUngrounded) {
+        confidence = 'Low';
       }
       isFallback = true;
+    } else {
+      // Grounded, so we score both
+      const afterQuality = scoreBulletQuality(after, targetKeywords);
+      const improvementScore = afterQuality.total - beforeQuality.total;
+
+      if (improvementScore <= 0) {
+        finalAfter = before;
+        finalAfterQuality = beforeQuality;
+        finalImprovementScore = 0;
+        isFallback = true;
+      } else {
+        finalAfterQuality = afterQuality;
+        finalImprovementScore = improvementScore;
+      }
     }
-
-    let reasoning = generateReasoning(beforeQuality, finalAfterQuality);
-
+    
+    if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
+    
+    let reasoning = "";
     if (isFallback) {
-      reasoning = 'Original bullet preserved. Improvement attempted but required inventing unsupported facts or yielded no significant gain.';
+      if (beforeQuality.total >= 85) {
+        reasoning = "No meaningful rewrite recommended.";
+      } else {
+        reasoning = "Original bullet preserved. Improvement attempted but required inventing unsupported facts or yielded no significant gain.";
+      }
+    } else {
+      reasoning = generateReasoning(beforeQuality, finalAfterQuality);
     }
 
     const whyItIsWeak = typeof pair.whyItIsWeak === 'string' ? pair.whyItIsWeak.trim() : '';
@@ -442,7 +458,7 @@ export function validateRewrites(
       after: finalAfter,
       afterScore: finalAfterQuality.total,
       improvementScore: finalImprovementScore,
-      groundingConfidence: finalConfidence,
+      groundingConfidence: confidence,
       whyItIsWeak: isFallback ? '' : whyItIsWeak,
       whatInformationIsMissing: isFallback ? '' : whatInformationIsMissing,
       whyThisIsStronger: isFallback ? '' : whyThisIsStronger,
@@ -452,8 +468,6 @@ export function validateRewrites(
       reasoning,
     });
   }
-
-
 
   // Sort by improvement score descending, so unchanged bullets drop to the bottom
   return accepted.sort((a, b) => b.improvementScore - a.improvementScore);

@@ -20,22 +20,25 @@ export type BulletPair = {
     relevance: number;
     specificity: number;
     impact: number;
-    clarity: number;
     action?: number;
+    clarity: number;
+    evidence?: number;
   };
   afterScoreBreakdown?: {
     relevance: number;
     specificity: number;
     impact: number;
-    clarity: number;
     action?: number;
+    clarity: number;
+    evidence?: number;
   };
   scoreBreakdown?: {
     relevance: number;
     specificity: number;
     impact: number;
-    clarity: number;
     action?: number;
+    clarity: number;
+    evidence?: number;
   };
 };
 
