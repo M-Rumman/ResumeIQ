@@ -1,0 +1,2 @@
+- Tests import production modules directly from `./project/api/_lib/...` rather than going through HTTP endpoints, enabling unit-style verification of analysis engine internals.
+- Integration tests mock `globalThis.fetch` to stub LLM calls deterministically before invoking the real analysis pipeline.

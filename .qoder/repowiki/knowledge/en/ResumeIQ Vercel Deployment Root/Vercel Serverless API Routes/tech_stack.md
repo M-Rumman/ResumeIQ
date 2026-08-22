@@ -1,0 +1,1 @@
+Vercel Node runtime (`@vercel/node`), Supabase client for database operations, OpenRouter as the LLM provider, Lemon Squeezy for checkout/customer portal, and Gemini for job-ranking fallback.

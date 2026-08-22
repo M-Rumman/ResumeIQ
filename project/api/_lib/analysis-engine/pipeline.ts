@@ -184,29 +184,31 @@ export async function runAnalysisPipeline(
     .slice(0, 15)
     .map(b => b.text);
 
-  // Execute LLM calls sequentially to prevent concurrent provider rate limits (429s)
-  const matchingResult = await matchRequirements(jobProfile, candidateProfile, deterministicResult, options);
-
-  // Strict validation of evidence provenance and logic
-  matchingResult.matches = validateEvidenceAttribution(matchingResult.matches, candidateProfile.facts, context.resumeText);
-
-  const bulletRewrites = await generateBulletRewritesWithAi(
-    weakCandidates,
-    [], // pass projects empty since weakCandidates contains both
-    {
-      title: jobProfile.title,
-      requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
-      preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
-      responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
-    },
-    jobProfile.requirements.map(r => r.normalized_name),
-    matchingResult.matches.map((m: any) => ({
-      skill: m.requirement.normalized_name,
-      status: m.classification,
-      evidence: [] // Omitted to prevent payload explosion/token limit failures
-    })),
-    options.observability
-  );
+  // Execute LLM calls in parallel to reduce overall execution time and prevent Vercel timeouts
+  const [matchingResult, bulletRewrites] = await Promise.all([
+    matchRequirements(jobProfile, candidateProfile, deterministicResult, options).then((res) => {
+      // Strict validation of evidence provenance and logic
+      res.matches = validateEvidenceAttribution(res.matches, candidateProfile.facts, context.resumeText);
+      return res;
+    }),
+    generateBulletRewritesWithAi(
+      weakCandidates,
+      [], // pass projects empty since weakCandidates contains both
+      {
+        title: jobProfile.title,
+        requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
+        preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
+        responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
+      },
+      jobProfile.requirements.map(r => r.normalized_name),
+      deterministicResult.matches.map((m: any) => ({
+        skill: m.requirement.normalized_name,
+        status: m.classification,
+        evidence: [] // Omitted to prevent payload explosion/token limit failures
+      })),
+      options.observability
+    )
+  ]);
 
   console.log(`[DEBUG] weakCandidates length: ${weakCandidates.length}`);
   console.log(`[DEBUG] raw LLM bulletRewrites:`, bulletRewrites.improvedBulletPoints.length);

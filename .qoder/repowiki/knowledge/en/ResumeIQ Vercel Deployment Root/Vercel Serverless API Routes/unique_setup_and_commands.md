@@ -1,0 +1,1 @@
+`ai-health.ts` requires the `AI_HEALTH_SECRET` environment variable in production; without it the endpoint returns 404 unless `VERCEL_ENV !== 'production'`. Optional `?probe=1` query triggers a live ping against OpenRouter that consumes API credits.

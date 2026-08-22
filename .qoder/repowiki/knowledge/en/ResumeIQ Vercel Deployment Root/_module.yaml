@@ -1,0 +1,14 @@
+schema_version: 1
+module_path: ""
+title: ResumeIQ Vercel Deployment Root
+scope:
+    - README.md
+    - .gitignore
+    - package-lock.json
+    - vercel.json
+    - test_bulletScoring.ts
+    - test_frontend_filtering.ts
+    - test_validateRewrites.ts
+source_files: []
+depends_on: []
+related_to: []

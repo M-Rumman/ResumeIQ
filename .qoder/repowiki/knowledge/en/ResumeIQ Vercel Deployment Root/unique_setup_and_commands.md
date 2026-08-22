@@ -1,0 +1,1 @@
+`npm install && npm run build` must be run inside the `project/` directory; Vercel uses `vercel.json`'s `buildCommand` and `outputDirectory` to assemble the deployable bundle under `project/dist`.

@@ -729,44 +729,6 @@ export async function matchRequirements(
   }
 
   // 3. LLM Evidence Ranking Pass for Ambiguous Deterministic Matches
-  const ambiguousMatches = matches.filter(m => (m as any)._needsRanking);
-  if (ambiguousMatches.length > 0) {
-    const rankReqList = ambiguousMatches.map(m => {
-      const factsStr = m.evidence.map(e => `[ID: ${e.fact_id}] ${e.source_text}`).join('\n');
-      return `Requirement: ${m.requirement.normalized_name} (Category: ${m.requirement.category})\nOriginal Text: ${m.requirement.original_text}\nCandidates:\n${factsStr}`;
-    }).join('\n\n---\n\n');
-
-    const prompt = `You are an expert technical recruiter.\nYour job is to select the SINGLE most semantically relevant candidate fact for each requirement.\n\n${rankReqList}\n\nOutput a JSON object with a "rankings" array. Each object in the array must have:\n- requirementId: The exact ID string of the requirement.\n- bestFactId: The exact ID string of the single most relevant fact from the Candidates list.`;
-
-    try {
-      const rawJson = await callOpenRouter(
-        [ { role: 'user', content: prompt } ],
-        { maxTokens: 4000, temperature: 0.1, observability: options.observability, stage: 'analyzer' }
-      );
-      
-      const parsed = extractJsonFromText(rawJson) as any;
-      let rankings: any[] = [];
-      if (Array.isArray(parsed)) rankings = parsed;
-      else if (parsed && Array.isArray(parsed.rankings)) rankings = parsed.rankings;
-
-      for (const rank of rankings) {
-         if (!rank.requirementId || !rank.bestFactId) continue;
-         const match = ambiguousMatches.find(m => m.requirement.id === rank.requirementId || m.requirement.normalized_name.includes(rank.requirementId));
-         if (match) {
-            const bestFactId = rank.bestFactId;
-            const primaryEvIdx = match.evidence.findIndex(e => e.fact_id === String(bestFactId));
-            if (primaryEvIdx > 0) {
-               // Swap the selected best fact to the front so it becomes primary evidence
-               const temp = match.evidence[0];
-               match.evidence[0] = match.evidence[primaryEvIdx];
-               match.evidence[primaryEvIdx] = temp;
-            }
-         }
-      }
-    } catch (e) {
-      console.warn('[matcher] Evidence ranking pass failed, falling back to deterministic order.', e);
-    }
-  }
-
+  // Disabled to prevent serverless timeouts. Deterministic sorting is used.
   return { matches };
 }

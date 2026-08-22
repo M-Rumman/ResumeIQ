@@ -1,0 +1,1 @@
+Top-level deployment root that configures Vercel serverless hosting, exposes the project subdirectory as a Next.js app plus API routes, and ships standalone TypeScript tests for the analysis pipeline.

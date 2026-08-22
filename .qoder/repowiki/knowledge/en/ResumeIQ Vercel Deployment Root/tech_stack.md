@@ -1,0 +1,1 @@
+Vercel serverless functions + Next.js (built under `project/`), TypeScript test runners executed from the repo root, OpenRouter API mocked via `globalThis.fetch` in integration tests.

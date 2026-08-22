@@ -1,0 +1,8 @@
+- Every handler starts by rejecting non-POST (or GET for health) methods with a 405 JSON response before any other logic.
+- Input payloads are validated early using `rejectOversizedBody` with a per-route `BODY_LIMITS` constant and string fields are trimmed and capped via `INPUT_LIMITS.*`.
+- User identity is resolved via `getUserFromRequest` and missing users immediately return a 401 JSON response.
+- AI-gated routes enforce rate limits through `enforceAiRateLimit` (or billing-specific `applyBillingRateLimit`) and set a `Retry-After` header on 429 responses.
+- Feature access is checked via `verifyAiFeatureAccess` or `profileHasProAccess` before invoking paid AI or billing operations, with errors forwarded through `respondError`.
+- Successful AI results are persisted through `persistAiResultAndCommitUsage` with an `insertRecord` callback plus a matching `deleteRecord` rollback, and daily usage is recorded via `recordDailyUsage` / `commitSuccessfulDailyUsage` keyed by `FEATURE_TYPES.*`.
+- Errors are funneled through `logApiError` + `respondError(res, status, CLIENT_ERRORS.*)` rather than inline JSON, keeping consistent error shapes across routes.
+- Routes generate stable `reportId` identifiers by prefixing DB record IDs with a feature namespace (e.g. `resume_analysis:${id}`, `interview_prep:${id}`).

@@ -24,9 +24,9 @@ import {
 import type { ValidationTelemetry } from './aiValidation.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 150_000;
-const MIN_OPENROUTER_REQUEST_TIMEOUT_MS = 30_000;
-const MAX_OPENROUTER_REQUEST_TIMEOUT_MS = 180_000;
+const DEFAULT_OPENROUTER_REQUEST_TIMEOUT_MS = 35_000;
+const MIN_OPENROUTER_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_OPENROUTER_REQUEST_TIMEOUT_MS = 60_000;
 
 /** Paid primary model with a compatible paid fallback. */
 const DEFAULT_MODEL = 'google/gemini-1.5-flash';

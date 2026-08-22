@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: api_routes
+title: Vercel Serverless API Routes
+scope:
+    - project/api/analyze-resume.ts
+    - project/api/interview-prep.ts
+    - project/api/job-match.ts
+    - project/api/create-checkout.ts
+    - project/api/manage-subscription.ts
+    - project/api/export-resume-report.ts
+    - project/api/submit-testimonial.ts
+    - project/api/ai-health.ts
+source_files: []
+depends_on: []
+related_to: []

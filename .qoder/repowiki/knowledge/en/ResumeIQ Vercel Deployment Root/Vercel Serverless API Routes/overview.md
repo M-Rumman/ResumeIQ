@@ -1,0 +1,1 @@
+Vercel Edge/Node serverless handlers exposing ResumeIQ's AI analysis, job matching, billing, and utility endpoints, each enforcing auth, rate limits, and usage tracking via shared _lib modules.

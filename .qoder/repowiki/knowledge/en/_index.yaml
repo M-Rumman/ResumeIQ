@@ -1,0 +1,39 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: en-US
+branch: main
+nodes_managed: true
+exported_at: "2026-08-22T09:04:32Z"
+modules:
+    "":
+        dir_name: ResumeIQ Vercel Deployment Root
+        title: ResumeIQ Vercel Deployment Root
+        scope:
+            - README.md
+            - .gitignore
+            - package-lock.json
+            - vercel.json
+            - test_bulletScoring.ts
+            - test_frontend_filtering.ts
+            - test_validateRewrites.ts
+        source_files: []
+        children:
+            - api_routes
+        depends_on: []
+        related_to: []
+    api_routes:
+        dir_name: Vercel Serverless API Routes
+        title: Vercel Serverless API Routes
+        scope:
+            - project/api/analyze-resume.ts
+            - project/api/interview-prep.ts
+            - project/api/job-match.ts
+            - project/api/create-checkout.ts
+            - project/api/manage-subscription.ts
+            - project/api/export-resume-report.ts
+            - project/api/submit-testimonial.ts
+            - project/api/ai-health.ts
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
