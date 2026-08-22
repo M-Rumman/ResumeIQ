@@ -29,7 +29,7 @@ const MIN_OPENROUTER_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_OPENROUTER_REQUEST_TIMEOUT_MS = 60_000;
 
 /** Paid primary model with a compatible paid fallback. */
-const DEFAULT_MODEL = 'google/gemini-2.5-flash';
+const DEFAULT_MODEL = 'google/gemini-3.6-flash';
 
 const MODEL_FALLBACKS = [
   'google/gemma-2-9b-it:free',
@@ -317,8 +317,12 @@ export async function callOpenRouter(
   if (geminiKeys.length > 0 && models[0]?.startsWith('google/')) {
     const geminiKey = geminiKeys[Math.floor(Math.random() * geminiKeys.length)];
     let geminiModel = models[0].replace('google/', '').replace(':free', '');
-    if (geminiModel === 'gemini-flash-1.5' || geminiModel === 'gemini-1.5-flash') {
-      geminiModel = 'gemini-2.5-flash';
+    if (
+      geminiModel === 'gemini-flash-1.5' ||
+      geminiModel === 'gemini-1.5-flash' ||
+      geminiModel === 'gemini-2.5-flash'
+    ) {
+      geminiModel = 'gemini-3.6-flash';
     }
     try {
       console.info(`[openrouter] trying native Gemini API for ${geminiModel} to bypass OpenRouter...`);
