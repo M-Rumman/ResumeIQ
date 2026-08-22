@@ -17,14 +17,14 @@ export const FLUFF_WORDS = new Set([
 ]);
 
 export const WEAK_VERBS = new Set([
-  'worked', 'helped', 'assisted', 'participated', 'involved', 'responsible', 'did', 'made', 'used', 'handled', 'supported', 'contributed'
+  'worked', 'helped', 'assisted', 'participated', 'involved', 'responsible', 'did', 'made', 'used', 'handled', 'supported', 'contributed', 'run', 'ran'
 ]);
 
 export const STRONG_VERBS = new Set([
   'led', 'built', 'conducted', 'designed', 'managed', 'created', 'established', 'presented', 'developed',
   'directed', 'engineered', 'architected', 'orchestrated', 'authored', 'implemented', 'optimized',
   'reduced', 'increased', 'delivered', 'analyzed', 'negotiated', 'launched', 'founded', 'formulated',
-  'executed', 'mentored', 'partnered', 'synthesized', 'run', 'ran', 'coordinated', 'migrated'
+  'executed', 'mentored', 'partnered', 'synthesized', 'coordinated', 'migrated'
 ]);
 
 const STOP_WORDS = new Set([
@@ -106,6 +106,54 @@ function matchesKeyword(text: string, keyword: string): boolean {
   return false;
 }
 
+export function hasGenericPhrasing(text: string): boolean {
+  const normalized = text.toLowerCase();
+  
+  if (/\bfindings\b/.test(normalized)) {
+    if (!/\b(?:research|user|usability|qualitative|quantitative|key|actionable|survey|test|testing)\s+findings\b/.test(normalized)) {
+      return true;
+    }
+  }
+  
+  if (/\bpersonas\b/.test(normalized)) {
+    if (!/\b(?:user|customer|target|buyer|audience|archetype|proto)\s+personas\b/.test(normalized)) {
+      return true;
+    }
+  }
+
+  if (/\busers\b/.test(normalized)) {
+    if (!/\b(?:active|target|end|new|existing|mobile|desktop|app|registered|daily|monthly|external|internal)\s+users\b/.test(normalized)) {
+      return true;
+    }
+  }
+
+  if (/\binterviews\b/.test(normalized)) {
+    if (!/\b(?:user|customer|stakeholder|in-depth|contextual|qualitative|depth)\s+interviews\b/.test(normalized)) {
+      return true;
+    }
+  }
+
+  if (/\btesting\b/.test(normalized)) {
+    if (!/\b(?:usability|user|moderated|unmoderated|a\/b|beta|concept|hallway|automated|manual)\s+testing\b/.test(normalized)) {
+      return true;
+    }
+  }
+
+  if (/\bfeedback\b/.test(normalized)) {
+    if (!/\b(?:user|customer|stakeholder|qualitative|direct|client)\s+feedback\b/.test(normalized)) {
+      return true;
+    }
+  }
+
+  if (/\b(?:designs|wireframes|prototypes)\b/.test(normalized)) {
+    if (!/\b(?:ux|ui|product|interaction|high-fidelity|mobile|web|interactive|low-fidelity)\s+(?:designs|wireframes|prototypes)\b/.test(normalized)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function scoreBulletQuality(text: string, targetKeywords?: string[]): BulletScore {
   const words = text.trim().split(/\s+/);
   const wordCount = words.length;
@@ -143,6 +191,7 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
 
   // 2. SPECIFICITY (15 points)
   let specificity = 5;
+  let specificTermsShared = 0;
   if (/\[\s*x\s*\]/i.test(text)) {
     specificity = 0;
   } else {
@@ -167,6 +216,7 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
       return clean.length >= 8 && !COMMON_SPECIFICITY_EXCLUSIONS.has(clean);
     }).length;
     specificTerms += longWords;
+    specificTermsShared = specificTerms;
 
     if (wordCount >= 15 && specificTerms >= 4) {
       specificity = 15;
@@ -180,6 +230,10 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
       specificity = 5;
     } else {
       specificity = 2;
+    }
+
+    if (hasGenericPhrasing(text) && specificTerms < 3) {
+      specificity = Math.min(8, specificity);
     }
   }
   if (text.length < 3) specificity = 0;
@@ -223,23 +277,23 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
   // 4. ACTION / OWNERSHIP (15 points)
   let action = 5;
   const first = firstWord(text);
-  if (STRONG_VERBS.has(first)) {
-    // Check for weak modifiers nearby
-    const startsWithWeakModifier = words.slice(0, 5).some(w => WEAK_VERBS.has(w.toLowerCase().replace(/[^a-z]/g, '')));
-    if (startsWithWeakModifier) {
-      action = 12;
-    } else {
-      action = 15;
-    }
-  } else if (WEAK_VERBS.has(first)) {
+  if (WEAK_VERBS.has(first)) {
     const cleanWords = words.map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
     const hasStrongVerbLater = cleanWords.some(w => STRONG_VERBS.has(w));
     if (hasStrongVerbLater) {
-      action = 9;
+      action = 8;
     } else {
-      action = 5;
+      action = 6;
     }
-  } else if (first && (first.endsWith('ed') || first === 'run' || first === 'ran')) {
+  } else if (STRONG_VERBS.has(first)) {
+    // Check for weak modifiers nearby
+    const startsWithWeakModifier = words.slice(0, 5).some(w => WEAK_VERBS.has(w.toLowerCase().replace(/[^a-z]/g, '')));
+    if (startsWithWeakModifier) {
+      action = 11;
+    } else {
+      action = 15;
+    }
+  } else if (first && first.endsWith('ed')) {
     action = 13;
   } else if (wordCount >= 5) {
     action = 7;
@@ -266,6 +320,10 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
 
   const commaCount = (text.match(/,/g) || []).length;
   if (commaCount > 3) clarity -= 1;
+
+  if (hasGenericPhrasing(text) && specificTermsShared < 3) {
+    clarity = Math.max(0, clarity - 3);
+  }
 
   if (clarity < 0) clarity = 0;
   if (text.length < 3) clarity = 0;
