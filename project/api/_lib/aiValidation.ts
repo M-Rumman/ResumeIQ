@@ -532,12 +532,7 @@ export function cleanCritiqueField(
   // 2. No metrics/quantification was added in the rewrite
   const afterHasMetric = hasQuantification(after);
   if (!afterHasMetric) {
-    cleaned = cleaned.replace(/lacks?\s+(?:measurable|quantified|quantifiable|metric|numbers|percentage)\b/gi, '')
-                     .replace(/missing\s+(?:measurable|quantified|quantifiable|metric|numbers|percentage)\b/gi, '')
-                     .replace(/\bquantitative\s+impact\b/gi, '')
-                     .replace(/\bmeasurable\s+outcomes?\b/gi, '')
-                     .replace(/\bmetrics?\b/gi, '')
-                     .replace(/\bquantifiable\b/gi, '');
+    cleaned = cleaned.replace(/\b(?:measurable|quantified|quantifiable|quantitative|metric|metrics|numbers|percentage|outcomes?|impacts?)\b/gi, '');
   }
 
   // Clean up punctuation, spaces, double commas, etc.
@@ -546,6 +541,18 @@ export function cleanCritiqueField(
                    .replace(/,\s*and\s*,/g, ',')
                    .replace(/^\s*[,\s.]+|[,\s.]+\s*$/g, '')
                    .trim();
+
+  // Recursively remove leading/trailing conjunctions and dangling punctuation
+  let prevLength = 0;
+  while (cleaned.length !== prevLength) {
+    prevLength = cleaned.length;
+    cleaned = cleaned.replace(/^[,\s.;]+|[,\s.;]+$/g, '').trim();
+    cleaned = cleaned.replace(/^\b(?:and|or|but|with|for|as|of|the|to|in)\b|\b(?:and|or|but|with|for|as|of|the|to|in)\b$/i, '').trim();
+  }
+
+  if (cleaned.toLowerCase() === 'missing' || cleaned.toLowerCase() === 'lacks' || cleaned.toLowerCase() === 'it lacks' || cleaned.toLowerCase() === 'it is missing') {
+    cleaned = '';
+  }
 
   if (cleaned.length < 5) {
     if (field === 'why_weak') {

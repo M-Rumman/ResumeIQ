@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { test, suite } from 'node:test';
-import { validateAiResumeOutput } from '../../api/_lib/aiValidation.js';
+import { validateAiResumeOutput, cleanCritiqueField } from '../../api/_lib/aiValidation.js';
 import { scoreBulletQuality, generateReasoning } from '../../api/_lib/analysis-engine/bulletScoring.js';
 
 suite('Bullet Scoring Engine', () => {
@@ -235,6 +235,23 @@ Associate UX Researcher — Meterly | 2018–2019
     const reasoning = generateReasoning(beforeScore, afterScore, beforeText, afterText);
     assert.ok(reasoning.includes('action and ownership'), 'Should mention action verb improvement');
     assert.equal(reasoning.includes('measurable impact'), false, 'Should NOT claim measurable impact since no metric was added');
+  });
+
+  test('12. cleanCritiqueField cleans dangling conjunctions and punctuation correctly', () => {
+    const beforeText = 'Conducted usability tests.';
+    const afterText = 'Led usability tests for mobile app.';
+    const beforeScore = scoreBulletQuality(beforeText);
+    const afterScore = scoreBulletQuality(afterText);
+    
+    // Original LLM output with redundant metric complaint that gets stripped leaving a trailing "or"
+    const inputWeak = 'Missing metrics, quantitative outcomes, or.';
+    const resultWeak = cleanCritiqueField(inputWeak, beforeText, afterText, beforeScore, afterScore, 'why_weak');
+    assert.equal(resultWeak, 'It uses generic phrasing instead of specific methods.', 'Should fallback cleanly since everything got stripped');
+
+    // Comma-separated list with trailing conjunction stripped cleanly
+    const inputMissing = 'Participant counts, metrics, or.';
+    const resultMissing = cleanCritiqueField(inputMissing, beforeText, afterText, beforeScore, afterScore, 'missing');
+    assert.equal(resultMissing, 'Participant counts.', 'Should strip metrics and trailing conjunction/punctuation cleanly');
   });
 });
 
