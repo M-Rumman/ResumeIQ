@@ -658,7 +658,7 @@ function analysisErrorMessage(error: unknown): string {
       return 'The AI analysis engines are currently experiencing very high demand and timed out. Please try again in a few moments.';
     }
     if (error.pipelineError.code === 'PROVIDER_ERROR') {
-      return 'The AI service experienced an internal error. Please try again later.';
+      return error.message || 'The AI service experienced an internal error. Please try again later.';
     }
     if (error.pipelineError.code === 'MALFORMED_JSON_OUTPUT') {
       return 'The AI service returned an invalid response format. Please try again.';
