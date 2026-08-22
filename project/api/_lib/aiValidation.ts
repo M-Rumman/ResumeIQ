@@ -1,5 +1,5 @@
 import { containsPhoneNumber } from './resumeParser.js';
-import { scoreBulletQuality, generateReasoning, ScoreBreakdown } from './analysis-engine/bulletScoring.js';
+import { scoreBulletQuality, generateReasoning, ScoreBreakdown, hasQuantification, BulletScore } from './analysis-engine/bulletScoring.js';
 
 export type RewritePair = {
   before: string;
@@ -448,9 +448,12 @@ export function validateRewrites(
       reasoning = generateReasoning(beforeQuality, finalAfterQuality, before, finalAfter);
     }
 
-    const whyItIsWeak = typeof pair.whyItIsWeak === 'string' ? pair.whyItIsWeak.trim() : '';
-    const whatInformationIsMissing = typeof pair.whatInformationIsMissing === 'string' ? pair.whatInformationIsMissing.trim() : '';
+    const rawWhyItIsWeak = typeof pair.whyItIsWeak === 'string' ? pair.whyItIsWeak.trim() : '';
+    const rawWhatInformationIsMissing = typeof pair.whatInformationIsMissing === 'string' ? pair.whatInformationIsMissing.trim() : '';
     const whyThisIsStronger = typeof pair.whyThisIsStronger === 'string' ? pair.whyThisIsStronger.trim() : '';
+
+    const whyItIsWeak = isFallback ? '' : cleanCritiqueField(rawWhyItIsWeak, before, finalAfter, beforeQuality, finalAfterQuality, 'why_weak');
+    const whatInformationIsMissing = isFallback ? '' : cleanCritiqueField(rawWhatInformationIsMissing, before, finalAfter, beforeQuality, finalAfterQuality, 'missing');
 
     accepted.push({
       before,
@@ -459,8 +462,8 @@ export function validateRewrites(
       afterScore: finalAfterQuality.total,
       improvementScore: finalImprovementScore,
       groundingConfidence: confidence,
-      whyItIsWeak: isFallback ? '' : whyItIsWeak,
-      whatInformationIsMissing: isFallback ? '' : whatInformationIsMissing,
+      whyItIsWeak,
+      whatInformationIsMissing,
       whyThisIsStronger: isFallback ? '' : whyThisIsStronger,
       beforeScoreBreakdown: beforeQuality.breakdown,
       afterScoreBreakdown: finalAfterQuality.breakdown,
@@ -503,4 +506,84 @@ export function validateAiResumeOutput(
   validateRecommendationGroups(output, resumeText, jobDescription, telemetry);
   validateCoachingReport(output, resumeText, jobDescription, telemetry);
   return output;
+}
+
+export function cleanCritiqueField(
+  text: string, 
+  before: string, 
+  after: string, 
+  beforeQuality: BulletScore, 
+  afterQuality: BulletScore,
+  field: 'why_weak' | 'missing'
+): string {
+  let cleaned = text;
+
+  // 1. Action verb did not change, or before already has strong action verb (action score >= 13)
+  const beforeHasStrongAction = beforeQuality.breakdown.action >= 13;
+  const actionUnchanged = afterQuality.breakdown.action <= beforeQuality.breakdown.action;
+  if (beforeHasStrongAction || actionUnchanged) {
+    cleaned = cleaned.replace(/lacks?\s+(?:a\s+)?strong\s+action\s+verbs?\b/gi, '')
+                     .replace(/missing\s+(?:an\s+)?action\s+verbs?\b/gi, '')
+                     .replace(/\bweak\s+action\s+verbs?\b/gi, '')
+                     .replace(/\bpassive\s+language\b/gi, '')
+                     .replace(/\baction\s+verbs?\b/gi, '');
+  }
+
+  // 2. No metrics/quantification was added in the rewrite
+  const afterHasMetric = hasQuantification(after);
+  if (!afterHasMetric) {
+    cleaned = cleaned.replace(/lacks?\s+(?:measurable|quantified|quantifiable|metric|numbers|percentage)\b/gi, '')
+                     .replace(/missing\s+(?:measurable|quantified|quantifiable|metric|numbers|percentage)\b/gi, '')
+                     .replace(/\bquantitative\s+impact\b/gi, '')
+                     .replace(/\bmeasurable\s+outcomes?\b/gi, '')
+                     .replace(/\bmetrics?\b/gi, '')
+                     .replace(/\bquantifiable\b/gi, '');
+  }
+
+  // Clean up punctuation, spaces, double commas, etc.
+  cleaned = cleaned.replace(/\s+/g, ' ')
+                   .replace(/,\s*,/g, ',')
+                   .replace(/,\s*and\s*,/g, ',')
+                   .replace(/^\s*[,\s.]+|[,\s.]+\s*$/g, '')
+                   .trim();
+
+  if (cleaned.length < 5) {
+    if (field === 'why_weak') {
+      const issues: string[] = [];
+      if (afterQuality.breakdown.relevance > beforeQuality.breakdown.relevance) {
+        issues.push("lacks target role keyword alignment");
+      }
+      if (afterQuality.breakdown.specificity > beforeQuality.breakdown.specificity) {
+        issues.push("uses generic phrasing instead of specific methods");
+      }
+      if (issues.length > 0) {
+        cleaned = "It " + issues.join(" and ") + ".";
+      } else {
+        cleaned = "It uses generic wording without standard domain terminology.";
+      }
+    } else {
+      const missing: string[] = [];
+      if (afterQuality.breakdown.relevance > beforeQuality.breakdown.relevance) {
+        missing.push("specific domain keywords");
+      }
+      if (afterQuality.breakdown.specificity > beforeQuality.breakdown.specificity) {
+        missing.push("context-specific UX methodologies and details");
+      }
+      if (missing.length > 0) {
+        cleaned = missing.join(" and ") + ".";
+      } else {
+        cleaned = "Specific domain methodologies and context-appropriate details.";
+      }
+    }
+  }
+
+  // Capitalize first letter
+  cleaned = cleaned.trim();
+  if (cleaned.length > 0) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    if (!cleaned.endsWith('.')) {
+      cleaned += '.';
+    }
+  }
+  return cleaned;
 }

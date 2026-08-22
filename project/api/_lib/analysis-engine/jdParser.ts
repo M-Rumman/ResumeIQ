@@ -113,6 +113,123 @@ export function validateAndProcessRequirements(parsedRequirements: any[], jobDes
   return validRequirements;
 }
 
+const STOP_WORDS_AT_DEDUP = new Set([
+  'and', 'or', 'of', 'to', 'in', 'with', 'a', 'the', 'for', 'on', 'at', 'by', 'an', 'is', 'are', 'experience', 'ability', 'knowledge', 'understanding', 'skills', 'demonstrated'
+]);
+
+export function getJaccardSimilarity(str1: string, str2: string): number {
+  const getWords = (s: string) => new Set(
+    s.toLowerCase()
+     .split(/\s+/)
+     .map(w => w.replace(/[^a-z0-9]/g, ''))
+     .filter(w => w.length > 2 && !STOP_WORDS_AT_DEDUP.has(w))
+  );
+  
+  const set1 = getWords(str1);
+  const set2 = getWords(str2);
+  
+  if (set1.size === 0 || set2.size === 0) return 0;
+  
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+  
+  return intersection.size / union.size;
+}
+
+export function getPrimaryConcept(name: string): string {
+  const lower = name.toLowerCase();
+  
+  if (
+    (/\b(?:qualitative|quantitative|mixed-method|usability|interview|survey|diary)\b/.test(lower) && /\b(?:method|research|test|study|studies)\b/.test(lower)) ||
+    (/\bdesign\b/.test(lower) && /\bconduct\b/.test(lower) && /\bresearch\b/.test(lower)) ||
+    (/\busability\s+testing\b/.test(lower))
+  ) {
+    return 'qualitative_quantitative_research_methods';
+  }
+  
+  if (
+    (/\b(?:present|findings|communicate|communication|storytelling|report|presentation)\b/.test(lower) && /\b(?:leadership|stakeholder|executive|c-suite|vp|senior|management)\b/.test(lower)) ||
+    (/\bstakeholder\s+communication\b/.test(lower))
+  ) {
+    return 'stakeholder_communication_presenting_findings';
+  }
+
+  if (
+    /\b(?:panel|participant|repository|operations|recruit|recruitment|ops)\b/.test(lower) &&
+    /\b(?:research|recruit|panel|repository)\b/.test(lower)
+  ) {
+    return 'research_operations_participant_panel';
+  }
+
+  if (
+    /\b(?:data\s+science|analytics|clickstream|triangulate|quantitative\s+insights)\b/.test(lower)
+  ) {
+    return 'partner_with_data_science_analytics';
+  }
+
+  if (
+    /\b(?:mentor|mentorship|junior|train|coaching)\b/.test(lower)
+  ) {
+    return 'mentorship_coaching';
+  }
+
+  return name;
+}
+
+export function deduplicateRequirements(requirements: JobRequirement[]): JobRequirement[] {
+  const conceptMap = new Map<string, JobRequirement>();
+  const deduped: JobRequirement[] = [];
+
+  for (const req of requirements) {
+    const concept = getPrimaryConcept(req.normalized_name);
+    if (conceptMap.has(concept)) {
+      const existing = conceptMap.get(concept)!;
+      if (req.priority === 'required' || existing.priority === 'required') {
+        existing.priority = 'required';
+      } else if (req.priority === 'preferred' || existing.priority === 'preferred') {
+        existing.priority = 'preferred';
+      }
+      if (req.source_text && !existing.source_text.includes(req.source_text)) {
+        existing.source_text = `${existing.source_text} | ${req.source_text}`;
+      }
+      if (concept === 'qualitative_quantitative_research_methods') {
+        existing.normalized_name = 'Qualitative and Quantitative Research Methods';
+      } else if (concept === 'stakeholder_communication_presenting_findings') {
+        existing.normalized_name = 'Stakeholder Communication & Presenting Findings';
+      } else if (concept === 'research_operations_participant_panel') {
+        existing.normalized_name = 'Research Operations & Participant Panel';
+      } else if (concept === 'partner_with_data_science_analytics') {
+        existing.normalized_name = 'Partner with Data Science & Analytics';
+      } else if (concept === 'mentorship_coaching') {
+        existing.normalized_name = 'Mentorship & Team Coaching';
+      }
+    } else {
+      conceptMap.set(concept, req);
+      deduped.push(req);
+    }
+  }
+
+  const finalDeduped: JobRequirement[] = [];
+  for (const req of deduped) {
+    let isDuplicate = false;
+    for (const existing of finalDeduped) {
+      if (getJaccardSimilarity(req.normalized_name, existing.normalized_name) > 0.6) {
+        isDuplicate = true;
+        if (req.priority === 'required') existing.priority = 'required';
+        if (req.source_text && !existing.source_text.includes(req.source_text)) {
+          existing.source_text = `${existing.source_text} | ${req.source_text}`;
+        }
+        break;
+      }
+    }
+    if (!isDuplicate) {
+      finalDeduped.push(req);
+    }
+  }
+
+  return finalDeduped;
+}
+
 export async function parseJobDescription(
   jobDescriptionText: string,
   options: { observability?: AiObservabilityContext } = {}
@@ -146,11 +263,12 @@ export async function parseJobDescription(
     }
 
     const validRequirements = validateAndProcessRequirements(parsed.requirements, jobDescriptionText);
+    const dedupedRequirements = deduplicateRequirements(validRequirements);
 
     return {
       title: parsed.title || 'Unknown Title',
       company: parsed.company || null,
-      requirements: validRequirements,
+      requirements: dedupedRequirements,
     };
 
   } catch (error) {

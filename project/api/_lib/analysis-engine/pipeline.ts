@@ -363,12 +363,9 @@ export async function runAnalysisPipeline(
       recruiterSummary: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length) 
                        ? 'The job-match analysis could not be completed securely.' 
                        : 'Deterministically evaluated candidate profile against requirements.',
-      topReasonsToInterview: rankStrengths(evaluationResult.finalizedMatches)
-        .slice(0, 3)
-        .map(m => m.classification === 'EXACT_MATCH' 
-          ? `Strong evidence of satisfaction for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`
-          : `Strong evidence with semantic equivalence for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`
-        ),
+      topReasonsToInterview: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length)
+        ? []
+        : [generateNarrativeSynthesis(evaluationResult.finalizedMatches, evaluationResult.matchScore)],
       topReasonsForRejection: [
         ...canonical.missingCore.map(m => `Genuine risk: Missing required ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
         ...canonical.missingPreferred.map(m => `Genuine risk: Missing preferred ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
@@ -479,4 +476,25 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
   if (report.keywordCompatibility.missing.length !== missingNames.length) {
     throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Keyword compatibility missing count does not match canonical missing count.`);
   }
+}
+
+export function generateNarrativeSynthesis(matches: any[], matchScore: number): string {
+  const exactOrStrong = matches.filter(m => m.classification === 'EXACT_MATCH' || m.classification === 'STRONG_SEMANTIC_MATCH');
+  if (exactOrStrong.length === 0) {
+    return 'Based on the evaluation, no direct matching strengths were identified in the candidate profile for the specified requirements.';
+  }
+  
+  const topNames = exactOrStrong.slice(0, 3).map(m => m.requirement.normalized_name);
+  let skillsList = '';
+  if (topNames.length === 1) {
+    skillsList = topNames[0];
+  } else if (topNames.length === 2) {
+    skillsList = `${topNames[0]} and ${topNames[1]}`;
+  } else if (topNames.length >= 3) {
+    skillsList = `${topNames[0]}, ${topNames[1]}, and ${topNames[2]}`;
+  }
+
+  const fitLevel = matchScore >= 90 ? 'an exceptional' : matchScore >= 75 ? 'a strong' : matchScore >= 50 ? 'a solid' : 'a partial';
+  
+  return `The candidate demonstrates ${fitLevel} overall fit for the position, with robust evidence satisfying key role requirements such as ${skillsList}. Their background aligns well with the target domain competency, making them a competitive applicant for an interview.`;
 }

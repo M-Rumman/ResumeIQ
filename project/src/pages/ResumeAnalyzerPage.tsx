@@ -396,11 +396,7 @@ function HiringManagerAssessmentCard({ assessment }: { assessment: PremiumResult
           {assessment.overallDecision === 'Analysis Incomplete' ? (
             <p className="text-sm leading-6 text-emerald-950">Cannot determine strengths without job requirements.</p>
           ) : assessment.topReasonsToInterview.length > 0 ? (
-            <ul className="space-y-3">
-              {assessment.topReasonsToInterview.map((reason) => (
-                <li key={reason} className="flex gap-2 text-sm leading-6 text-emerald-950"><CheckCircle2 className="w-4 h-4 mt-1 shrink-0 text-emerald-700" />{reason}</li>
-              ))}
-            </ul>
+            <p className="text-sm leading-6 text-emerald-950">{assessment.topReasonsToInterview[0]}</p>
           ) : (
             <p className="text-sm leading-6 text-emerald-950">No direct resume-to-job requirement matches were identified yet.</p>
           )}
