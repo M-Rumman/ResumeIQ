@@ -113,6 +113,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { observability }
     );
     const result = engineResult.legacyReport;
+    if (!isValidAnalysisResult(result)) {
+      throw new AiPipelineError(
+        'analyzer',
+        'ANALYSIS_FAILED',
+        'Analysis result is structurally invalid or incomplete.'
+      );
+    }
 
     const strengths = engineResult.tier === 'premium'
       ? result.atsScoreExplanation.strengths.join('\n')
@@ -207,4 +214,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       pipelineError: { stage: 'analyzer', code: 'INTERNAL_SERVER_ERROR' },
     });
   }
+}
+
+function isValidAnalysisResult(result: any): boolean {
+  if (!result || typeof result !== 'object') return false;
+
+  const hasAtsScore = typeof result.atsScore === 'number' && result.atsScore >= 0 && result.atsScore <= 100;
+  const hasMatchScore = typeof result.matchScore === 'number' && result.matchScore >= 0 && result.matchScore <= 100;
+  const hasExistingSkills = Array.isArray(result.existingSkills);
+  const hasMissingSkills = Array.isArray(result.missingSkills);
+  const hasRequirementBreakdown = Array.isArray(result.requirementBreakdown) && result.requirementBreakdown.length > 0;
+  const hasAtsBreakdown = Array.isArray(result.atsBreakdown);
+
+  const hasKeywordCompatibility = result.keywordCompatibility && 
+    typeof result.keywordCompatibility === 'object' && 
+    Array.isArray(result.keywordCompatibility.exactMatches) && 
+    Array.isArray(result.keywordCompatibility.missing);
+
+  const hasHiringManagerAssessment = result.hiringManagerAssessment && 
+    typeof result.hiringManagerAssessment === 'object' && 
+    typeof result.hiringManagerAssessment.overallDecision === 'string' &&
+    result.hiringManagerAssessment.overallDecision.length > 0;
+
+  const hasAtsScoreExplanation = result.atsScoreExplanation && 
+    typeof result.atsScoreExplanation === 'object' && 
+    Array.isArray(result.atsScoreExplanation.strengths);
+
+  return (
+    hasAtsScore &&
+    hasMatchScore &&
+    hasExistingSkills &&
+    hasMissingSkills &&
+    hasRequirementBreakdown &&
+    hasAtsBreakdown &&
+    hasKeywordCompatibility &&
+    hasHiringManagerAssessment &&
+    hasAtsScoreExplanation
+  );
 }

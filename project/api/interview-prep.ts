@@ -59,6 +59,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const result = await generateInterviewPrepWithAi(jobRole, experienceLevel, skills);
+    if (!isValidInterviewPrepResult(result)) {
+      throw new Error('Interview preparation result is structurally invalid or incomplete.');
+    }
     let reportId: string | null = null;
     try {
       if (req.destroyed) {
@@ -100,4 +103,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     logApiError('interview-prep', err);
     return respondError(res, 502, err instanceof Error ? err.message : CLIENT_ERRORS.INTERVIEW_PREP);
   }
+}
+
+function isValidInterviewPrepResult(result: any): boolean {
+  return (
+    result &&
+    typeof result === 'object' &&
+    Array.isArray(result.hrQuestions) && result.hrQuestions.length > 0 &&
+    Array.isArray(result.technicalQuestions) && result.technicalQuestions.length > 0 &&
+    Array.isArray(result.behavioralQuestions) && result.behavioralQuestions.length > 0 &&
+    Array.isArray(result.preparationRoadmap)
+  );
 }

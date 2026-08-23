@@ -65,77 +65,14 @@ export async function runAnalysisPipeline(
 
   // 2. Free Tier Fast-Path
   // Free users only get basic parsing and structure check.
+  // 2. Fail on Empty Requirements
+  // Ensure that JD parsing failure or empty requirements throws an error instead of returning a dummy report
   if (jobProfile.requirements.length === 0) {
-    console.info('[analysis-trace] FAST_PATH empty JD');
-    return {
-      tier: 'premium',
-      legacyReport: {
-        tier: 'premium',
-        parsed: parsedResume,
-        atsScore: Math.round(candidateProfile.facts.length * 2), // dummy baseline
-        matchScore: 0,
-        existingSkills: [],
-        missingSkills: [],
-        missingKeywords: [],
-        analysisFailedSkills: [],
-        keywordRecommendations: [],
-        keywordGaps: [],
-        missingRequiredSkills: [],
-        educationAlignment: [],
-        detectedSections,
-        missingSections,
-        formattingIssues: [],
-        formattingSuggestions: [],
-        weakBullets: [],
-        improvedBulletPoints: [],
-        improvementSuggestions: [],
-        optimizationRecommendations: [],
-        keywordSuggestions: [],
-        atsIssues: [],
-        recommendationPriorities: {
-          critical: [],
-          important: [],
-          optional: [],
-        },
-        actionPlan: [],
-        atsScoreExplanation: {
-          strengths: ['Resume extracted successfully'],
-          missingElements: [],
-          formattingIssues: [],
-          keywordIssues: [],
-          whatIncreasedScore: [],
-          whatReducedScore: [],
-          topImprovements: [],
-          estimatedScoreImprovement: 0,
-          potentialAtsScore: 0
-        },
-        jobMatchExplanation: {
-          strongMatches: [],
-          partialMatches: [],
-          missingSkills: []
-        },
-        keywordCompatibility: {
-          overallMatch: 0,
-          exactMatches: [],
-          semanticMatches: [],
-          underExpressed: [],
-          missing: [],
-          analysisFailed: []
-        },
-        requirementBreakdown: [],
-        coachingReport: [],
-        atsBreakdown: [],
-        roleStrengths: [],
-        hiringManagerAssessment: {
-          overallDecision: 'Analysis Incomplete',
-          recruiterSummary: 'The job description yielded no valid requirements.',
-          topReasonsToInterview: [],
-          topReasonsForRejection: [],
-          biggestImprovements: [],
-          confidence: 'Low'
-        }
-      }
-    } as unknown as EngineResult;
+    throw new OpenRouterPipelineError(
+      'parser',
+      'JD_PARSING_FAILED',
+      'No job requirements could be extracted from the target job description. Please ensure you paste a valid job description containing responsibilities and qualifications.'
+    );
   }
 
   if (!context.includePremium) {
