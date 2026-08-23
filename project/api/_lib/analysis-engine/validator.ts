@@ -171,5 +171,31 @@ export function validateAndSanitizeReport(
     delete report.hiringManagerAssessment.estimatedInterviewProbability;
   }
 
+  // 6. Circular/Internal Property Cleanup
+  // Remove temporary properties prefixed with an underscore (like _fallbackMatch)
+  // to avoid circular JSON serialization errors during API response serialization.
+  removeInternalProperties(report);
+
   return report;
 }
+
+function removeInternalProperties(obj: any, visited = new Set<any>()): void {
+  if (!obj || typeof obj !== 'object') return;
+  if (visited.has(obj)) return;
+  visited.add(obj);
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      removeInternalProperties(item, visited);
+    }
+  } else {
+    for (const key of Object.keys(obj)) {
+      if (key.startsWith('_')) {
+        delete obj[key];
+      } else {
+        removeInternalProperties(obj[key], visited);
+      }
+    }
+  }
+}
+
