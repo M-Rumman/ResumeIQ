@@ -98,6 +98,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (err) {
     logApiError('interview-prep', err);
-    return respondError(res, 502, CLIENT_ERRORS.INTERVIEW_PREP);
+    return respondError(res, 502, err instanceof Error ? err.message : CLIENT_ERRORS.INTERVIEW_PREP);
   }
 }

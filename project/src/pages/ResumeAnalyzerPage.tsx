@@ -663,7 +663,7 @@ function analysisErrorMessage(error: unknown): string {
       return 'OpenRouter rejected your API key. Please check your environment variables or create a new key at openrouter.ai/keys.';
     }
     if (error.pipelineError.code === 'INTERNAL_SERVER_ERROR') {
-      return 'The AI analysis engine is temporarily unavailable due to a system issue. Please try again in a few moments.';
+      return error.message || 'The AI analysis engine is temporarily unavailable due to a system issue. Please try again in a few moments.';
     }
 
     switch (error.pipelineError.stage) {

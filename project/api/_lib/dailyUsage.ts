@@ -60,13 +60,17 @@ export async function commitSuccessfulDailyUsage(userId: string, featureType: Fe
 
 /** Retain request events for observability; profile counters are authoritative. */
 export async function recordDailyUsage(userId: string, featureType: FeatureType): Promise<void> {
-  const admin = getSupabaseAdmin();
-  const { error } = await admin.from('usage_tracking').insert({
-    user_id: userId,
-    feature_type: featureType,
-  });
-  if (error) {
-    console.error('[dailyUsage] event insert failed', error.message);
+  try {
+    const admin = getSupabaseAdmin();
+    const { error } = await admin.from('usage_tracking').insert({
+      user_id: userId,
+      feature_type: featureType,
+    });
+    if (error) {
+      console.error('[dailyUsage] event insert failed', error.message);
+    }
+  } catch (err) {
+    console.error('[dailyUsage] event insert exception', err);
   }
 }
 

@@ -221,7 +221,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
         return;
       }
       setLoading(false);
-      setSaveError('Interview preparation is temporarily unavailable. Please try again in a few moments.');
+      setSaveError(error instanceof Error ? error.message : 'Interview preparation is temporarily unavailable. Please try again in a few moments.');
       await refreshUsageStatus();
       return;
     }
