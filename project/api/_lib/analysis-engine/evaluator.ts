@@ -85,6 +85,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
   // 1a. Deduplicate matches and ensure all JD requirements are present
   const requirementsMap = new Map<string, RequirementMatch>();
   for (const req of job.requirements) {
+    if (!req.normalized_name || !req.normalized_name.trim()) continue;
     requirementsMap.set(req.id || req.normalized_name, {
       requirement: req,
       classification: 'ANALYSIS_FAILED',
@@ -151,10 +152,13 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
   const rawMatchScore = totalMaxScore > 0 ? Math.min(100, (totalAchievedScore / totalMaxScore) * 100) : 0;
   const matchScore = Math.round(rawMatchScore);
   
+  const mathematicalExplanation = `Match score is calculated transparently as: (Total Achieved Points: ${totalAchievedScore.toFixed(1)} / Total Max Points: ${totalMaxScore.toFixed(1)}) * 100 = ${matchScore}%.`;
+  
   const matchScoreDetails = {
     totalMaxScore,
     totalAchievedScore,
     rawMatchScore,
+    mathematicalExplanation,
     details: scoreDetails
   };
 

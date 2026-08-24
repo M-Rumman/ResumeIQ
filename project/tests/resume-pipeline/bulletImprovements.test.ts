@@ -120,7 +120,7 @@ Software Engineer specializing in API backend performance and user experience re
 
 EXPERIENCE
 Acme Corp | Software Engineer
-- Managed a team of 5 engineers, improving backend performance by 20%.
+- helped manage a team of 5 engineers, improving backend performance by 20%.
 - Conducted usability interviews for the product.
 - Maintained legacy systems using Java.
 - Fixed bugs in the database.
@@ -129,7 +129,7 @@ Acme Corp | Software Engineer
       // 16. A bullet with explicit metrics
       const mockOutputMetrics = [
         {
-          before: 'Managed a team of 5 engineers, improving backend performance by 20%.',
+          before: 'helped manage a team of 5 engineers, improving backend performance by 20%.',
           after: 'Directed a cross-functional team of 5 engineers, optimizing backend systems for 10 clients to improve performance by 20%.',
           confidence: 'High'
         }

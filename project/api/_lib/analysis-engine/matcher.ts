@@ -1,4 +1,9 @@
 import { callOpenRouter, extractJsonFromText } from '../openrouter.js';
+import {
+  calculateIntervalsDurationYears,
+  extractDateRangeString,
+  parseDateRange
+} from './resumeExtraction.js';
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { CandidateProfile, JobProfile, MatchingResult, RequirementMatch, MatchClassification, CandidateFact, MatchEvidence } from './types.js';
 
@@ -44,6 +49,28 @@ For example, if Original Text is "Excellent stakeholder communication and storyt
   - Component 1: Stakeholder communication
   - Component 2: Storytelling skills
 
+STRICT EVIDENCE-GROUNDING POLICIES:
+1. EXACT_MATCH: A requirement can only receive EXACT_MATCH if the resume contains explicit evidence satisfying the requirement. A bare keyword in a skills list is NEVER an EXACT_MATCH.
+2. STRONG_SEMANTIC_MATCH: A requirement can receive STRONG_SEMANTIC_MATCH only when the resume contains concrete evidence that is genuinely equivalent in meaning to the requirement.
+3. NO GENERIC CATEGORY/WORD SIMILARITY: Generic similarity is NOT sufficient. Do NOT award semantic matches simply because the resume and requirement share generic words (e.g. research, users, testing, design, stakeholders, experience).
+   - "conducted interviews" does NOT prove "triangulated behavioral analytics with qualitative findings".
+   - "conducted usability testing" does NOT prove "research at scale".
+   - "worked with stakeholders" does NOT prove "presented findings to senior leadership and influenced product strategy".
+   - "UX researcher" does NOT prove "6+ years of UX research experience".
+   - "research experience" does NOT prove "mentored junior researchers".
+4. COMPOSITE/MULTIPLE COMPONENTS: If the requirement explicitly contains multiple components, evidence must satisfy the important components rather than just one component.
+   - For example: "Partner with data science to triangulate behavioral analytics with qualitative findings" requires evidence of the relevant combination of: (a) behavioral/product analytics, (b) qualitative research, (c) analytical/triangulation activity, and preferably (d) data science collaboration.
+   - If only qualitative research exists, classify as MISSING or PARTIAL. Do not classify as STRONG_SEMANTIC_MATCH.
+5. PRESERVE DOMAIN SPECIFICITY:
+   - "Research at scale" requires evidence of: participant panels, research repositories, large participant counts (e.g. hundreds/thousands), large study volume, research operations, or explicitly described scaled programs. A normal UX research job title alone is insufficient.
+6. STAKEHOLDER COMMUNICATION & STORYTELLING: Distinguish:
+   - Basic communication/sharing findings (e.g. sharing with design team, presenting to peers)
+   from
+   - Presenting research narratives, senior leadership/executive communication (C-suite, VP, directors, board), and influencing product strategy/executive presentations.
+7. RECRUITER VERIFICATION:
+   - Ask yourself: "If this evidence were shown to a recruiter, would the evidence itself reasonably prove the requirement?" If no, reject the semantic match.
+   - Do NOT invent evidence or infer unsupported experience from job titles.
+
 EVIDENCE AGGREGATION & RANKING RULES:
 You MUST combine evidence from multiple facts across different sections (Summary, Experience, Skills, Education) to satisfy composite requirements.
 Rank evidence in this exact order of priority:
@@ -54,13 +81,13 @@ Rank evidence in this exact order of priority:
 5. Skills-list evidence (only select this if experience/responsibility evidence is completely unavailable).
 
 Classify the match for EACH requirement exactly into one of these states:
-- EXACT_MATCH: The evidence fully and explicitly supports ALL core components of the Original Text WITH SUBSTANTIVE PROOF (e.g., demonstrated in experience or projects). A bare keyword in a skills list is NEVER an EXACT_MATCH.
-- STRONG_SEMANTIC_MATCH: The evidence supports ALL core components of the Original Text, but relies on semantic equivalence rather than exact phrasing. Still requires substantive proof.
-- PARTIAL_MATCH: The evidence explicitly supports AT LEAST ONE core component, but definitively lacks support for others (e.g., candidate has "stakeholder communication" but no evidence of "storytelling").
-- RELATED_MATCH: The evidence is tangentially related to the requirement but does not explicitly support any core component.
-- UNDER_EXPRESSED: The evidence implies the capability (e.g., bare keyword in a skills list), but is too vague or lacks demonstrated experience to qualify as a strong match.
-- ANALYSIS_FAILED: You lack sufficient context or confidence to evaluate this requirement. Use sparingly.
-- MISSING: There is no credible resume evidence supporting ANY core component of the requirement.
+- EXACT_MATCH: Satisfies ALL components with explicit, substantive proof in experience/projects.
+- STRONG_SEMANTIC_MATCH: Satisfies ALL components with concrete semantic equivalence and substantive proof.
+- PARTIAL_MATCH: Explicitly supports AT LEAST ONE core component, but definitively lacks support for others.
+- RELATED_MATCH: Tangentially related but does not explicitly support any core component.
+- UNDER_EXPRESSED: Implies capability (e.g., bare keyword in a skills list) but lacks demonstrated experience/depth.
+- ANALYSIS_FAILED: Lack sufficient context or confidence to evaluate. Use sparingly.
+- MISSING: No credible resume evidence supporting ANY core component of the requirement.
 
 CRITICAL CATEGORY-AWARE RULES:
 1. "location": Evaluate STRICTLY as a factual boolean. EXACT_MATCH if the candidate is in the location or meets hybrid/remote constraints. Do NOT demand "metrics" or "depth" for locations.
@@ -242,12 +269,20 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
 
   const unmatchedRequirements: typeof job.requirements = [];
 
-  let totalExperienceYears = 0;
+  const experienceIntervals: Array<{ start: Date, end: Date }> = [];
   for (const f of candidate.facts) {
-    if (f.type === 'experience' && f.employment_duration_years) {
-      totalExperienceYears += f.employment_duration_years;
+    if (f.type === 'experience') {
+      const dateStr = extractDateRangeString(f.rawText);
+      if (dateStr) {
+        const parsed = parseDateRange(dateStr);
+        if (parsed) {
+          experienceIntervals.push(parsed);
+        }
+      }
     }
   }
+  let totalExperienceYears = calculateIntervalsDurationYears(experienceIntervals);
+  totalExperienceYears = Math.round(totalExperienceYears * 10) / 10;
 
   for (const f of candidate.facts) {
     if (f.type !== 'experience' && f.employment_duration_years) {
@@ -293,18 +328,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
         }
       }
 
-      // 1c. Component Parsing: Downgrade compound requirements to PARTIAL_MATCH to force LLM semantic verification
-      if (isExact && (req.category === 'hard skill' || req.category === 'soft skill' || req.category === 'responsibility' || req.category === 'experience')) {
-        const origLower = (req.original_text || '').toLowerCase();
-        // If the original text contains compound connectors or is significantly longer, it's likely a composite requirement 
-        // that was incorrectly simplified by the JD parser. We cannot guarantee EXACT_MATCH deterministically.
-        const hasCompoundKeywords = origLower.includes(' and ') || origLower.includes(' or ') || origLower.includes(',');
-        const isSignificantlyLonger = origLower.length > (reqNameLower.length + 12);
-        
-        if (hasCompoundKeywords || isSignificantlyLonger) {
-           matchedStrength = 'PARTIAL_MATCH';
-        }
-      }
+      // 1c. Component Parsing: Moved to end of loop to apply to all matched facts (including heuristics).
 
       // 1d. Tier 1: Education Level Matching
       if (req.category === 'education' && req.degree_level && fact.type === 'education') {
@@ -358,6 +382,27 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
           if (matchedParts > 0) {
             isExact = true;
             matchedStrength = matchedParts === parts.length ? 'EXACT_MATCH' : 'PARTIAL_MATCH';
+            
+            // Check work mode constraints (hybrid, onsite, remote)
+            const origLower = (req.original_text || reqStr).toLowerCase();
+            const hasHybrid = origLower.includes('hybrid');
+            const hasOnsite = origLower.includes('onsite') || origLower.includes('on-site');
+            const hasRemote = origLower.includes('remote');
+            
+            if (hasHybrid || hasOnsite || hasRemote) {
+              const evidenceHasHybrid = rawLower.includes('hybrid');
+              const evidenceHasOnsite = rawLower.includes('onsite') || rawLower.includes('on-site') || /days\s+onsite|days\s+on-site/i.test(rawLower);
+              const evidenceHasRemote = rawLower.includes('remote');
+              
+              let modeSatisfied = false;
+              if (hasHybrid && evidenceHasHybrid) modeSatisfied = true;
+              if (hasOnsite && evidenceHasOnsite) modeSatisfied = true;
+              if (hasRemote && evidenceHasRemote) modeSatisfied = true;
+              
+              if (!modeSatisfied) {
+                matchedStrength = 'PARTIAL_MATCH';
+              }
+            }
           }
         }
       }
@@ -397,6 +442,18 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       }
 
       if (isExact) {
+        if ((req.category === 'hard skill' || req.category === 'soft skill' || req.category === 'responsibility' || req.category === 'experience') && !reqMinimumYears) {
+          const origLower = (req.original_text || '').toLowerCase();
+          const hasCompoundKeywords = origLower.includes(' and ') || origLower.includes(' or ') || origLower.includes(',');
+          const isSignificantlyLonger = origLower.length > (reqNameLower.length + 12);
+          
+          const isCompoundAnalytics = (origLower.includes('analytics') && origLower.includes('qualitative')) || (origLower.includes('science') && origLower.includes('findings'));
+          const isCompoundLeadership = (origLower.includes('leadership') || origLower.includes('stakeholder')) && (origLower.includes('influence') || origLower.includes('strategy') || origLower.includes('executive'));
+
+          if (hasCompoundKeywords || isSignificantlyLonger || isCompoundAnalytics || isCompoundLeadership) {
+            matchedStrength = 'PARTIAL_MATCH';
+          }
+        }
         const score = scoreFactForRequirement(fact, req, matchedStrength);
         matchedFacts.push({ fact, score, tier: matchedTier, strength: matchedStrength });
       }
@@ -515,6 +572,8 @@ export async function matchRequirements(
     const prompt = `Requirements:\n${reqListStr}\n\nCandidate Facts (Prioritized):\n${factListStr}`;
 
     let llmMatches: any[] = [];
+    let isLlmError = false;
+    try {
       const rawJson = await callOpenRouter(
         [
           { role: 'system', content: MATCHER_SYSTEM_PROMPT },
@@ -527,8 +586,12 @@ export async function matchRequirements(
 
       if (Array.isArray(parsed)) {
         llmMatches = parsed;
-    } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.matches)) {
-      llmMatches = parsed.matches;
+      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.matches)) {
+        llmMatches = parsed.matches;
+      }
+    } catch (e) {
+      console.warn('[matcher] LLM match failed, falling back to local heuristics/word-overlap', e);
+      isLlmError = true;
     }
 
       for (const req of unmatchedRequirements) {
@@ -551,18 +614,29 @@ export async function matchRequirements(
           if ((req as any)._fallbackMatch) {
             matches.push((req as any)._fallbackMatch);
           } else {
-            const semanticFallback = getFallbackSemanticMatch(req, prioritizedFacts);
-            if (semanticFallback) {
-              matches.push(semanticFallback);
-            } else {
+            if (isLlmError) {
               matches.push({
                 requirement: req,
                 classification: 'ANALYSIS_FAILED',
                 confidence: 0,
-                explanation: 'Analysis skipped for this requirement.',
+                explanation: 'Analysis failed due to a provider/LLM error.',
                 match_tier: 'tier_3_semantic',
                 evidence: []
               });
+            } else {
+              const semanticFallback = getFallbackSemanticMatch(req, prioritizedFacts);
+              if (semanticFallback) {
+                matches.push(semanticFallback);
+              } else {
+                matches.push({
+                  requirement: req,
+                  classification: 'ANALYSIS_FAILED',
+                  confidence: 0,
+                  explanation: 'Analysis skipped for this requirement.',
+                  match_tier: 'tier_3_semantic',
+                  evidence: []
+                });
+              }
             }
           }
           continue;

@@ -4,6 +4,8 @@ import type { JobRequirement, CandidateFact, JobProfile, CandidateProfile } from
 
 type TestCase = { name: string; run: () => Promise<void> };
 
+process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+
 // Mock callOpenRouter specifically for these tests since LLMs shouldn't run in unit tests.
 // Wait, actually, the user wants to ensure exact matches work without LLM, and the rest fail gracefully.
 // Let's test the EXACT MATCH capabilities which bypass the LLM entirely!

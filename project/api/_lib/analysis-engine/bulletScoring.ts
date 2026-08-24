@@ -286,9 +286,9 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
       action = 6;
     }
   } else if (STRONG_VERBS.has(first)) {
-    // Check for weak modifiers nearby
-    const startsWithWeakModifier = words.slice(0, 5).some(w => WEAK_VERBS.has(w.toLowerCase().replace(/[^a-z]/g, '')));
-    if (startsWithWeakModifier) {
+    const cleanWords = words.map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
+    const hasWeakModifier = cleanWords.some(w => WEAK_VERBS.has(w));
+    if (hasWeakModifier) {
       action = 11;
     } else {
       action = 15;

@@ -114,38 +114,64 @@ export async function runAnalysisPipeline(
 
   const targetKeywords = jobProfile.requirements.map(r => r.normalized_name);
   
-  // Score and select candidate bullets for LLM rewriting.
+  const matchingResult = await matchRequirements(jobProfile, candidateProfile, deterministicResult, options).then((res) => {
+    // Strict validation of evidence provenance and logic
+    res.matches = validateEvidenceAttribution(res.matches, candidateProfile.facts, context.resumeText);
+    return res;
+  });
+
+  const partialAndUnderExpressed = matchingResult.matches.filter(m => 
+    m.classification === 'PARTIAL_MATCH' || m.classification === 'UNDER_EXPRESSED'
+  );
+
+  // Prioritize bullets that have relevance to partial/under-expressed requirements
   const weakCandidates = candidateContexts
-    .map(b => ({ ...b, score: scoreBulletQuality(b.text, targetKeywords).total }))
-    .sort((a, b) => a.score - b.score)
+    .map(b => {
+      const text = b.text.toLowerCase();
+      let priorityScore = 0;
+      for (const req of partialAndUnderExpressed) {
+        const reqName = req.requirement.normalized_name.toLowerCase();
+        if (text.includes(reqName)) {
+          priorityScore += 1000;
+        } else {
+          // Check word overlap
+          const reqWords = reqName.split(/\s+/).filter(w => w.length > 3);
+          const overlaps = reqWords.filter(w => text.includes(w));
+          if (overlaps.length > 0) {
+            priorityScore += overlaps.length * 100;
+          }
+        }
+      }
+      
+      const qualityScore = scoreBulletQuality(b.text, targetKeywords).total;
+      return { ...b, qualityScore, priorityScore };
+    })
+    .sort((a, b) => {
+      if (b.priorityScore !== a.priorityScore) {
+        return b.priorityScore - a.priorityScore; // Higher priority score first
+      }
+      return a.qualityScore - b.qualityScore; // Lower quality score first
+    })
     .slice(0, 15)
     .map(b => b.text);
 
-  // Execute LLM calls in parallel to reduce overall execution time and prevent Vercel timeouts
-  const [matchingResult, bulletRewrites] = await Promise.all([
-    matchRequirements(jobProfile, candidateProfile, deterministicResult, options).then((res) => {
-      // Strict validation of evidence provenance and logic
-      res.matches = validateEvidenceAttribution(res.matches, candidateProfile.facts, context.resumeText);
-      return res;
-    }),
-    generateBulletRewritesWithAi(
-      weakCandidates,
-      [], // pass projects empty since weakCandidates contains both
-      {
-        title: jobProfile.title,
-        requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
-        preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
-        responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
-      },
-      jobProfile.requirements.map(r => r.normalized_name),
-      deterministicResult.matches.map((m: any) => ({
-        skill: m.requirement.normalized_name,
-        status: m.classification,
-        evidence: [] // Omitted to prevent payload explosion/token limit failures
-      })),
-      options.observability
-    )
-  ]);
+  const bulletRewrites = await generateBulletRewritesWithAi(
+    weakCandidates,
+    [], // pass projects empty since weakCandidates contains both
+    {
+      title: jobProfile.title,
+      requiredSkills: jobProfile.requirements.filter(r => r.priority === 'required').map(r => r.normalized_name),
+      preferredSkills: jobProfile.requirements.filter(r => r.priority === 'preferred').map(r => r.normalized_name),
+      responsibilities: jobProfile.requirements.filter(r => r.category === 'responsibility').map(r => r.normalized_name)
+    },
+    jobProfile.requirements.map(r => r.normalized_name),
+    matchingResult.matches.map((m: any) => ({
+      skill: m.requirement.normalized_name,
+      status: m.classification,
+      evidence: m.evidence || []
+    })),
+    options.observability
+  );
 
   console.log(`[DEBUG] weakCandidates length: ${weakCandidates.length}`);
   console.log(`[DEBUG] raw LLM bulletRewrites:`, bulletRewrites.improvedBulletPoints.length);
@@ -299,17 +325,17 @@ export async function runAnalysisPipeline(
                          evaluationResult.matchScore >= 50 ? 'Potential Match' : 'Weak Match',
       recruiterSummary: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length) 
                        ? 'The job-match analysis could not be completed securely.' 
-                       : 'Deterministically evaluated candidate profile against requirements.',
+                       : generateRecruiterSummary(canonical, evaluationResult.matchScore),
       topReasonsToInterview: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length)
         ? []
-        : [generateNarrativeSynthesis(evaluationResult.finalizedMatches, evaluationResult.matchScore)],
+        : [generateNarrativeSynthesis(canonical.exact.concat(canonical.semantic), evaluationResult.matchScore)],
       topReasonsForRejection: [
         ...canonical.missingCore.map(m => `Genuine risk: Missing required ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
         ...canonical.missingPreferred.map(m => `Genuine risk: Missing preferred ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
         ...canonical.analysisFailed.map(m => `Unresolved: Analysis incomplete for ${m.requirement.category}: ${m.requirement.normalized_name}.`),
         ...canonical.partial.filter(m => m.classification === 'PARTIAL_MATCH').map(m => `Weakness/Opportunity: Partial match for ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`),
         ...canonical.partial.filter(m => m.classification === 'UNDER_EXPRESSED').map(m => `Presentation Opportunity: Under-expressed ${m.requirement.category}: ${m.requirement.normalized_name}. ${m.explanation}`)
-      ].slice(0, 3),
+      ],
       biggestImprovements: improvements.slice(0, 3).map(text => ({ text, estimatedImpact: 5 })),
       confidence: 'High'
     },
@@ -434,4 +460,58 @@ export function generateNarrativeSynthesis(matches: any[], matchScore: number): 
   const fitLevel = matchScore >= 90 ? 'an exceptional' : matchScore >= 75 ? 'a strong' : matchScore >= 50 ? 'a solid' : 'a partial';
   
   return `The candidate demonstrates ${fitLevel} overall fit for the position, with robust evidence satisfying key role requirements such as ${skillsList}. Their background aligns well with the target domain competency, making them a competitive applicant for an interview.`;
+}
+
+export function generateRecruiterSummary(canonical: CanonicalRequirements, matchScore: number): string {
+  if (canonical.analysisFailed.length > 0 && canonical.exact.length === 0 && canonical.semantic.length === 0) {
+    return 'The job-match analysis could not be completed securely for the primary requirements.';
+  }
+
+  const missingMajor = [...canonical.missingCore, ...canonical.missingPreferred].filter(m => 
+    m.requirement.normalized_name.toLowerCase().includes('year') ||
+    m.requirement.normalized_name.toLowerCase().includes('experience') ||
+    m.requirement.normalized_name.toLowerCase().includes('mentoring') ||
+    m.requirement.normalized_name.toLowerCase().includes('lead')
+  ).map(m => m.requirement.normalized_name);
+
+  let summary = '';
+  
+  if (matchScore >= 90) {
+    summary += `This candidate is a highly competitive match for the role, demonstrating comprehensive evidence across core requirements. `;
+  } else if (matchScore >= 75) {
+    summary += `This candidate is a strong match for the role, providing solid evidence for most key requirements. `;
+  } else if (matchScore >= 50) {
+    summary += `This candidate is a potential match, possessing foundational skills but missing evidence for some specific requirements. `;
+  } else {
+    summary += `This candidate appears to be a weak match for the role based on the provided resume. `;
+  }
+
+  if (canonical.exact.length > 0) {
+    const topExact = canonical.exact.slice(0, 2).map(m => m.requirement.normalized_name).join(' and ');
+    summary += `They exhibit definitive strengths in ${topExact}. `;
+  } else if (canonical.semantic.length > 0) {
+    summary += `They show relevant transferable experience for the core responsibilities. `;
+  }
+
+  if (missingMajor.length > 0) {
+    const topMissing = missingMajor.slice(0, 2).join(' and ');
+    summary += `However, they lack explicit evidence for critical requirements such as ${topMissing}, which presents a significant hiring risk. `;
+  } else if (canonical.missingCore.length > 0 || canonical.missingPreferred.length > 0) {
+    const missingCount = canonical.missingCore.length + canonical.missingPreferred.length;
+    summary += `There are ${missingCount} stated requirements with no matching evidence in the resume. `;
+  }
+
+  if (canonical.analysisFailed.length > 0) {
+    summary += `Note that ${canonical.analysisFailed.length} requirement(s) could not be fully analyzed. `;
+  }
+
+  if (matchScore >= 75 && missingMajor.length === 0) {
+    summary += `Overall, their profile warrants moving forward to an interview to assess deeper technical fit.`;
+  } else if (matchScore >= 50) {
+    summary += `They may require additional screening to verify missing competencies before proceeding.`;
+  } else {
+    summary += `Given the substantial gaps in required experience, they are unlikely to advance in the hiring process without a revised resume providing further evidence.`;
+  }
+
+  return summary.trim();
 }

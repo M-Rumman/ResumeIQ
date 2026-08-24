@@ -160,21 +160,156 @@ export function parseExplicitDuration(text: string): number {
 }
 
 export function parseExperienceDuration(text: string): number {
-  // Simple heuristic: look for years (e.g. 2018 - 2021)
-  const matches = [...text.matchAll(/\b(19\d{2}|20\d{2}|present|current)\b/gi)];
-  if (matches.length < 2) return 0;
+  const dateStr = extractDateRangeString(text);
+  if (!dateStr) return 0;
+  const parsed = parseDateRange(dateStr);
+  if (!parsed) return 0;
+  const years = calculateIntervalsDurationYears([parsed]);
+  return Math.round(years * 10) / 10;
+}
+
+const MONTH_MAP: Record<string, number> = {
+  jan: 0, janunary: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, september: 8,
+  oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
+};
+
+export function parseDate(dateStr: string): { year: number, month: number, isPresent: boolean } | null {
+  const clean = dateStr.toLowerCase().trim();
+  if (clean === 'present' || clean === 'current' || clean === 'now' || clean === 'today') {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth(), isPresent: true };
+  }
   
-  let totalYears = 0;
-  for (let i = 0; i < matches.length - 1; i += 2) {
-    const startStr = matches[i][1].toLowerCase();
-    const endStr = matches[i+1][1].toLowerCase();
+  // Check for Month Year, e.g. "June 2019" or "Jun 2019" or "06/2019"
+  const monthYearMatch = clean.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(20\d{2}|19\d{2})\b/i);
+  if (monthYearMatch) {
+    const month = MONTH_MAP[monthYearMatch[1].slice(0, 3).toLowerCase()] ?? 0;
+    const year = parseInt(monthYearMatch[2], 10);
+    return { year, month, isPresent: false };
+  }
+  
+  const slashMatch = clean.match(/\b(0?[1-9]|1[0-2])\/((?:19|20)?\d{2})\b/);
+  if (slashMatch) {
+    const month = parseInt(slashMatch[1], 10) - 1;
+    let year = parseInt(slashMatch[2], 10);
+    if (year < 100) year += 2000;
+    return { year, month, isPresent: false };
+  }
+  
+  const yearMatch = clean.match(/\b(20\d{2}|19\d{2})\b/);
+  if (yearMatch) {
+    const year = parseInt(yearMatch[1], 10);
+    return { year, month: 0, isPresent: false };
+  }
+  
+  return null;
+}
+
+export function extractDateRangeString(text: string): string | null {
+  const clean = text.replace(/–|—/g, '-');
+  const rangeMatch = clean.match(/\b(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*)?(?:19|20)?\d{2}\s*(?:-|\bto\b|\buntil\b)\s*(?:(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*)?(?:19|20)?\d{2}|present|current|now)\b/i);
+  if (rangeMatch) return rangeMatch[0];
+  
+  const slashRangeMatch = clean.match(/\b\d{1,2}\/\d{2,4}\s*(?:-|\bto\b)\s*(?:\d{1,2}\/\d{2,4}|present|current|now)\b/i);
+  if (slashRangeMatch) return slashRangeMatch[0];
+  
+  const presentMatch = clean.match(/\b(?:19|20)\d{2}\s*(?:-|\bto\b)?\s*(?:present|current|now)\b/i);
+  if (presentMatch) return presentMatch[0];
+  
+  return null;
+}
+
+export function parseDateRange(text: string): { start: Date, end: Date, isAmbiguous: boolean } | null {
+  const clean = text.replace(/–|—/g, '-');
+  const parts = clean.split(/\s*(?:to|-|–|—|until)\s*/i);
+  if (parts.length >= 2) {
+    const start = parseDate(parts[0]);
+    const end = parseDate(parts[1]);
     
-    const startYear = parseInt(startStr, 10);
-    const endYear = (endStr === 'present' || endStr === 'current') ? new Date().getFullYear() : parseInt(endStr, 10);
-    
-    if (!isNaN(startYear) && !isNaN(endYear) && endYear >= startYear) {
-      totalYears += (endYear - startYear);
+    if (start && end) {
+      return {
+        start: new Date(start.year, start.month, 1),
+        end: new Date(end.year, end.month, 1),
+        isAmbiguous: false
+      };
     }
   }
-  return totalYears;
+  
+  const years = [...clean.matchAll(/\b(20\d{2}|19\d{2})\b/g)].map(m => parseInt(m[1], 10));
+  const hasPresent = /\b(present|current|now)\b/i.test(clean);
+  
+  if (years.length >= 2) {
+    return {
+      start: new Date(years[0], 0, 1),
+      end: new Date(years[1], 0, 1),
+      isAmbiguous: false
+    };
+  } else if (years.length === 1 && hasPresent) {
+    const now = new Date();
+    return {
+      start: new Date(years[0], 0, 1),
+      end: now,
+      isAmbiguous: false
+    };
+  }
+  
+  if (years.length === 1) {
+    const year = years[0];
+    const isSummer = /summer/i.test(clean);
+    if (isSummer) {
+      return {
+        start: new Date(year, 5, 1),
+        end: new Date(year, 8, 1),
+        isAmbiguous: true
+      };
+    }
+    return {
+      start: new Date(year, 0, 1),
+      end: new Date(year + 1, 0, 1),
+      isAmbiguous: true
+    };
+  }
+  
+  return null;
+}
+
+export function calculateIntervalsDurationYears(intervals: Array<{ start: Date, end: Date }>): number {
+  if (intervals.length === 0) return 0;
+  
+  const sorted = [...intervals].sort((a, b) => a.start.getTime() - b.start.getTime());
+  const merged: Array<{ start: Date, end: Date }> = [];
+  let current = { start: sorted[0].start, end: sorted[0].end };
+  
+  for (let i = 1; i < sorted.length; i++) {
+    const next = sorted[i];
+    if (next.start.getTime() <= current.end.getTime()) {
+      if (next.end.getTime() > current.end.getTime()) {
+        current.end = next.end;
+      }
+    } else {
+      merged.push(current);
+      current = { start: next.start, end: next.end };
+    }
+  }
+  merged.push(current);
+  
+  let totalMs = 0;
+  for (const interval of merged) {
+    totalMs += (interval.end.getTime() - interval.start.getTime());
+  }
+  
+  return totalMs / (1000 * 60 * 60 * 24 * 365.25);
+}
+
+export function isRoleRelevantToRequirement(factText: string, reqName: string): boolean {
+  const factLower = factText.toLowerCase();
+  const reqLower = reqName.toLowerCase();
+  
+  if (reqLower.includes('research')) {
+    return /research|usability|ux|user\s+experience|hci|cognitive|design|product|interview/i.test(factLower) &&
+           !/sales|barista|cashier|waiter|driver|delivery/i.test(factLower);
+  }
+  
+  return true;
 }

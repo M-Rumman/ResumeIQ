@@ -117,6 +117,7 @@ export interface MatchScoreDetails {
   totalMaxScore: number;
   totalAchievedScore: number;
   rawMatchScore: number;
+  mathematicalExplanation?: string;
   details: {
     requirement: string;
     priority: string;

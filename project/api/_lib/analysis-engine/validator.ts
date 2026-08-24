@@ -1,6 +1,458 @@
 import type { AiResumeAnalysisFull } from '../openrouter.js';
-import type { JobProfile, CandidateProfile, RequirementMatch, CandidateFact } from './types.js';
+import type { JobProfile, CandidateProfile, RequirementMatch, CandidateFact, MatchClassification } from './types.js';
 import { isValidEvidenceForCategory } from './matcher.js';
+import {
+  extractDateRangeString,
+  parseDateRange,
+  calculateIntervalsDurationYears,
+  isRoleRelevantToRequirement
+} from './resumeExtraction.js';
+
+function cleanWord(w: string): string {
+  return w.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+}
+
+const GENERIC_WORDS = new Set([
+  'research', 'user', 'users', 'test', 'testing', 'design', 'stakeholder', 'stakeholders',
+  'experience', 'work', 'worked', 'help', 'helped', 'note', 'notes', 'session', 'sessions',
+  'interview', 'interviews', 'conduct', 'conducted', 'usability', 'team', 'finding', 'findings',
+  'with', 'about', 'from', 'that', 'this', 'have', 'having', 'other', 'another', 'role',
+  'job', 'skills', 'skill', 'ability', 'abilities', 'strong', 'excellent', 'good', 'years', 'responsibilities'
+]);
+
+function getNonGenericWords(text: string): Set<string> {
+  const words = text.toLowerCase().split(/\s+/);
+  const result = new Set<string>();
+  for (const w of words) {
+    const cleaned = cleanWord(w);
+    if (cleaned.length > 3 && !GENERIC_WORDS.has(cleaned)) {
+      result.add(cleaned);
+    }
+  }
+  return result;
+}
+function getCommunicationLevel(text: string): { level: 1 | 2 | 3 | null, name: string } {
+  const clean = text.toLowerCase();
+  
+  // LEVEL 3 — Executive/strategic communication
+  const hasLevel3 = /vp|c-suite|executive|board|senior\s+leadership|roadmap|product\s+strategy|strategic\s+decision|drive\s+strategic|influence\s+roadmap|influence\s+strategy/i.test(clean);
+  if (hasLevel3) {
+    return { level: 3, name: 'Level 3 (Executive/strategic communication)' };
+  }
+  
+  // LEVEL 2 — Strong stakeholder communication
+  const hasLevel2 = /present|recommendation|narrative|cross-functional|decision|influence\s+feature|pick\s+feature|actionable/i.test(clean);
+  if (hasLevel2) {
+    return { level: 2, name: 'Level 2 (Strong stakeholder communication)' };
+  }
+  
+  // LEVEL 1 — Basic communication
+  const hasLevel1 = /share|communicate|collaborate|write\s+up|tell|talk|work\s+with/i.test(clean);
+  if (hasLevel1) {
+    return { level: 1, name: 'Level 1 (Basic communication)' };
+  }
+  
+  return { level: null, name: 'No communication evidence' };
+}
+
+const SEMANTIC_EQUIVALENTS: Array<{ reqKeywords: string[], evidenceKeywords: string[] }> = [
+  {
+    reqKeywords: ['qualitative'],
+    evidenceKeywords: ['interview', 'interviews', 'usability', 'survey', 'surveys', 'diary', 'focus', 'group', 'groups', 'card', 'sorting']
+  },
+  {
+    reqKeywords: ['quantitative'],
+    evidenceKeywords: ['survey', 'surveys', 'analytics', 'statistics', 'a/b', 'experiment', 'experiments', 'nps', 'csat', 'quantitative']
+  },
+  {
+    reqKeywords: ['repository', 'repositories'],
+    evidenceKeywords: ['repository', 'repositories', 'database', 'library', 'sharepoint', 'confluence', 'drive', 'notion', 'centralized']
+  },
+  {
+    reqKeywords: ['stakeholder', 'communication', 'storytelling'],
+    evidenceKeywords: ['present', 'presented', 'presentation', 'presentations', 'share', 'shared', 'communicate', 'communicated', 'report', 'reports', 'narrative', 'narratives', 'story', 'stories']
+  },
+  {
+    reqKeywords: ['mentor', 'mentoring', 'coach', 'coaching'],
+    evidenceKeywords: ['mentor', 'mentored', 'coach', 'coached', 'lead', 'led', 'guide', 'guided', 'teach', 'taught', 'train', 'trained', 'onboard', 'onboarded']
+  },
+  {
+    reqKeywords: ['senior leadership', 'leadership', 'executive', 'c-suite', 'vp', 'strategic', 'strategy', 'roadmap'],
+    evidenceKeywords: ['vp', 'c-suite', 'executive', 'board', 'leadership', 'senior', 'strategy', 'strategic', 'roadmap', 'present', 'presented', 'presentation']
+  }
+];
+
+export function applyStrictGroundingRules(
+  match: RequirementMatch,
+  validatedEvidence: any[],
+  candidateFacts: CandidateFact[]
+): { classification: MatchClassification; explanation: string; validatedEvidence: any[] } {
+  let classification = match.classification;
+  let explanation = match.explanation;
+
+  if (classification !== 'EXACT_MATCH' && classification !== 'STRONG_SEMANTIC_MATCH') {
+    return { classification, explanation, validatedEvidence };
+  }
+
+  const reqNameLower = match.requirement.normalized_name.toLowerCase();
+  const reqTextLower = (match.requirement.original_text || '').toLowerCase();
+  const combinedEvidenceText = validatedEvidence.map(e => e.source_text).join(' ').toLowerCase();
+
+  // Location Work Mode Check (Case 1)
+  if (match.requirement.category === 'location') {
+    const hasHybrid = reqTextLower.includes('hybrid') || reqNameLower.includes('hybrid');
+    const hasOnsite = reqTextLower.includes('onsite') || reqTextLower.includes('on-site') || reqNameLower.includes('onsite') || reqNameLower.includes('on-site');
+    const hasRemote = reqTextLower.includes('remote') || reqNameLower.includes('remote');
+    
+    if (hasHybrid || hasOnsite || hasRemote) {
+      const evidenceHasHybrid = combinedEvidenceText.includes('hybrid');
+      const evidenceHasOnsite = combinedEvidenceText.includes('onsite') || combinedEvidenceText.includes('on-site') || /days\s+onsite|days\s+on-site/i.test(combinedEvidenceText);
+      const evidenceHasRemote = combinedEvidenceText.includes('remote');
+      
+      let modeSatisfied = false;
+      if (hasHybrid && evidenceHasHybrid) modeSatisfied = true;
+      if (hasOnsite && evidenceHasOnsite) modeSatisfied = true;
+      if (hasRemote && evidenceHasRemote) modeSatisfied = true;
+      
+      if (!modeSatisfied) {
+        classification = 'PARTIAL_MATCH';
+        explanation = `Downgraded: Candidate location matches, but there is no evidence in the resume demonstrating capability or willingness for the required work mode (${hasHybrid ? 'hybrid' : hasOnsite ? 'onsite' : 'remote'}).`;
+        return { classification, explanation, validatedEvidence };
+      }
+    }
+  }
+
+  // Seniority Validation (Case 2)
+  const isSeniorRoleReq = (match.requirement.category === 'seniority' || match.requirement.category === 'experience' || match.requirement.category === 'role' || match.requirement.category === 'hard skill') &&
+    (/(^|\b)senior\b/i.test(reqNameLower) || /(^|\b)senior\b/i.test(reqTextLower) || /(^|\b)sr\b/i.test(reqNameLower) || /(^|\b)sr\b/i.test(reqTextLower) || /(^|\b)lead\b/i.test(reqNameLower) || /(^|\b)lead\b/i.test(reqTextLower));
+  if (isSeniorRoleReq) {
+    const hasSeniorityEvidence = 
+      /\b(senior|sr|lead|principal|director|manager|head|vp|chief)\b/i.test(combinedEvidenceText) ||
+      /\b(leadership|mentor|coaching|strategic|influence|operations|ops|end-to-end|roadmap|ownership)\b/i.test(combinedEvidenceText) ||
+      /c-suite|executive|stakeholder/i.test(combinedEvidenceText);
+      
+    if (!hasSeniorityEvidence) {
+      classification = 'PARTIAL_MATCH';
+      explanation = `Downgraded: Candidate has UX research experience but the resume does not demonstrate seniority or senior-level responsibilities (such as leadership, mentoring, or strategic ownership).`;
+      return { classification, explanation, validatedEvidence };
+    }
+  }
+
+  // Experience Duration Check (Case 3)
+  const matchMinYears = (reqTextLower + ' ' + reqNameLower).match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i);
+  const reqMinYears = match.requirement.minimum_years || (matchMinYears && matchMinYears[1] ? parseInt(matchMinYears[1], 10) : 0);
+  if (reqMinYears > 0 && (match.requirement.category === 'experience' || match.requirement.category === 'years' || match.requirement.category === 'seniority' || reqNameLower.includes('experience') || reqNameLower.includes('years'))) {
+    const intervalsWithInternship: Array<{ start: Date, end: Date }> = [];
+    const intervalsWithoutInternship: Array<{ start: Date, end: Date }> = [];
+    let hasAmbiguous = false;
+    let yearRanges: number[] = [];
+
+    const experienceFacts = candidateFacts.filter(f => f.type === 'experience');
+    
+    for (const fact of experienceFacts) {
+      const factText = fact.rawText;
+      
+      if (!isRoleRelevantToRequirement(factText, match.requirement.normalized_name)) {
+        continue;
+      }
+      
+      const dateStr = extractDateRangeString(factText);
+      if (!dateStr) {
+        hasAmbiguous = true;
+        continue;
+      }
+      
+      const parsedRange = parseDateRange(dateStr);
+      if (!parsedRange) {
+        hasAmbiguous = true;
+        continue;
+      }
+      
+      if (parsedRange.isAmbiguous) {
+        hasAmbiguous = true;
+      }
+      
+      const isIntern = /intern|student|co-op/i.test(factText);
+      
+      intervalsWithInternship.push({ start: parsedRange.start, end: parsedRange.end });
+      if (!isIntern) {
+        intervalsWithoutInternship.push({ start: parsedRange.start, end: parsedRange.end });
+      }
+      
+      yearRanges.push(parsedRange.start.getFullYear());
+      yearRanges.push(parsedRange.end.getFullYear());
+    }
+    
+    const yearsWith = calculateIntervalsDurationYears(intervalsWithInternship);
+    const yearsWithout = calculateIntervalsDurationYears(intervalsWithoutInternship);
+    
+    const roundedWith = Math.round(yearsWith * 10) / 10;
+    const roundedWithout = Math.round(yearsWithout * 10) / 10;
+    
+    const minYearInRoles = yearRanges.length > 0 ? Math.min(...yearRanges) : null;
+    const maxYearInRoles = yearRanges.length > 0 ? Math.max(...yearRanges) : null;
+    const hasInternship = intervalsWithInternship.length > intervalsWithoutInternship.length;
+    
+    let basisExplanation = '';
+    if (roundedWith === 0) {
+      if (experienceFacts.length > 0) {
+        classification = 'ANALYSIS_FAILED';
+        explanation = `Analysis Failed: Unable to determine experience duration due to missing or ambiguous dates on relevant roles.`;
+        return { classification, explanation, validatedEvidence: [] };
+      }
+      classification = 'MISSING';
+      explanation = `Missing: No relevant research experience found in the resume.`;
+      return { classification, explanation, validatedEvidence: [] };
+    }
+    
+    if (hasInternship && roundedWith !== roundedWithout) {
+      basisExplanation = `Approximately ${Math.floor(roundedWith)} years including internship experience; approximately ${Math.floor(roundedWithout)}+ years excluding internship.`;
+    } else {
+      const startStr = minYearInRoles ? String(minYearInRoles) : 'unknown';
+      const endStr = maxYearInRoles === new Date().getFullYear() ? 'present' : maxYearInRoles ? String(maxYearInRoles) : 'present';
+      basisExplanation = `Approximately ${Math.floor(roundedWithout)}+ years of relevant research experience based on roles from ${startStr} to ${endStr}.`;
+    }
+    
+    if (hasAmbiguous) {
+      basisExplanation += ` (Some dates were ambiguous or incomplete).`;
+    }
+    
+    const primaryYears = roundedWithout;
+    if (primaryYears >= reqMinYears) {
+      classification = 'EXACT_MATCH';
+      explanation = `${basisExplanation}`;
+    } else if (roundedWith >= reqMinYears) {
+      classification = 'PARTIAL_MATCH';
+      explanation = `Downgraded: Candidate meets the requirement only when including internship experience. ${basisExplanation}`;
+    } else {
+      classification = primaryYears < 1 ? 'MISSING' : 'PARTIAL_MATCH';
+      explanation = `Downgraded: Candidate has only ${primaryYears} years of relevant experience, which is less than the required ${reqMinYears}+ years. ${basisExplanation}`;
+      if (classification === 'MISSING') {
+        return { classification, explanation, validatedEvidence: [] };
+      }
+    }
+    
+    return { classification, explanation, validatedEvidence };
+  }
+
+  // Education Field Verification (Case 4)
+  if (match.requirement.category === 'education') {
+    const reqFields = match.requirement.fields || [];
+    if (reqFields.length === 0) {
+      if (/psychology/i.test(reqTextLower)) reqFields.push('psychology');
+      if (/hci|human-computer interaction/i.test(reqTextLower)) {
+        reqFields.push('hci');
+        reqFields.push('human-computer interaction');
+        reqFields.push('human computer interaction');
+      }
+      if (/cognitive science/i.test(reqTextLower)) reqFields.push('cognitive science');
+      if (/social science|sociology|anthropology/i.test(reqTextLower)) reqFields.push('social science');
+      if (/computer science/i.test(reqTextLower)) reqFields.push('computer science');
+    }
+
+    if (reqFields.length > 0) {
+      const eduFacts = candidateFacts.filter(f => f.type === 'education');
+      if (eduFacts.length > 0) {
+        let hasExactField = false;
+        let hasAdjacentField = false;
+        let candidateFields: string[] = [];
+
+        for (const fact of eduFacts) {
+          const factRaw = fact.rawText.toLowerCase();
+          const factFields = fact.fields || [];
+          
+          if (factFields.length > 0) {
+            candidateFields.push(...factFields.map(f => f.toLowerCase()));
+          } else {
+            const majorMatch = factRaw.match(/in\s+([a-zA-Z\s\-]+)/i);
+            if (majorMatch && majorMatch[1]) {
+              candidateFields.push(majorMatch[1].trim().toLowerCase());
+            }
+          }
+        }
+
+        candidateFields = candidateFields.map(f => f.trim()).filter(Boolean);
+
+        const adjacentKeywords = [
+          'computer science', 'cs', 'informatics', 'information science',
+          'sociology', 'anthropology', 'social science', 'human factors',
+          'ux', 'user experience', 'design', 'interaction design',
+          'communications', 'communication', 'engineering', 'systems engineering'
+        ];
+
+        const isHci = (x: string) => /hci|human-computer interaction|human computer interaction/i.test(x);
+
+        for (const cf of candidateFields) {
+          if (reqFields.some(rf => cf.includes(rf.toLowerCase()) || rf.toLowerCase().includes(cf) || (isHci(rf) && isHci(cf)))) {
+            hasExactField = true;
+          }
+          if (adjacentKeywords.some(ak => cf.includes(ak) || ak.includes(cf))) {
+            hasAdjacentField = true;
+          }
+        }
+
+        const matchedLabel = candidateFields.map(cf => cf.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')).join(', ');
+        
+        const reqLabels = reqFields.map(rf => {
+          if (rf === 'hci') return 'HCI';
+          return rf.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        }).join('/');
+
+        if (hasExactField) {
+          classification = 'EXACT_MATCH';
+          explanation = `The candidate has a degree in ${matchedLabel}, which is one of the explicitly requested disciplines.`;
+          return { classification, explanation, validatedEvidence };
+        } else if (hasAdjacentField) {
+          classification = 'PARTIAL_MATCH';
+          explanation = `The candidate has a degree in ${matchedLabel}. This is adjacent to UX research/user behavior but is not one of the explicitly requested ${reqLabels} disciplines.`;
+          return { classification, explanation, validatedEvidence };
+        } else {
+          classification = 'MISSING';
+          explanation = `Missing: Candidate has a degree in ${matchedLabel || 'unknown field'}, which is unrelated to the requested fields (${reqLabels}).`;
+          return { classification, explanation, validatedEvidence: [] };
+        }
+      }
+    }
+  }
+
+  // Rule 4: Composite / Multiple Components (Case A: Behavioral Analytics + Qualitative)
+  const isBehavioralAnalyticsReq = /behavioral.*analytics|product.*analytics|analytics.*data|clickstream|triangulat/i.test(reqNameLower) || /behavioral.*analytics|product.*analytics|analytics.*data|clickstream|triangulat/i.test(reqTextLower);
+  if (isBehavioralAnalyticsReq) {
+    const hasAnalyticsEvidence = /analytics|data science|clickstream|triangulat|mixed.method|quantitative|statistics|metrics/i.test(combinedEvidenceText);
+    const hasQualitativeEvidence = /qualitative|interview|usability|survey|diary|focus/i.test(combinedEvidenceText);
+    if (!hasAnalyticsEvidence) {
+      classification = hasQualitativeEvidence ? 'PARTIAL_MATCH' : 'MISSING';
+      explanation = `Downgraded: Evidence lacks product/behavioral analytics, data science partnership, or triangulation components.`;
+      return { classification, explanation, validatedEvidence: classification === 'MISSING' ? [] : validatedEvidence };
+    }
+  }
+
+  // Rule 5: Research at scale (Case B)
+  const isScaleReq = /research at scale|scale|operations/i.test(reqNameLower) || /research at scale|scale|operations/i.test(reqTextLower);
+  if (isScaleReq) {
+    const hasStrongScaleEvidence = /panel|repositor|ops\b|operations\b|thousand|centralized|central\s+repository/i.test(combinedEvidenceText);
+    const hasPartialScaleEvidence = /scale|large|hundred|study|studies|volume|program|\d{2,}\+/i.test(combinedEvidenceText);
+    
+    if (!hasStrongScaleEvidence && !hasPartialScaleEvidence) {
+      classification = 'MISSING';
+      explanation = `Missing: Evidence is only generic research activity and lacks concrete indicators of research at scale (such as participant panels, research repositories, scale metrics, or research operations).`;
+      return { classification, explanation, validatedEvidence: [] };
+    }
+    
+    if (!hasStrongScaleEvidence && hasPartialScaleEvidence) {
+      classification = 'UNDER_EXPRESSED';
+      explanation = `Downgraded: Evidence indicates some research activity but lacks strong indicators of research at scale (such as panels or repositories).`;
+      return { classification, explanation, validatedEvidence };
+    }
+  }
+
+  // Rule 6: Stakeholder communication and storytelling (Case C)
+  const isSeniorCommReq = /senior leadership|executive|c-suite|vp|product strategy|strategic influence/i.test(reqNameLower) || /senior leadership|executive|c-suite|vp|product strategy|strategic influence/i.test(reqTextLower);
+  const isGeneralCommReq = /communication|storytelling|presentation|presenting|narrative|stakeholder/i.test(reqNameLower) || /communication|storytelling|presentation|presenting|narrative|stakeholder/i.test(reqTextLower);
+  
+  if (isSeniorCommReq || isGeneralCommReq) {
+    const { level, name } = getCommunicationLevel(combinedEvidenceText);
+    
+    if (level === null) {
+      classification = 'MISSING';
+      explanation = `Missing: Evidence lacks stakeholder communication or storytelling.`;
+      return { classification, explanation, validatedEvidence: [] };
+    }
+    
+    if (isSeniorCommReq) {
+      if (level < 3) {
+        classification = 'PARTIAL_MATCH';
+        explanation = `Downgraded: Requirement demands senior leadership or strategic influence. Candidate evidence demonstrates ${name} only.`;
+        return { classification, explanation, validatedEvidence };
+      }
+    } else if (isGeneralCommReq) {
+      if (level < 2) {
+        classification = 'PARTIAL_MATCH';
+        explanation = `Downgraded: Requirement demands strong stakeholder storytelling or presentation. Candidate evidence demonstrates ${name} only.`;
+        return { classification, explanation, validatedEvidence };
+      }
+    }
+  }
+
+  // Rule 4: Mentoring (Case D)
+  const isMentoringReq = /mentor|coach|guide.*junior|mentoring/i.test(reqNameLower) || /mentor|coach|guide.*junior|mentoring/i.test(reqTextLower);
+  if (isMentoringReq) {
+    const hasMentoringEvidence = /mentor|coach|guide|onboard|teach|train|instruct/i.test(combinedEvidenceText);
+    if (!hasMentoringEvidence) {
+      classification = 'MISSING';
+      explanation = `Missing: Evidence lacks mentoring, coaching, or leading other researchers.`;
+      return { classification, explanation, validatedEvidence: [] };
+    }
+  }
+
+  // Rule 7 & 8: Recruiter Verification (Generic words check)
+  const reqWords = getNonGenericWords(reqNameLower + ' ' + reqTextLower);
+  const evidenceWords = getNonGenericWords(combinedEvidenceText);
+
+  let directOverlapCount = 0;
+  for (const rw of reqWords) {
+    if (evidenceWords.has(rw)) {
+      directOverlapCount++;
+    }
+  }
+
+  let hasEquivalent = false;
+  for (const eq of SEMANTIC_EQUIVALENTS) {
+    const hasReqKeyword = eq.reqKeywords.some(rk => reqNameLower.includes(rk) || reqTextLower.includes(rk));
+    const hasEvidenceKeyword = eq.evidenceKeywords.some(ek => combinedEvidenceText.includes(ek));
+    if (hasReqKeyword && hasEvidenceKeyword) {
+      hasEquivalent = true;
+      break;
+    }
+  }
+
+  if (directOverlapCount === 0 && !hasEquivalent) {
+    classification = 'MISSING';
+    explanation = `Rejected Match: Evidence is too generic and does not reasonably prove the requirement to a recruiter.`;
+    return { classification, explanation, validatedEvidence: [] };
+  }
+
+  // General Compound Requirement Rule
+  const origText = match.requirement.original_text || match.requirement.normalized_name;
+  if (origText.includes(' and ')) {
+    const parts = origText.split(/\s+and\s+/i);
+    if (parts.length === 2) {
+      const leftWords = getNonGenericWords(parts[0]);
+      const rightWords = getNonGenericWords(parts[1]);
+      
+      if (leftWords.size > 0 && rightWords.size > 0) {
+        const evidenceLower = combinedEvidenceText.toLowerCase();
+        
+        let hasLeft = false;
+        let hasRight = false;
+        
+        for (const lw of leftWords) {
+          const stem = lw.replace(/s$/, '');
+          if (evidenceLower.includes(lw) || (stem.length > 2 && evidenceLower.includes(stem))) hasLeft = true;
+        }
+        for (const rw of rightWords) {
+          const stem = rw.replace(/s$/, '');
+          if (evidenceLower.includes(rw) || (stem.length > 2 && evidenceLower.includes(stem))) hasRight = true;
+        }
+        
+        for (const eq of SEMANTIC_EQUIVALENTS) {
+          const hasLeftEquiv = eq.reqKeywords.some(rk => parts[0].toLowerCase().includes(rk)) && eq.evidenceKeywords.some(ek => evidenceLower.includes(ek));
+          const hasRightEquiv = eq.reqKeywords.some(rk => parts[1].toLowerCase().includes(rk)) && eq.evidenceKeywords.some(ek => evidenceLower.includes(ek));
+          if (hasLeftEquiv) hasLeft = true;
+          if (hasRightEquiv) hasRight = true;
+        }
+        
+        if (!hasLeft || !hasRight) {
+          classification = 'PARTIAL_MATCH';
+          explanation = `Downgraded: Compound requirement has multiple parts, but the evidence only demonstrates satisfaction of one component (${!hasLeft ? 'lacks first part' : 'lacks second part'}).`;
+          return { classification, explanation, validatedEvidence };
+        }
+      }
+    }
+  }
+
+  return { classification, explanation, validatedEvidence };
+}
 
 export function validateEvidenceAttribution(
   matches: RequirementMatch[],
@@ -56,7 +508,13 @@ export function validateEvidenceAttribution(
       };
     }
 
-    return { ...match, evidence: validatedEvidence };
+    const strictResult = applyStrictGroundingRules(match, validatedEvidence, candidateFacts);
+    return {
+      ...match,
+      classification: strictResult.classification,
+      explanation: strictResult.explanation,
+      evidence: strictResult.validatedEvidence
+    };
   });
 }
 

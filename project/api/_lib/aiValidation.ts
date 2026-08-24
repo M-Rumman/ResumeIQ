@@ -361,7 +361,97 @@ function hasUnsupportedGroundingClaims(before: string, after: string, resumeText
       }
     }
   }
+
+  // General check for invented domain/technical terms
+  const afterWords = normAfter.split(/\s+/).map(w => w.replace(/[^a-z0-9]/g, ''));
+  const commonWords = new Set([
+    'a', 'an', 'the', 'and', 'or', 'but', 'for', 'with', 'to', 'in', 'on', 'at', 'by', 'from',
+    'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did',
+    'i', 'we', 'you', 'he', 'she', 'they', 'it', 'my', 'our', 'your', 'his', 'her', 'their',
+    'conducted', 'conduct', 'conducting',
+    'led', 'lead', 'leading',
+    'designed', 'design', 'designing', 'designs',
+    'built', 'build', 'building',
+    'analyzed', 'analyze', 'analyzing',
+    'managed', 'manage', 'managing',
+    'created', 'create', 'creating',
+    'developed', 'develop', 'developing',
+    'engineered', 'engineer', 'engineering',
+    'supported', 'support', 'supporting',
+    'assisted', 'assist', 'assisting',
+    'helped', 'help', 'helping',
+    'worked', 'work', 'working',
+    'responsible', 'responsibility',
+    'some', 'features', 'feature',
+    'code', 'coding', 'bugs', 'bug', 'fixes', 'fix', 'fixing',
+    'backend', 'frontend', 'software',
+    'system', 'systems', 'project', 'projects', 'product', 'products', 'team', 'teams',
+    'performance', 'query', 'queries', 'database', 'databases', 'anomalies', 'anomaly',
+    'execution', 'execute', 'executing',
+    'optimal', 'optimize', 'optimizing', 'optimized',
+    'resolving', 'resolve', 'resolved',
+    'usability', 'interviews', 'interview', 'research', 'user', 'experience', 'surveys', 'survey',
+    'sometimes', 'coordinated', 'coordinate', 'coordinating',
+    'set', 'up', 'session', 'sessions', 'application', 'applications',
+    'method', 'methods', 'presenting', 'presented', 'present',
+    'finding', 'findings', 'key', 'actionable',
+    'wireframe', 'wireframes', 'prototype', 'prototypes', 'mockup', 'mockups',
+    'feedback', 'client', 'clients', 'stakeholder', 'stakeholders',
+    'vp', 'c-suite', 'leadership', 'strategic', 'strategy', 'plan', 'planning',
+    'roadmap', 'roadmaps', 'mentor', 'mentors', 'mentoring', 'coached', 'coach', 'coaching',
+    'sociology', 'anthropology', 'psychology', 'hci', 'communications', 'communication',
+    'computer', 'science', 'systems', 'interaction', 'information',
+    'orchestrated', 'orchestrate', 'orchestrating',
+    'directed', 'direct', 'directing',
+    'cross-functional', 'cross', 'functional',
+    'reducing', 'reduced', 'reduce',
+    'increasing', 'increased', 'increase',
+    'improving', 'improved', 'improve',
+    'wording', 'professional', 'outcome', 'outcomes',
+    'anomalies', 'robust', 'patterns', 'pattern', 'fewer', 'clean', 'automated', 'suite', 'coverage',
+    'resulting', 'results', 'result'
+  ].map(w => w.replace(/[^a-z0-9]/g, '')));
+
+  for (const word of afterWords) {
+    if (word.length <= 3) continue;
+    if (commonWords.has(word)) continue;
+    if (!normBefore.includes(word) && !normResume.includes(word)) {
+      return true; // Unsupported claim detected!
+    }
+  }
+
   return false;
+}
+
+function generateSafeWordingRewrite(before: string): string {
+  let after = before.trim();
+  
+  const weakLeadingMappings = [
+    { regex: /^(?:helped with|assisted with|worked on setting up|helped set up)\s+/i, replacement: 'Coordinated and set up ' },
+    { regex: /^(?:helped|assisted)\s+/i, replacement: 'Supported ' },
+    { regex: /^(?:responsible for running|responsible for)\s+/i, replacement: 'Conducted ' },
+    { regex: /^(?:run|ran|did)\s+some\s+/i, replacement: 'Conducted ' },
+    { regex: /^(?:run|ran)\s+/i, replacement: 'Conducted ' },
+    { regex: /^(?:did)\s+/i, replacement: 'Performed ' },
+    { regex: /^(?:worked on)\s+/i, replacement: 'Supported ' },
+  ];
+
+  for (const mapping of weakLeadingMappings) {
+    if (mapping.regex.test(after)) {
+      after = after.replace(mapping.regex, mapping.replacement);
+      break;
+    }
+  }
+
+  if (after.length > 0) {
+    after = after.charAt(0).toUpperCase() + after.slice(1);
+  }
+
+  if (after.length > 0 && !after.endsWith('.')) {
+    after += '.';
+  }
+
+  return after;
 }
 
 export function validateRewrites(
@@ -383,7 +473,6 @@ export function validateRewrites(
     if (!after) after = before;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
     
-    // Locate the specific experience block for this bullet
     const bulletCtx = bulletContexts.find(b => {
       const txt = typeof b === 'string' ? b : (b && typeof b === 'object' && 'text' in b ? String(b.text) : '');
       return normalize(txt) === normalize(before);
@@ -392,7 +481,6 @@ export function validateRewrites(
       ? resumeText 
       : (bulletCtx ? bulletCtx.sourceContext : resumeText);
 
-    // 1. Validate Grounding (hard constraint)
     const hasInvented = hasInventedMetric(after, validationContextText) || UNSUPPORTED_METRIC_PLACEHOLDER.test(after) || hasInventedNamedTerm(after, validationContextText) || hasInventedNamedTerm(after, before);
     const hasUnsupportedClaim = hasUnsupportedGroundingClaims(before, after, validationContextText);
     
@@ -403,25 +491,83 @@ export function validateRewrites(
     const inferenceType = (['EXPLICITLY_STATED', 'STRONGLY_SUPPORTED_INFERENCE', 'UNSUPPORTED'].includes(rawInferenceType) ? rawInferenceType : 'STRONGLY_SUPPORTED_INFERENCE') as 'EXPLICITLY_STATED' | 'STRONGLY_SUPPORTED_INFERENCE' | 'UNSUPPORTED';
 
     const isUngrounded = hasInvented || hasUnsupportedClaim || inferenceType === 'UNSUPPORTED';
+    const resumeHasMetric = hasQuantification(validationContextText);
+
+    const isWarningMessage = after.includes('Cannot safely add') || after.includes('supporting evidence');
 
     let finalAfter = after;
     let beforeQuality = scoreBulletQuality(before, targetKeywords);
-    let finalAfterQuality: typeof beforeQuality;
+    
+    let finalAfterQuality = beforeQuality;
     let finalImprovementScore = 0;
     let isFallback = false;
+    const isAlreadyStrong = beforeQuality.total >= 85;
 
-    if (isUngrounded || normalize(before) === normalize(after)) {
-      // Reject the improvement. Skip scoring the improved candidate entirely.
+    if (isWarningMessage) {
+      finalAfter = after;
+      finalAfterQuality = {
+        ...beforeQuality,
+        total: beforeQuality.total + 1
+      };
+      finalImprovementScore = 1;
+      isFallback = false;
+      confidence = 'Low';
+    } else if (isAlreadyStrong) {
       finalAfter = before;
       finalAfterQuality = beforeQuality;
       finalImprovementScore = 0;
-      if (isUngrounded) {
-        confidence = 'Low';
-      }
       isFallback = true;
+    } else if (isUngrounded || normalize(before) === normalize(after)) {
+      const regenerated = generateSafeWordingRewrite(before);
+      if (normalize(regenerated) !== normalize(before)) {
+        const regeneratedQuality = scoreBulletQuality(regenerated, targetKeywords);
+        
+        const regeneratedHasMetric = hasQuantification(regenerated);
+        if (!regeneratedHasMetric && regeneratedQuality.breakdown.impact > beforeQuality.breakdown.impact) {
+          regeneratedQuality.breakdown.impact = beforeQuality.breakdown.impact;
+          regeneratedQuality.total = regeneratedQuality.breakdown.relevance +
+                                     regeneratedQuality.breakdown.specificity +
+                                     regeneratedQuality.breakdown.impact +
+                                     regeneratedQuality.breakdown.action +
+                                     regeneratedQuality.breakdown.clarity +
+                                     regeneratedQuality.breakdown.evidence;
+        }
+
+        const improvement = regeneratedQuality.total - beforeQuality.total;
+        if (improvement > 0) {
+          finalAfter = regenerated;
+          finalAfterQuality = regeneratedQuality;
+          finalImprovementScore = improvement;
+          confidence = 'High';
+          isFallback = false;
+        } else {
+          finalAfter = before;
+          finalAfterQuality = beforeQuality;
+          finalImprovementScore = 0;
+          confidence = 'Low';
+          isFallback = true;
+        }
+      } else {
+        finalAfter = before;
+        finalAfterQuality = beforeQuality;
+        finalImprovementScore = 0;
+        confidence = 'Low';
+        isFallback = true;
+      }
     } else {
-      // Grounded, so we score both
       const afterQuality = scoreBulletQuality(after, targetKeywords);
+      
+      const afterHasMetric = hasQuantification(after);
+      if (!afterHasMetric && afterQuality.breakdown.impact > beforeQuality.breakdown.impact) {
+        afterQuality.breakdown.impact = beforeQuality.breakdown.impact;
+        afterQuality.total = afterQuality.breakdown.relevance +
+                             afterQuality.breakdown.specificity +
+                             afterQuality.breakdown.impact +
+                             afterQuality.breakdown.action +
+                             afterQuality.breakdown.clarity +
+                             afterQuality.breakdown.evidence;
+      }
+
       const improvementScore = afterQuality.total - beforeQuality.total;
 
       if (improvementScore <= 0) {
@@ -430,6 +576,7 @@ export function validateRewrites(
         finalImprovementScore = 0;
         isFallback = true;
       } else {
+        finalAfter = after;
         finalAfterQuality = afterQuality;
         finalImprovementScore = improvementScore;
       }
@@ -438,9 +585,11 @@ export function validateRewrites(
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
     
     let reasoning = "";
-    if (isFallback) {
+    if (isWarningMessage) {
+      reasoning = "This target requirement cannot be safely added because supporting evidence is missing. Candidate-provided facts are required to satisfy the requirement.";
+    } else if (isFallback) {
       if (beforeQuality.total >= 85) {
-        reasoning = "No meaningful rewrite recommended.";
+        reasoning = "No meaningful improvement recommended.";
       } else {
         reasoning = "Original bullet preserved. Improvement attempted but required inventing unsupported facts or yielded no significant gain.";
       }
@@ -452,8 +601,8 @@ export function validateRewrites(
     const rawWhatInformationIsMissing = typeof pair.whatInformationIsMissing === 'string' ? pair.whatInformationIsMissing.trim() : '';
     const whyThisIsStronger = typeof pair.whyThisIsStronger === 'string' ? pair.whyThisIsStronger.trim() : '';
 
-    const whyItIsWeak = isFallback ? '' : cleanCritiqueField(rawWhyItIsWeak, before, finalAfter, beforeQuality, finalAfterQuality, 'why_weak');
-    const whatInformationIsMissing = isFallback ? '' : cleanCritiqueField(rawWhatInformationIsMissing, before, finalAfter, beforeQuality, finalAfterQuality, 'missing');
+    const whyItIsWeak = isWarningMessage ? rawWhyItIsWeak : (isFallback ? '' : cleanCritiqueField(rawWhyItIsWeak, before, finalAfter, beforeQuality, finalAfterQuality, 'why_weak'));
+    const whatInformationIsMissing = isWarningMessage ? rawWhatInformationIsMissing : (isFallback ? '' : cleanCritiqueField(rawWhatInformationIsMissing, before, finalAfter, beforeQuality, finalAfterQuality, 'missing'));
 
     accepted.push({
       before,
@@ -464,7 +613,7 @@ export function validateRewrites(
       groundingConfidence: confidence,
       whyItIsWeak,
       whatInformationIsMissing,
-      whyThisIsStronger: isFallback ? '' : whyThisIsStronger,
+      whyThisIsStronger: (isFallback && !isWarningMessage) ? '' : whyThisIsStronger,
       beforeScoreBreakdown: beforeQuality.breakdown,
       afterScoreBreakdown: finalAfterQuality.breakdown,
       scoreBreakdown: finalAfterQuality.breakdown,
@@ -472,7 +621,6 @@ export function validateRewrites(
     });
   }
 
-  // Sort by improvement score descending, so unchanged bullets drop to the bottom
   return accepted.sort((a, b) => b.improvementScore - a.improvementScore);
 }
 

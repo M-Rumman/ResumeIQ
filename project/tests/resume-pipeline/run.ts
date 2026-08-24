@@ -9,6 +9,15 @@ import { getLocationProviderPlan, getPakistanPublicFeeds, mergeAndNormalizeJobs,
 import { extractResumeIntelligence } from '../../api/_lib/resumeIntelligence.js';
 import { generateJobSearchIntent } from '../../api/_lib/jobSearchIntent.js';
 import { generateRecommendations, CATEGORY_PLURAL_MAP } from '../../api/_lib/analysis-engine/recommendations.js';
+import { stricterGroundingTests } from './stricterGrounding.test.js';
+import { decompositionTests } from './decomposition.test.js';
+import { durationRobustnessTests } from './durationRobustness.test.js';
+import { scaleVerificationTests } from './scaleVerification.test.js';
+import { stakeholderVerificationTests } from './stakeholderVerification.test.js';
+import { educationVerificationTests } from './educationVerification.test.js';
+import { scoringCalibrationTests } from './scoringCalibration.test.js';
+import { bulletImprovementsScoringTests } from './bulletImprovementsScoring.test.js';
+import { hiringSummaryTests } from './hiringSummary.test.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -1518,6 +1527,16 @@ B.S. in Construction Management — Colorado State University, 2016`);
     }
   }
 ];
+
+tests.push(...stricterGroundingTests);
+tests.push(...decompositionTests);
+tests.push(...durationRobustnessTests);
+tests.push(...scaleVerificationTests);
+tests.push(...stakeholderVerificationTests);
+tests.push(...educationVerificationTests);
+tests.push(...scoringCalibrationTests);
+tests.push(...bulletImprovementsScoringTests);
+tests.push(...hiringSummaryTests);
 
 type AsyncTestCase = { name: string; run: () => void | Promise<void>; expectedFailure?: boolean };
 
