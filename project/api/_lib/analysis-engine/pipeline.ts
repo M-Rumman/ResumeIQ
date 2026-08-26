@@ -381,13 +381,15 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
     if (f.achievedPoints !== 0) {
       throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} improperly awarded achieved points.`);
     }
-    if (f.priority === 'required' && f.maxPoints === 0) {
-      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} was silently dropped from the denominator.`);
+    if (f.maxPoints !== 0) {
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Failed analysis ${f.requirement} improperly assigned max points, penalizing candidate.`);
     }
   }
 
   // Scoring bounds and consistency invariants
   for (const d of matchScoreDetails.details) {
+    if (d.classification === 'ANALYSIS_FAILED') continue;
+
     // 1. Every requirement has a positive valid maximum score.
     if (d.maxPoints <= 0) {
       throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Requirement ${d.requirement} has invalid max points: ${d.maxPoints}`);
@@ -415,8 +417,8 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
     if (calcScore !== report.matchScore) {
       throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Match score calculation mismatch. Calculated: ${calcScore}, Displayed: ${report.matchScore}`);
     }
-  } else if (report.matchScore !== 0) {
-    throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Match score must be 0 when total max points is 0`);
+  } else {
+    throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Total maximum score cannot be 0. Analysis is invalid.`);
   }
 
   // 3. A requirement classified as matched must not simultaneously appear as missing.

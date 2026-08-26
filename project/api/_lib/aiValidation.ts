@@ -584,25 +584,18 @@ export function validateRewrites(
     
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
     
-    let reasoning = "";
-    if (isWarningMessage) {
-      reasoning = "This target requirement cannot be safely added because supporting evidence is missing. Candidate-provided facts are required to satisfy the requirement.";
-    } else if (isFallback) {
-      if (beforeQuality.total >= 85) {
-        reasoning = "No meaningful improvement recommended.";
-      } else {
-        reasoning = "Original bullet preserved. Improvement attempted but required inventing unsupported facts or yielded no significant gain.";
-      }
-    } else {
-      reasoning = generateReasoning(beforeQuality, finalAfterQuality, before, finalAfter);
+    if (isFallback || isWarningMessage || finalImprovementScore <= 0 || normalize(before) === normalize(finalAfter)) {
+      continue;
     }
+
+    let reasoning = generateReasoning(beforeQuality, finalAfterQuality, before, finalAfter);
 
     const rawWhyItIsWeak = typeof pair.whyItIsWeak === 'string' ? pair.whyItIsWeak.trim() : '';
     const rawWhatInformationIsMissing = typeof pair.whatInformationIsMissing === 'string' ? pair.whatInformationIsMissing.trim() : '';
     const whyThisIsStronger = typeof pair.whyThisIsStronger === 'string' ? pair.whyThisIsStronger.trim() : '';
 
-    const whyItIsWeak = isWarningMessage ? rawWhyItIsWeak : (isFallback ? '' : cleanCritiqueField(rawWhyItIsWeak, before, finalAfter, beforeQuality, finalAfterQuality, 'why_weak'));
-    const whatInformationIsMissing = isWarningMessage ? rawWhatInformationIsMissing : (isFallback ? '' : cleanCritiqueField(rawWhatInformationIsMissing, before, finalAfter, beforeQuality, finalAfterQuality, 'missing'));
+    const whyItIsWeak = cleanCritiqueField(rawWhyItIsWeak, before, finalAfter, beforeQuality, finalAfterQuality, 'why_weak');
+    const whatInformationIsMissing = cleanCritiqueField(rawWhatInformationIsMissing, before, finalAfter, beforeQuality, finalAfterQuality, 'missing');
 
     accepted.push({
       before,
@@ -613,7 +606,7 @@ export function validateRewrites(
       groundingConfidence: confidence,
       whyItIsWeak,
       whatInformationIsMissing,
-      whyThisIsStronger: (isFallback && !isWarningMessage) ? '' : whyThisIsStronger,
+      whyThisIsStronger: whyThisIsStronger,
       beforeScoreBreakdown: beforeQuality.breakdown,
       afterScoreBreakdown: finalAfterQuality.breakdown,
       scoreBreakdown: finalAfterQuality.breakdown,

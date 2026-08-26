@@ -72,6 +72,10 @@ export function rankStrengths(finalizedMatches: RequirementMatch[]): Requirement
 }
 
 export function evaluateScores(job: JobProfile, candidate: CandidateProfile, canonical: CanonicalRequirements | MatchingResult): EvaluationResult {
+  if (job.requirements.length === 0) {
+    throw new AiPipelineError('evaluator', 'INVARIANT_FAILED', 'Cannot evaluate scores for an empty requirement set.');
+  }
+
   // 1. Job Match Scoring (Mathematically calculated from requirements)
   let totalMaxScore = 0;
   let totalAchievedScore = 0;
@@ -119,6 +123,10 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     // otherwise the candidate gets a free pass on an unscored requirement.
     let maxPoints = weight * 10;
     
+    if (match.classification === 'ANALYSIS_FAILED') {
+      maxPoints = 0; // Do not penalize for failed analysis
+    }
+
     // Ensure bounds
     let achievedPoints = maxPoints * contribution;
     achievedPoints = Math.max(0, Math.min(maxPoints, achievedPoints));
