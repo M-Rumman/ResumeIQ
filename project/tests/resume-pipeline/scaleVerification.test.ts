@@ -92,7 +92,7 @@ export const scaleVerificationTests = [
       };
 
       const validated = validateEvidenceAttribution([match], [fact], fact.rawText);
-      assert.equal(validated[0].classification, 'UNDER_EXPRESSED');
+      assert.equal(validated[0].classification, 'MISSING');
     }
   },
   {
@@ -188,7 +188,7 @@ export const scaleVerificationTests = [
     }
   },
   {
-    name: 'Scale Verification: large research program without explicit numeric size => UNDER_EXPRESSED',
+    name: 'Scale Verification: large research program without explicit numeric size => MISSING',
     run: () => {
       const req: JobRequirement = {
         id: 'req-scale-5',
@@ -230,7 +230,7 @@ export const scaleVerificationTests = [
       };
 
       const validated = validateEvidenceAttribution([match], [fact], fact.rawText);
-      assert.equal(validated[0].classification, 'UNDER_EXPRESSED');
+      assert.equal(validated[0].classification, 'MISSING');
     }
   },
   {

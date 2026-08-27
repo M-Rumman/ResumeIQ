@@ -135,10 +135,10 @@ function getFallbackSemanticMatch(req: import('./types.js').JobRequirement, prio
     }
   }
 
-  if (bestFact && bestOverlap >= 0.5) {
+  if (bestFact && bestOverlap >= 0.8) {
     return {
       requirement: req,
-      classification: bestOverlap >= 0.8 ? 'PARTIAL_MATCH' : 'UNDER_EXPRESSED',
+      classification: 'PARTIAL_MATCH',
       confidence: 0.5,
       explanation: `Semantic fallback: found ${Math.round(bestOverlap * 100)}% word overlap in candidate profile.`,
       match_tier: 'tier_3_semantic',
@@ -583,14 +583,35 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       let finalYears = Math.max(calculatedYears, relevantMaxDuration);
       
       let classification: MatchClassification;
+      let explanation = '';
+      
+      let extractedKeyword = reqNameLower.replace(/(\d+\+?\s*years?|of|experience|minimum|at least|required|preferred|preferred qualifications?|basic qualifications?|\s+)/gi, ' ').trim();
+      if (!extractedKeyword || extractedKeyword.length < 3) extractedKeyword = req.category === 'years' ? 'relevant' : req.normalized_name;
+
       if (relevantFacts.length === 0) {
         classification = 'MISSING';
-      } else if (finalYears === 0) {
-        classification = 'ANALYSIS_FAILED';
-      } else if (finalYears >= reqMinimumYears) {
-        classification = 'EXACT_MATCH';
+        explanation = `Candidate does not have ${reqMinimumYears}+ years of ${extractedKeyword} experience.`;
       } else {
-        classification = 'PARTIAL_MATCH';
+        const rawRoles = Array.from(new Set(relevantFacts.map(f => {
+          let t = f.normalizedName || f.rawText.split('\n')[0];
+          t = t.replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}.*$/i, '');
+          return t.split('-')[0].split('|')[0].trim().substring(0, 50);
+        })));
+        const rolesStr = rawRoles.join(', ');
+        const hasInternship = relevantFacts.some(f => /intern|internship|co-op/i.test(f.rawText));
+
+        if (finalYears === 0) {
+          classification = 'PARTIAL_MATCH';
+          explanation = `Found evidence of ${extractedKeyword} experience based on [${rolesStr}], but employment dates are ambiguous or missing so total duration cannot be verified.`;
+        } else if (finalYears >= reqMinimumYears) {
+          classification = 'EXACT_MATCH';
+          explanation = `Approximately ${finalYears} years of relevant ${extractedKeyword} experience based on [${rolesStr}].`;
+          if (hasInternship) explanation += ' (Includes internship experience).';
+        } else {
+          classification = 'PARTIAL_MATCH';
+          explanation = `Approximately ${finalYears} years of relevant ${extractedKeyword} experience based on [${rolesStr}]. Requirement was ${reqMinimumYears} years.`;
+          if (hasInternship) explanation += ' (Includes internship experience).';
+        }
       }
       
       const evidenceFacts = relevantFacts.slice(0, 5);
@@ -599,7 +620,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
         requirement: req,
         classification,
         confidence: 1.0,
-        explanation: `Calculated approximately ${finalYears} years of relevant experience from candidate profile. Requirement was ${reqMinimumYears} years.`,
+        explanation,
         match_tier: 'tier_1_deterministic',
         evidence: evidenceFacts.map(f => ({
           source_section: f.sourceSection,

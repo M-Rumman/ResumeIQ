@@ -587,6 +587,46 @@ export function validateRewrites(
     });
   }
 
+  // Deterministic Fallback: If AI fails, skips bullets, or we have fewer than 3 valid improvements,
+  // try to deterministically improve weak bullets that were not already processed.
+  const processedOriginals = new Set(accepted.map((item) => normalize(String(item.before))));
+  const validImprovementsCount = accepted.filter((item) => item.improvementScore > 0).length;
+
+  if (validImprovementsCount < 3) {
+    for (const b of bulletContexts) {
+      const text = typeof b === 'string' ? b : (b && typeof b === 'object' && 'text' in b ? String(b.text) : '');
+      if (!text || processedOriginals.has(normalize(text))) continue;
+
+      const beforeQuality = scoreBulletQuality(text, targetKeywords);
+      if (beforeQuality.total >= 85) continue; // Already strong
+
+      const regenerated = generateSafeWordingRewrite(text);
+      if (normalize(regenerated) !== normalize(text)) {
+        const regeneratedQuality = scoreBulletQuality(regenerated, targetKeywords);
+        const regenImprovement = regeneratedQuality.total - beforeQuality.total;
+        
+        if (regenImprovement > 0) {
+          accepted.push({
+            before: text,
+            beforeScore: beforeQuality.total,
+            after: regenerated,
+            afterScore: regeneratedQuality.total,
+            improvementScore: regenImprovement,
+            groundingConfidence: 'High',
+            whyItIsWeak: "The original bullet uses passive or weak language.",
+            whatInformationIsMissing: "No missing information, but the phrasing can be strengthened.",
+            whyThisIsStronger: "The improved bullet uses a stronger action verb and clearer phrasing.",
+            beforeScoreBreakdown: beforeQuality.breakdown,
+            afterScoreBreakdown: regeneratedQuality.breakdown,
+            scoreBreakdown: regeneratedQuality.breakdown,
+            reasoning: generateReasoning(beforeQuality, regeneratedQuality, text, regenerated),
+          });
+          processedOriginals.add(normalize(text));
+        }
+      }
+    }
+  }
+
   return accepted.sort((a, b) => b.improvementScore - a.improvementScore);
 }
 

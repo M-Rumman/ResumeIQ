@@ -330,19 +330,12 @@ export function applyStrictGroundingRules(
   // Rule 5: Research at scale (Case B)
   const isScaleReq = /research at scale|scale|operations/i.test(reqNameLower) || /research at scale|scale|operations/i.test(reqTextLower);
   if (isScaleReq) {
-    const hasStrongScaleEvidence = /panel|repositor|ops\b|operations\b|thousand|centralized|central\s+repository/i.test(combinedEvidenceText);
-    const hasPartialScaleEvidence = /scale|large|hundred|study|studies|volume|program|\d{2,}\+/i.test(combinedEvidenceText);
+    const hasStrongScaleEvidence = /panel|repositor|ops\b|operations\b|thousand|centralized|central\s+repository|\d{2,}\+|scale|hundred/i.test(combinedEvidenceText);
     
-    if (!hasStrongScaleEvidence && !hasPartialScaleEvidence) {
+    if (!hasStrongScaleEvidence) {
       classification = 'MISSING';
       explanation = `Missing: Evidence is only generic research activity and lacks concrete indicators of research at scale (such as participant panels, research repositories, scale metrics, or research operations).`;
       return { classification, explanation, validatedEvidence: [] };
-    }
-    
-    if (!hasStrongScaleEvidence && hasPartialScaleEvidence) {
-      classification = 'UNDER_EXPRESSED';
-      explanation = `Downgraded: Evidence indicates some research activity but lacks strong indicators of research at scale (such as panels or repositories).`;
-      return { classification, explanation, validatedEvidence };
     }
   }
 

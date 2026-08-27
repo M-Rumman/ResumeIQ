@@ -328,7 +328,7 @@ export async function runAnalysisPipeline(
                        : generateRecruiterSummary(canonical, evaluationResult.matchScore),
       topReasonsToInterview: (jobProfile.requirements.length === 0 || matchingResult.matches.length === 0 || canonical.analysisFailed.length === matchingResult.matches.length)
         ? []
-        : [generateNarrativeSynthesis(canonical.exact.concat(canonical.semantic), evaluationResult.matchScore)],
+        : [generateNarrativeSynthesis(canonical, evaluationResult.matchScore)],
       topReasonsForRejection: [
         ...canonical.missingCore.map(m => `Genuine risk: Missing required ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
         ...canonical.missingPreferred.map(m => `Genuine risk: Missing preferred ${m.requirement.category}: ${m.requirement.normalized_name}. No matching evidence found.`),
@@ -441,9 +441,41 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
   if (report.keywordCompatibility.missing.length !== missingNames.length) {
     throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Keyword compatibility missing count does not match canonical missing count.`);
   }
+
+  // 8. Positive statements traceability
+  const positiveTexts = [
+    report.hiringManagerAssessment.recruiterSummary,
+    ...(report.hiringManagerAssessment.topReasonsToInterview || [])
+  ].join(' ').toLowerCase();
+
+  const negativeMatches = [
+    ...canonical.missingCore,
+    ...canonical.missingPreferred,
+    ...canonical.partial,
+    ...canonical.analysisFailed
+  ];
+
+  for (const match of negativeMatches) {
+    const nameLower = match.requirement.normalized_name.toLowerCase();
+    // Only check names longer than 3 chars to prevent accidental substring matches on short generic words
+    if (nameLower.length > 3 && positiveTexts.includes(nameLower)) {
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Positive summary falsely claims alignment with missing/partial/failed requirement: ${match.requirement.normalized_name}`);
+    }
+  }
+
+  // 9. Negative statements traceability
+  const negativeTexts = (report.hiringManagerAssessment.topReasonsForRejection || []).join(' ').toLowerCase();
+  
+  for (const match of [...canonical.exact, ...canonical.semantic]) {
+    const nameLower = match.requirement.normalized_name.toLowerCase();
+    if (nameLower.length > 3 && negativeTexts.includes(nameLower)) {
+      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Negative summary falsely claims weakness for matched requirement: ${match.requirement.normalized_name}`);
+    }
+  }
 }
 
-export function generateNarrativeSynthesis(matches: any[], matchScore: number): string {
+export function generateNarrativeSynthesis(canonical: CanonicalRequirements, matchScore: number): string {
+  const matches = [...canonical.exact, ...canonical.semantic];
   const exactOrStrong = matches.filter(m => m.classification === 'EXACT_MATCH' || m.classification === 'STRONG_SEMANTIC_MATCH');
   if (exactOrStrong.length === 0) {
     return 'Based on the evaluation, no direct matching strengths were identified in the candidate profile for the specified requirements.';
@@ -461,7 +493,23 @@ export function generateNarrativeSynthesis(matches: any[], matchScore: number): 
 
   const fitLevel = matchScore >= 90 ? 'an exceptional' : matchScore >= 75 ? 'a strong' : matchScore >= 50 ? 'a solid' : 'a partial';
   
-  return `The candidate demonstrates ${fitLevel} overall fit for the position, with robust evidence satisfying key role requirements such as ${skillsList}. Their background aligns well with the target domain competency, making them a competitive applicant for an interview.`;
+  const missingOrPartialCount = canonical.missingCore.length + canonical.missingPreferred.length + canonical.partial.length;
+  const robustEvidencePhrasing = missingOrPartialCount >= 2 
+    ? `with evidence satisfying some key role requirements such as ${skillsList}`
+    : `with robust evidence satisfying key role requirements such as ${skillsList}`;
+    
+  const missingDomain = [...canonical.missingCore, ...canonical.missingPreferred].some(m => {
+    const n = m.requirement.normalized_name.toLowerCase();
+    return m.requirement.category === 'domain' || n.includes('fintech') || n.includes('banking') || n.includes('regulated') || n.includes('domain');
+  });
+
+  let sentence = `The candidate demonstrates ${fitLevel} overall fit for the position, ${robustEvidencePhrasing}.`;
+  
+  if (!missingDomain) {
+    sentence += ` Their background aligns well with the target domain competency, making them a competitive applicant for an interview.`;
+  }
+  
+  return sentence;
 }
 
 export function generateRecruiterSummary(canonical: CanonicalRequirements, matchScore: number): string {

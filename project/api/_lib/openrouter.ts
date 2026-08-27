@@ -715,12 +715,12 @@ Bullet Improvements connection to Job Requirements:
   2. Determine whether the bullet already provides evidence for those requirements.
   3. Improve the wording ONLY using facts already present in the resume.
   4. Prefer improving: ownership, methodology, scope, specificity, outcome, relevance, terminology.
-- Prioritize bullet improvements strictly toward requirements classified as PARTIAL_MATCH or UNDER_EXPRESSED in jobGapFocus.
-- Ask: "What existing bullet could be improved to better communicate an already-supported requirement?" rather than just "How can we make this bullet sound better?"
+- Prioritize bullet improvements toward job requirements, but ALSO improve general resume quality (weak verbs, vague wording, clarity) for any weak bullet even if it does not explicitly overlap with a job requirement.
+- Ask: "What existing bullet could be improved to better communicate an already-supported requirement or improve professional tone?" rather than just "How can we make this bullet sound better?"
 
 STRICT ANTI-HALLUCINATION & GROUNDING RULES:
 - If a target job requirement (from targetJob or jobGapFocus) is genuinely missing or not supported by any evidence in the resume, you MUST NOT fabricate it or invent facts (such as analytics, data science, metrics, tools) through a bullet rewrite.
-- Instead, you MUST set the "after" field to exactly:
+- Instead, if asked to force an unsupported requirement, you MUST set the "after" field to exactly:
   "Cannot safely add this requirement because the resume does not contain supporting evidence."
   and explain in "whatInformationIsMissing" that this requirement cannot be added without new candidate-provided information.
 - Example:
@@ -751,7 +751,7 @@ Rules:
 - STRICT SEMANTIC DISTINCTION: Distinguish between "semantic clarification" and "new factual claim". A "semantic clarification" improves action verbs, sentence structure, clarity, conciseness, ownership framing, and terminology already supported by the resume. A "new factual claim" manufactures outcomes, impact, leadership, expertise, scale, responsibilities, stakeholder influence, metrics, or scope, and is STRICTLY PROHIBITED.
 - Do NOT add claims such as "demonstrating expertise in...", "proving...", "showcasing expertise...", "driving...", "improving...", "increasing...", "uncovering...", or "leading..." unless the original resume explicitly supports that claim. If an improvement would require adding unsupported information, preserve the original wording rather than fabricate an improvement.
 - NEVER claim a bullet is weak if no meaningful supported improvement exists. Do not generate a fake rewrite simply to produce an improvement.
-- If a stronger rewrite cannot be safely generated without hallucinating unsupported details, simply omit the bullet entirely. Do not list it in weakBullets.
+- If a stronger rewrite cannot be safely generated using target job terminology, you MUST STILL improve the bullet's general clarity, action verbs, and professional tone if it is weak. Only omit if the bullet is already perfect.
 
 Required JSON Schema:
 {

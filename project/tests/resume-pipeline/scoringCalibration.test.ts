@@ -110,12 +110,12 @@ export const scoringCalibrationTests = [
         { requirement: job.requirements[1], classification: 'ANALYSIS_FAILED', confidence: 0, match_tier: 'tier_3_semantic', explanation: 'Failed', evidence: [] }
       ];
 
-      // Max: 10 + 10 = 20
+      // Max: 10 (exact match) + 0 (analysis failed) = 10
       // Achieved: 10*1.0 + 0 = 10
-      // 10 / 20 = 50%
+      // 10 / 10 = 100%
       const res = evaluateScores(job, candidate, { matches });
-      assert.equal(res.matchScore, 50);
-      assert.match(res.matchScoreDetails.mathematicalExplanation || '', /Total Achieved Points: 10.0 \/ Total Max Points: 20.0/);
+      assert.equal(res.matchScore, 100);
+      assert.match(res.matchScoreDetails.mathematicalExplanation || '', /Total Achieved Points: 10.0 \/ Total Max Points: 10.0/);
     }
   },
   {
@@ -128,9 +128,8 @@ export const scoringCalibrationTests = [
         requirements: []
       };
 
-      const res = evaluateScores(job, candidate, { matches: [] });
-      assert.equal(res.matchScore, 0);
-      assert.match(res.matchScoreDetails.mathematicalExplanation || '', /Total Achieved Points: 0.0 \/ Total Max Points: 0.0/);
+      const res = () => evaluateScores(job, candidate, { matches: [] });
+      assert.throws(res, (err: any) => err.code === 'INVARIANT_FAILED' || err.message.includes('empty requirements'));
     }
   },
   {

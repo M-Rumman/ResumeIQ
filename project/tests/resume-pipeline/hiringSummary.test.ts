@@ -33,7 +33,7 @@ export const hiringSummaryTests = [
       assert.ok(summary.includes('definitive strengths in Python and Machine Learning'));
       assert.ok(summary.includes('warrants moving forward to an interview'));
 
-      const narrative = generateNarrativeSynthesis([...canonical.exact, ...canonical.semantic], 92);
+      const narrative = generateNarrativeSynthesis(canonical, 92);
       assert.ok(narrative.includes('Python, Machine Learning, and Data Analysis'));
     }
   },
@@ -54,6 +54,10 @@ export const hiringSummaryTests = [
       assert.ok(summary.includes('weak match'));
       assert.ok(summary.includes('critical requirements such as 6+ years experience and Mentoring junior developers'));
       assert.ok(summary.includes('unlikely to advance in the hiring process'));
+
+      const narrative = generateNarrativeSynthesis(canonical, 45);
+      // Because there are 2 missing core, it should say "satisfying some key role" instead of "robust evidence"
+      assert.ok(narrative.includes('satisfying some key role requirements'));
     }
   },
   {
@@ -100,6 +104,23 @@ export const hiringSummaryTests = [
 
       const summary2 = generateRecruiterSummary(canonical2, 70);
       assert.ok(summary2.includes('Note that 1 requirement(s) could not be fully analyzed.'));
+    }
+  },
+  {
+    name: 'Hiring Summary: Missing domain requirement omits positive domain alignment claim',
+    run: () => {
+      const canonical = createMockCanonical({
+        exact: [
+          { requirement: { normalized_name: 'Python', category: 'skill' }, classification: 'EXACT_MATCH', explanation: '', evidence: [] }
+        ],
+        missingCore: [
+          { requirement: { normalized_name: 'Fintech Experience', category: 'domain' }, classification: 'MISSING', explanation: '', evidence: [] }
+        ]
+      });
+
+      const narrative = generateNarrativeSynthesis(canonical, 75);
+      // Since a domain requirement is missing, it MUST NOT say the candidate aligns well with the target domain competency
+      assert.equal(narrative.includes('target domain competency'), false, 'Should omit target domain competency claim if missing domain requirement');
     }
   }
 ];

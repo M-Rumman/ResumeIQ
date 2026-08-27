@@ -204,3 +204,35 @@ test('validateRewrites enforcement rules', async (t: any) => {
     assert.equal(result[0].after, 'Managed and mentored 3 UX researchers.');
   });
 });
+
+test('Research at scale validation rules', async (t: any) => {
+  const dummyJob: JobProfile = { title: 'UX', requirements: [] };
+  const dummyCandidate: CandidateProfile = { contact: {} as any, facts: [], rawStructure: {} as any };
+
+  await t.test('Generic UX research is MISSING for Research at scale', () => {
+    const rawReport: any = {
+      jobMatchExplanation: {
+        strongMatches: [],
+        partialMatches: [{ requirement: 'Research at scale', context: 'Conducted 5 studies' }],
+        missingSkills: []
+      },
+      keywordCompatibility: { missing: [], exactMatches: [], semanticMatches: [], underExpressed: [] }
+    };
+    const validated = validateAndSanitizeReport(rawReport, dummyJob, dummyCandidate);
+    assert.equal(validated.jobMatchExplanation.missingSkills.some((m: any) => m.requirement === 'Research at scale'), true);
+    assert.equal(validated.jobMatchExplanation.partialMatches.length, 0);
+  });
+
+  await t.test('Concrete evidence preserves STRONG_SEMANTIC_MATCH', () => {
+    const rawReport: any = {
+      jobMatchExplanation: {
+        strongMatches: [{ requirement: 'Research at scale', context: 'Managed a 5,000-person participant panel and maintained research repository' }],
+        partialMatches: [],
+        missingSkills: []
+      },
+      keywordCompatibility: { missing: [], exactMatches: [], semanticMatches: [], underExpressed: [] }
+    };
+    const validated = validateAndSanitizeReport(rawReport, dummyJob, dummyCandidate);
+    assert.equal(validated.jobMatchExplanation.strongMatches.some((m: any) => m.requirement === 'Research at scale'), true);
+  });
+});

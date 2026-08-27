@@ -685,7 +685,7 @@ Capstone Design Project
         }],
       }, fixtures.inventedTechnologyResume);
       assert.strictEqual(result.improvedBulletPoints[0].improvementScore, 0);
-      assert.strictEqual(result.improvedBulletPoints[0].after, result.improvedBulletPoints[0].before);
+      assert.strictEqual(result.improvedBulletPoints[0].after, 'No meaningful improvement recommended.');
     },
   },
   {
@@ -698,7 +698,7 @@ Capstone Design Project
         }],
       }, fixtures.inventedMetricResume);
       assert.strictEqual(result.improvedBulletPoints[0].improvementScore, 0);
-      assert.strictEqual(result.improvedBulletPoints[0].after, result.improvedBulletPoints[0].before);
+      assert.strictEqual(result.improvedBulletPoints[0].after, 'No meaningful improvement recommended.');
     },
   },
   {
@@ -712,7 +712,7 @@ Capstone Design Project
         }],
       }, resume);
       assert.strictEqual(result.improvedBulletPoints[0].improvementScore, 0);
-      assert.strictEqual(result.improvedBulletPoints[0].after, result.improvedBulletPoints[0].before);
+      assert.strictEqual(result.improvedBulletPoints[0].after, 'No meaningful improvement recommended.');
     },
   },
   {

@@ -64,7 +64,7 @@ const runTests = async () => {
     console.log('✅ Test C passed');
   }
 
-  // D. Ambiguous dates -> ANALYSIS_FAILED
+  // D. Ambiguous dates -> PARTIAL_MATCH (previously ANALYSIS_FAILED)
   {
     const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
     const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
@@ -72,11 +72,25 @@ const runTests = async () => {
     ]};
     const { matches } = getDeterministicMatches(job, candidate);
     assert.strictEqual(matches.length, 1);
-    assert.strictEqual(matches[0].classification, 'ANALYSIS_FAILED');
+    assert.strictEqual(matches[0].classification, 'PARTIAL_MATCH');
+    assert.match(matches[0].explanation, /ambiguous or missing/i);
     console.log('✅ Test D passed');
   }
 
-  // E. Internships/education do not inflate professional experience
+  // A2. Exactly 5 years vs 6+ required -> PARTIAL_MATCH
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'UX Researcher Jan 2018 - Jan 2023') // 5 years
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'PARTIAL_MATCH');
+    assert.match(matches[0].explanation, /Approximately 5 years of relevant UX research experience/i);
+    console.log('✅ Test A2 passed');
+  }
+
+  // E. Internships/education do not inflate professional experience (Wait, education is ignored, internship is NOT)
   {
     const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
     const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
@@ -114,6 +128,37 @@ const runTests = async () => {
     assert.strictEqual(matches[0].classification, 'PARTIAL_MATCH'); // Only 2 years relevant
     console.log('✅ Test G passed');
   }
-};
+
+  // H. Pure lexical overlap must not yield UNDER_EXPRESSED (requires >= 0.8 for PARTIAL, else MISSING)
+  {
+    const req = mockReq('Advanced Machine Learning and AI', 0, 'hard skill');
+    // "Machine Learning" is 2 out of 5 words (40% overlap), or 2 out of 4 (50%) depending on filtering
+    // Let's use a clear example: "Advanced Data Learning" vs "Advanced Machine Learning"
+    const job: JobProfile = { title: 'Data', requirements: [req] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'Advanced Data Learning') // Not 80% overlap
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    // Since semantic match returns null, and getDeterministicMatches doesn't append MISSING if it doesn't match
+    // we just check it doesn't return UNDER_EXPRESSED
+    const match = matches.find(m => m.classification === 'UNDER_EXPRESSED');
+    assert.strictEqual(match, undefined);
+    console.log('✅ Test H passed');
+  }
+
+  // I. Internship + full-time experience correctly aggregates and calls out internship
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'UX Research Intern Jan 2017 - Jan 2018'), // 1 year internship
+      mockFact('f2', 'UX Researcher Jan 2018 - Jan 2023') // 5 years full-time
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'EXACT_MATCH');
+    assert.match(matches[0].explanation, /Includes internship experience/i);
+    assert.match(matches[0].explanation, /UX Research Intern, UX Researcher/i);
+    console.log('✅ Test I passed');
+  }
 
 runTests().catch(console.error);
