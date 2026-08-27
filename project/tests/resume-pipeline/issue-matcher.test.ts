@@ -1,147 +1,119 @@
-import assert from 'node:assert/strict';
-import { extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
-import { matchRequirements } from '../../api/_lib/analysis-engine/matcher.js';
-import { parseJobDescription } from '../../api/_lib/analysis-engine/jdParser.js';
-import { validateAndSanitizeReport } from '../../api/_lib/analysis-engine/validator.js';
-import { evaluateScores } from '../../api/_lib/analysis-engine/evaluator.js';
-import { runAnalysisPipeline } from '../../api/_lib/analysis-engine/pipeline.js';
+import assert from 'node:assert';
+import { getDeterministicMatches } from '../../api/_lib/analysis-engine/matcher.js';
+import type { JobProfile, CandidateProfile, JobRequirement, CandidateFact } from '../../api/_lib/analysis-engine/types.js';
 
-const resumeText = `
-A Senior UX Researcher with 7 years of experience.
-Experience includes:
-- Senior UX Researcher
-- UX Researcher
-- Associate UX Researcher
-- 100+ usability tests and interviews
-- qualitative and quantitative research
-- presented findings to VP and C-suite stakeholders
-- influenced product strategy
-- worked across design and product teams
-- partnered with data science
-- Dovetail
-- UserTesting
-- Qualtrics
-- B.A. in Psychology
-`;
+const mockReq = (name: string, minYears: number, category: JobRequirement['category'] = 'experience'): JobRequirement => ({
+  id: 'req-1',
+  category,
+  normalized_name: name,
+  original_text: name,
+  source_section: 'Requirements',
+  source_span: [0, 10],
+  source_text: name,
+  priority: 'required',
+  requirement_type: category,
+  confidence: 1.0,
+  minimum_years: minYears
+});
 
-const jdText = `
-Requirements:
-- 3+ years UX research experience
-- usability testing, interviews, surveys, qualitative research
-- communication and presentation
-- actionable product recommendations
-- cross-functional product teams
-- UserTesting, Qualtrics, Dovetail or similar
-- Bachelor's degree in UX, Psychology, HCI or related field
-`;
+const mockFact = (id: string, text: string, type: CandidateFact['type'] = 'experience'): CandidateFact => ({
+  id,
+  type,
+  normalizedName: text,
+  rawText: text,
+  sourceSection: type === 'experience' ? 'Experience' : 'Education',
+  evidence: text
+});
 
-async function testMatcherRegression() {
-  process.env.OPENROUTER_API_KEY = 'sk-or-mock_key_for_testing';
+const runTests = async () => {
+  console.log('Running deterministic duration matcher tests...');
 
-  // Mock callOpenRouter
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : {};
-    const prompt = body.messages?.[1]?.content || '';
-    
-    // JD Parser mock
-    if (prompt.includes('Raw Job Description:')) {
-      const mockLlmOutput = [
-        { normalized_name: '3+ years UX research', original_text: '3+ years UX research experience', category: 'experience', priority: 'required', minimum_years: 3 },
-        { normalized_name: 'usability testing, interviews, surveys', original_text: 'usability testing, interviews, surveys, qualitative research', category: 'methodology', priority: 'required' },
-        { normalized_name: 'communication and presentation', original_text: 'communication and presentation', category: 'soft skill', priority: 'required' },
-        { normalized_name: 'actionable product recommendations', original_text: 'actionable product recommendations', category: 'responsibility', priority: 'required' },
-        { normalized_name: 'cross-functional product teams', original_text: 'cross-functional product teams', category: 'responsibility', priority: 'required' },
-        { normalized_name: 'UserTesting, Qualtrics, Dovetail', original_text: 'UserTesting, Qualtrics, Dovetail or similar', category: 'tool', priority: 'required' },
-        { normalized_name: 'Bachelor\'s in UX, Psychology, HCI', original_text: 'Bachelor\'s degree in UX, Psychology, HCI or related field', category: 'education', degree_level: 'bachelor', fields: ['UX', 'Psychology', 'HCI'], priority: 'required' }
-      ];
-      return {
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: JSON.stringify({ title: 'UX Researcher', requirements: mockLlmOutput }) } }]
-        })
-      } as any;
-    }
-
-    // Matcher mock
-    if (prompt.includes('Candidate Facts')) {
-      // Find fact IDs based on what the matcher should realistically map
-      const getFactId = (str: string) => {
-        const m = prompt.match(new RegExp(`\\[ID:\\s*([^\\]]+)\\][^\\[]*\\[Section:[^\\]]*\\][^\n]*${str}`, 'i'));
-        return m ? m[1] : null;
-      };
-
-      const matches: any[] = [];
-      const lines = prompt.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('[ID:')) {
-          const reqIdMatch = line.match(/\[ID: ([^\]]+)\] Name: (.+) \(Category:/);
-          if (reqIdMatch) {
-            const reqId = reqIdMatch[1];
-            const name = reqIdMatch[2];
-            let classification = 'MISSING';
-            let factId = null;
-
-            if (name.includes('3+ years')) {
-              classification = 'STRONG_SEMANTIC_MATCH';
-              factId = getFactId('7 years');
-            } else if (name.includes('usability')) {
-              classification = 'STRONG_SEMANTIC_MATCH';
-              factId = getFactId('100\\+ usability');
-            } else if (name.includes('communication')) {
-              classification = 'STRONG_SEMANTIC_MATCH';
-              factId = getFactId('VP and C-suite');
-            } else if (name.includes('actionable')) {
-              classification = 'STRONG_SEMANTIC_MATCH';
-              factId = getFactId('product strategy');
-            } else if (name.includes('cross-functional')) {
-              classification = 'STRONG_SEMANTIC_MATCH';
-              factId = getFactId('design and product teams');
-            } else if (name.includes('UserTesting')) {
-              classification = 'STRONG_SEMANTIC_MATCH';
-              factId = getFactId('Dovetail');
-            } else if (name.includes('Bachelor')) {
-              classification = 'STRONG_SEMANTIC_MATCH';
-              factId = getFactId('Psychology');
-            }
-
-            matches.push({
-              requirementId: reqId,
-              classification,
-              supportingFactId: factId,
-              explanation: 'Mocked match'
-            });
-          }
-        }
-      }
-
-      return {
-        ok: true,
-        json: async () => ({
-          choices: [{ message: { content: JSON.stringify({ matches }) } }]
-        })
-      } as any;
-    }
-
-    return { ok: true, json: async () => ({}) } as any;
-  };
-
-  try {
-    const candidateProfile = extractCandidateProfile(resumeText);
-    console.log('--- Candidate Facts ---');
-    console.log(JSON.stringify(candidateProfile.facts, null, 2));
-
-    const engineResult = await runAnalysisPipeline({ resumeText, jobDescriptionText: jdText, includePremium: true });
-    
-    console.log('\n--- Final Report Matches ---');
-    const matches = engineResult.legacyReport.requirementBreakdown;
-    matches.forEach((m: any) => {
-      console.log(`${m.requirement.normalized_name}: ${m.classification} (${m.evidence.length} evidence facts)`);
-    });
-
-  } catch (e) {
-    console.error(e);
+  // A. 4.5 years vs 6+ required -> must not be EXACT_MATCH
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'UX Researcher Jan 2020 - Jul 2024') // 4.5 years
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'PARTIAL_MATCH');
+    console.log('✅ Test A passed');
   }
-}
 
-testMatcherRegression();
+  // B. 6+ years vs 6+ required -> EXACT_MATCH
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'UX Researcher Jan 2018 - Jan 2024') // 6 years
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'EXACT_MATCH');
+    console.log('✅ Test B passed');
+  }
+
+  // C. 7 years vs 6+ required -> EXACT_MATCH
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'UX Researcher Jan 2017 - Jan 2024') // 7 years
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'EXACT_MATCH');
+    console.log('✅ Test C passed');
+  }
+
+  // D. Ambiguous dates -> ANALYSIS_FAILED
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'UX Researcher at Google') // No dates
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'ANALYSIS_FAILED');
+    console.log('✅ Test D passed');
+  }
+
+  // E. Internships/education do not inflate professional experience
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'Ph.D. UX Research Jan 2015 - Jan 2020', 'education'),
+      mockFact('f2', 'UX Researcher Jan 2020 - Jan 2024') // 4 years
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'PARTIAL_MATCH'); // Education not counted, so 4 years < 6 -> PARTIAL
+    console.log('✅ Test E passed');
+  }
+
+  // F. Overlapping jobs are not double-counted
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'UX Researcher Jan 2020 - Jan 2024'), // 4 years
+      mockFact('f2', 'UX Researcher Jun 2022 - Jan 2024') // 1.5 years overlapping
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'PARTIAL_MATCH'); // Should be 4 years total, not 5.5
+    console.log('✅ Test F passed');
+  }
+  
+  // G. Irrelevant experience is not counted
+  {
+    const job: JobProfile = { title: 'UX', requirements: [mockReq('6+ years UX research experience', 6)] };
+    const candidate: CandidateProfile = { contact: {} as any, rawStructure: {}, facts: [
+      mockFact('f1', 'Cashier Jan 2010 - Jan 2020'), // 10 years irrelevant
+      mockFact('f2', 'UX Researcher Jan 2020 - Jan 2022') // 2 years relevant
+    ]};
+    const { matches } = getDeterministicMatches(job, candidate);
+    assert.strictEqual(matches.length, 1);
+    assert.strictEqual(matches[0].classification, 'PARTIAL_MATCH'); // Only 2 years relevant
+    console.log('✅ Test G passed');
+  }
+};
+
+runTests().catch(console.error);

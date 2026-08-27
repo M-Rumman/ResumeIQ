@@ -355,57 +355,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
         }
       }
 
-      // 1d. Tier 1: Years of Experience Matching
-      if (reqMinimumYears && fact.employment_duration_years) {
-        if (totalExperienceYears >= reqMinimumYears) {
-           isExact = true;
-           matchedStrength = 'EXACT_MATCH';
-           matchedTier = 'tier_1_deterministic';
-        } else if (fact.employment_duration_years >= reqMinimumYears) {
-           isExact = true;
-           matchedStrength = 'EXACT_MATCH';
-           matchedTier = 'tier_1_deterministic';
-        }
-      }
 
-      // 1e. Location Matching
-      if (req.category === 'location') {
-        const reqStr = reqNameLower.replace(/^location:\s*/gi, '').trim();
-        const baseLocationStr = reqStr.replace(/\((hybrid|remote|onsite).*?\)/gi, '').replace(/[—-].*$/g, '').trim();
-        const parts = baseLocationStr.split(',').map(p => p.trim()).filter(Boolean);
-        
-        if (parts.length > 0) {
-          let matchedParts = 0;
-          for (const p of parts) {
-            if (rawLower.includes(p)) matchedParts++;
-          }
-          if (matchedParts > 0) {
-            isExact = true;
-            matchedStrength = matchedParts === parts.length ? 'EXACT_MATCH' : 'PARTIAL_MATCH';
-            
-            // Check work mode constraints (hybrid, onsite, remote)
-            const origLower = (req.original_text || reqStr).toLowerCase();
-            const hasHybrid = origLower.includes('hybrid');
-            const hasOnsite = origLower.includes('onsite') || origLower.includes('on-site');
-            const hasRemote = origLower.includes('remote');
-            
-            if (hasHybrid || hasOnsite || hasRemote) {
-              const evidenceHasHybrid = rawLower.includes('hybrid');
-              const evidenceHasOnsite = rawLower.includes('onsite') || rawLower.includes('on-site') || /days\s+onsite|days\s+on-site/i.test(rawLower);
-              const evidenceHasRemote = rawLower.includes('remote');
-              
-              let modeSatisfied = false;
-              if (hasHybrid && evidenceHasHybrid) modeSatisfied = true;
-              if (hasOnsite && evidenceHasOnsite) modeSatisfied = true;
-              if (hasRemote && evidenceHasRemote) modeSatisfied = true;
-              
-              if (!modeSatisfied) {
-                matchedStrength = 'PARTIAL_MATCH';
-              }
-            }
-          }
-        }
-      }
 
       // 1f. Heuristic Matches (Problem A, B, C)
       if (!isExact) {
@@ -459,6 +409,211 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       }
     }
 
+    if (req.category === 'location') {
+      const reqStr = reqNameLower.replace(/^location:\s*/gi, '').trim();
+      const baseLocationStr = reqStr.replace(/\((hybrid|remote|onsite).*?\)/gi, '').replace(/[—-].*$/g, '').trim();
+      const parts = baseLocationStr.split(',').map(p => p.trim()).filter(Boolean);
+      
+      let matchedFactsForLocation: CandidateFact[] = [];
+      let isLocationMatched = false;
+
+      if (parts.length > 0) {
+        const contactLocation = candidate.contact?.location?.toLowerCase() || '';
+        let contactMatches = 0;
+        for (const p of parts) {
+          if (contactLocation.includes(p)) contactMatches++;
+        }
+        if (contactMatches === parts.length) {
+           isLocationMatched = true;
+        }
+
+        const summaryFact = candidate.facts.find(f => f.sourceSection === 'summary' && f.type === 'other');
+        if (summaryFact) {
+           const summaryLower = summaryFact.rawText.toLowerCase();
+           let summaryMatches = 0;
+           for (const p of parts) {
+             if (summaryLower.includes(p)) summaryMatches++;
+           }
+           if (summaryMatches === parts.length) {
+             if (summaryLower.includes('relocat') || summaryLower.includes('based in') || summaryLower.includes('onsite') || contactMatches === parts.length) {
+                isLocationMatched = true;
+                matchedFactsForLocation.push(summaryFact);
+             }
+           }
+        }
+
+        const currentExpFacts = candidate.facts.filter(f => {
+            if (f.type !== 'experience') return false;
+            const text = f.rawText.toLowerCase();
+            const currentYear = new Date().getFullYear().toString();
+            return text.includes('present') || text.includes('current') || text.includes(currentYear);
+        });
+        
+        for (const f of currentExpFacts) {
+            let expMatches = 0;
+            const rawLower = f.rawText.toLowerCase();
+            for (const p of parts) {
+                if (rawLower.includes(p)) expMatches++;
+            }
+            if (expMatches === parts.length) {
+                isLocationMatched = true;
+                matchedFactsForLocation.push(f);
+            }
+        }
+        
+        if (isLocationMatched) {
+          let matchedStrength: MatchClassification = 'EXACT_MATCH';
+          
+          const origLower = (req.original_text || reqStr).toLowerCase();
+          const hasHybrid = origLower.includes('hybrid');
+          const hasOnsite = origLower.includes('onsite') || origLower.includes('on-site');
+          const hasRemote = origLower.includes('remote');
+          
+          if (hasHybrid || hasOnsite || hasRemote) {
+            let modeSatisfied = false;
+            for (const f of matchedFactsForLocation) {
+                const text = f.rawText.toLowerCase();
+                if (hasHybrid && text.includes('hybrid')) modeSatisfied = true;
+                if (hasOnsite && (text.includes('onsite') || text.includes('on-site') || /days\s+onsite|days\s+on-site/i.test(text))) modeSatisfied = true;
+                if (hasRemote && text.includes('remote')) modeSatisfied = true;
+            }
+            if (!modeSatisfied) {
+              matchedStrength = 'PARTIAL_MATCH';
+            }
+          }
+
+          matches.push({
+            requirement: req,
+            classification: matchedStrength,
+            confidence: 1.0,
+            explanation: matchedStrength === 'PARTIAL_MATCH' && (hasHybrid || hasOnsite || hasRemote) 
+                ? 'Candidate location matches, but there is no explicit evidence of the required work mode (e.g. hybrid/onsite/remote).'
+                : 'Candidate explicitly matches the required location based on contact info or current employment.',
+            match_tier: 'tier_1_deterministic',
+            evidence: matchedFactsForLocation.map(f => ({
+              source_section: f.sourceSection,
+              source_text: f.rawText,
+              fact_id: f.id,
+              relevance: 'direct',
+              evidence_strength: 'primary',
+              evidence_type: f.type,
+              evidence_tier: 'tier_1_deterministic'
+            }))
+          });
+          continue;
+        } else {
+          matches.push({
+            requirement: req,
+            classification: 'MISSING',
+            confidence: 1.0,
+            explanation: 'Candidate does not appear to be currently located in the required area, and no explicit relocation statement was found.',
+            match_tier: 'tier_1_deterministic',
+            evidence: []
+          });
+          continue;
+        }
+      } else {
+         matches.push({
+            requirement: req,
+            classification: 'ANALYSIS_FAILED',
+            confidence: 0,
+            explanation: 'Location requirement was empty or could not be parsed.',
+            match_tier: 'tier_1_deterministic',
+            evidence: []
+         });
+         continue;
+      }
+    }
+
+    if (reqMinimumYears > 0) {
+      const isGeneric = req.category === 'years' || reqNameLower.replace(/(\d+\+?\s*years?|of|experience|minimum|at least|required|preferred|preferred qualifications?|basic qualifications?|\s)/gi, '').length < 3;
+      
+      let relevantIntervals: Array<{ start: Date, end: Date }> = [];
+      let relevantMaxDuration = 0;
+      let relevantFacts: CandidateFact[] = [];
+      
+      if (isGeneric) {
+        relevantIntervals = experienceIntervals;
+        relevantFacts = candidate.facts.filter(f => f.type === 'experience');
+        for (const f of candidate.facts) {
+          if (f.type !== 'experience' && f.employment_duration_years) {
+            relevantMaxDuration = Math.max(relevantMaxDuration, f.employment_duration_years);
+            relevantFacts.push(f);
+          }
+        }
+      } else {
+        const uniqueIds = new Set<string>();
+        relevantFacts = matchedFacts.map(mf => mf.fact).filter(f => {
+          if (f.type !== 'experience' && f.type !== 'project') return false;
+          if (uniqueIds.has(f.id)) return false;
+          uniqueIds.add(f.id);
+          return true;
+        });
+
+        if (relevantFacts.length === 0) {
+            const strippedKeywords = reqNameLower.replace(/\b\d+\+?\s*(?:years?|yrs?)\b/gi, '')
+                                                 .replace(/\b(of|experience|minimum|at least|required|preferred|basic qualifications?)\b/gi, '')
+                                                 .trim();
+            if (strippedKeywords.length > 3) {
+                const stem = strippedKeywords.replace(/(ing|ed|s|ship|er)$/, '');
+                for (const f of candidate.facts) {
+                    if ((f.type === 'experience' || f.type === 'project') && f.rawText.toLowerCase().includes(stem)) {
+                         if (!uniqueIds.has(f.id)) {
+                             uniqueIds.add(f.id);
+                             relevantFacts.push(f);
+                         }
+                    }
+                }
+            }
+        }
+        
+        for (const f of relevantFacts) {
+          const dateStr = extractDateRangeString(f.rawText);
+          if (dateStr) {
+            const parsed = parseDateRange(dateStr);
+            if (parsed) relevantIntervals.push(parsed);
+          } else if (f.employment_duration_years) {
+            relevantMaxDuration = Math.max(relevantMaxDuration, f.employment_duration_years);
+          }
+        }
+      }
+      
+      let calculatedYears = calculateIntervalsDurationYears(relevantIntervals);
+      calculatedYears = Math.round(calculatedYears * 10) / 10;
+      let finalYears = Math.max(calculatedYears, relevantMaxDuration);
+      
+      let classification: MatchClassification;
+      if (relevantFacts.length === 0) {
+        classification = 'MISSING';
+      } else if (finalYears === 0) {
+        classification = 'ANALYSIS_FAILED';
+      } else if (finalYears >= reqMinimumYears) {
+        classification = 'EXACT_MATCH';
+      } else {
+        classification = 'PARTIAL_MATCH';
+      }
+      
+      const evidenceFacts = relevantFacts.slice(0, 5);
+      
+      matches.push({
+        requirement: req,
+        classification,
+        confidence: 1.0,
+        explanation: `Calculated approximately ${finalYears} years of relevant experience from candidate profile. Requirement was ${reqMinimumYears} years.`,
+        match_tier: 'tier_1_deterministic',
+        evidence: evidenceFacts.map(f => ({
+          source_section: f.sourceSection,
+          source_text: f.rawText,
+          fact_id: f.id,
+          relevance: 'direct',
+          evidence_strength: 'primary',
+          evidence_type: f.type,
+          evidence_tier: 'tier_1_deterministic'
+        }))
+      });
+      continue;
+    }
+
     let fallbackMatch: RequirementMatch | null = null;
 
     if (matchedFacts.length > 0) {
@@ -471,33 +626,15 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
       const limit = (isCompound || req.category === 'experience') ? 5 : 3;
       const topFacts = matchedFacts.filter(mf => mf.score >= bestScore - 5000).slice(0, limit);
       
-      let evidence: MatchEvidence[] = [];
-      if (reqMinimumYears && totalExperienceYears >= reqMinimumYears) {
-        // For total years, use all experience facts with duration, PLUS top substantive bullets
-        const headerFacts = candidate.facts.filter(f => f.type === 'experience' && f.employment_duration_years);
-        const substantiveFacts = topFacts.map(mf => mf.fact).filter(f => !headerFacts.some(hf => hf.id === f.id));
-        const combinedFacts = [...headerFacts, ...substantiveFacts].slice(0, 6);
-        
-        evidence = combinedFacts.map(f => ({
-            source_section: f.sourceSection,
-            source_text: f.rawText,
-            fact_id: f.id,
-            relevance: 'direct',
-            evidence_strength: 'primary',
-            evidence_type: f.type,
-            evidence_tier: topFacts[0].tier
-        }));
-      } else {
-        evidence = topFacts.map(mf => ({
-          source_section: mf.fact.sourceSection,
-          source_text: mf.fact.rawText,
-          fact_id: mf.fact.id,
-          relevance: 'direct',
-          evidence_strength: FACT_PRIORITY[mf.fact.type] <= 3 ? 'primary' : 'secondary',
-          evidence_type: mf.fact.type,
-          evidence_tier: mf.tier
-        }));
-      }
+      let evidence: MatchEvidence[] = topFacts.map(mf => ({
+        source_section: mf.fact.sourceSection,
+        source_text: mf.fact.rawText,
+        fact_id: mf.fact.id,
+        relevance: 'direct',
+        evidence_strength: FACT_PRIORITY[mf.fact.type] <= 3 ? 'primary' : 'secondary',
+        evidence_type: mf.fact.type,
+        evidence_tier: mf.tier
+      }));
 
       // We determine classification based on the strongest matched strength
       let bestStrength: MatchClassification = 'EXACT_MATCH';
@@ -690,7 +827,7 @@ export async function matchRequirements(
         };
 
         // ANTI-HALLUCINATION & EVIDENCE RANKING
-        if (classification !== 'MISSING' && validFacts.length === 0) {
+        if (classification !== 'MISSING' && classification !== 'ANALYSIS_FAILED' && validFacts.length === 0) {
           let bestFact: CandidateFact | undefined = undefined;
           let maxScore = -1; 
           
@@ -724,7 +861,7 @@ export async function matchRequirements(
         }
 
         // If LLM selected a single fact, check if there's a substantially stronger fact available 
-        if (validFacts.length === 1 && classification !== 'MISSING') {
+        if (validFacts.length === 1 && classification !== 'MISSING' && classification !== 'ANALYSIS_FAILED') {
           const validFact = validFacts[0];
           const llmScore = scoreFactForRequirement(validFact, req, classification);
           let bestAlternative: CandidateFact | undefined;
@@ -753,7 +890,7 @@ export async function matchRequirements(
         }
 
         let evidence: MatchEvidence[] = [];
-        if (validFacts.length > 0 && classification !== 'MISSING') {
+        if (validFacts.length > 0 && classification !== 'MISSING' && classification !== 'ANALYSIS_FAILED') {
           for (const f of validFacts) {
             evidence.push({
               source_section: f.sourceSection,

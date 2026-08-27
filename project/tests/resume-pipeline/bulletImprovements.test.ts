@@ -79,12 +79,9 @@ const tests: TestCase[] = [
 
       const validated = validateRewrites(mockLlmOutput, dummyResume, ['Java'], [before1, before2, before3]);
       
-      assert.equal(validated.length, 3); // Wait, they all survive validateRewrites!
-      // But improvementScore is what determines if it's shown in the UI!
-      // Actually, validateRewrites returns all items, but sets improvementScore = 0 for the filtered ones.
+      assert.equal(validated.length, 3);
       
       const improvements = validated.filter(v => v.improvementScore > 0);
-      
       assert.equal(improvements.length, 1);
       assert.equal(improvements[0].after, 'Orchestrated the backend bug fixes and optimized performance');
     }
@@ -130,14 +127,14 @@ Acme Corp | Software Engineer
       const mockOutputMetrics = [
         {
           before: 'helped manage a team of 5 engineers, improving backend performance by 20%.',
-          after: 'Directed a cross-functional team of 5 engineers, optimizing backend systems for 10 clients to improve performance by 20%.',
+          after: 'Managed a cross-functional team of 5 engineers, optimizing backend systems for 10 clients to improve performance by 20%.',
           confidence: 'High'
         }
       ];
       const validatedMetrics = validateRewrites(mockOutputMetrics, resume, ['Java'], [mockOutputMetrics[0].before]);
       const improvementsMetrics = validatedMetrics.filter(v => v.improvementScore > 0);
       assert.equal(improvementsMetrics.length, 1);
-      assert.equal(improvementsMetrics[0].after, 'Directed a cross-functional team of 5 engineers, optimizing backend systems for 10 clients to improve performance by 20%.');
+      assert.equal(improvementsMetrics[0].after, 'Managed a cross-functional team of 5 engineers, optimizing backend systems for 10 clients to improve performance by 20%.');
 
       // 17. A bullet with implied research method
       const mockOutputImpliedMethod = [
@@ -161,9 +158,9 @@ Acme Corp | Software Engineer
         }
       ];
       const validatedNoOutcome = validateRewrites(mockOutputNoOutcome, resume, ['Java'], [mockOutputNoOutcome[0].before]);
-      const improvementsNoOutcome = validatedNoOutcome.filter(v => v.improvementScore > 0);
-      assert.equal(improvementsNoOutcome.length, 0);
-      assert.equal(validatedNoOutcome[0].after, 'Maintained legacy systems using Java.');
+      assert.equal(validatedNoOutcome.length, 1);
+      assert.equal(validatedNoOutcome[0].improvementScore, 0);
+      assert.equal(validatedNoOutcome[0].after, 'No meaningful improvement recommended.');
 
       // 19. A bullet where stronger wording is possible
       const mockOutputStrongerWording = [
@@ -187,9 +184,9 @@ Acme Corp | Software Engineer
         }
       ];
       const validatedNoSafe = validateRewrites(mockOutputNoSafeImprovement, resume, ['Java'], [mockOutputNoSafeImprovement[0].before]);
-      const improvementsNoSafe = validatedNoSafe.filter(v => v.improvementScore > 0);
-      assert.equal(improvementsNoSafe.length, 0);
-      assert.equal(validatedNoSafe[0].after, 'Worked on code.');
+      assert.equal(validatedNoSafe.length, 1);
+      assert.equal(validatedNoSafe[0].improvementScore, 0);
+      assert.equal(validatedNoSafe[0].after, 'No meaningful improvement recommended.');
     }
   }
 ];

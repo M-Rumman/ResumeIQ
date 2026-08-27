@@ -104,9 +104,8 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     const key = match.requirement.id || match.requirement.normalized_name;
     const existing = requirementsMap.get(key);
     
-    // If multiple matches exist for the same requirement, keep the one with the highest contribution
     if (existing) {
-      if (getMatchContribution(match.classification) > getMatchContribution(existing.classification)) {
+      if (existing.classification === 'ANALYSIS_FAILED' || getMatchContribution(match.classification) > getMatchContribution(existing.classification)) {
         requirementsMap.set(key, match);
       }
     }
@@ -149,9 +148,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     } else if (contribution > 0 && contribution < 0.85) {
       weaknesses.push(`Partial match for ${match.requirement.category}: ${match.requirement.normalized_name}`);
     } else if (contribution === 0 && match.requirement.priority === 'required') {
-      if (match.classification === 'ANALYSIS_FAILED') {
-         weaknesses.push(`Analysis failed for required ${match.requirement.category}: ${match.requirement.normalized_name}`);
-      } else {
+      if (match.classification !== 'ANALYSIS_FAILED') {
          weaknesses.push(`Missing required ${match.requirement.category}: ${match.requirement.normalized_name}`);
       }
     }

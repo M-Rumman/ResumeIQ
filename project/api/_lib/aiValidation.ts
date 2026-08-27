@@ -342,6 +342,15 @@ function hasUnsupportedGroundingClaims(before: string, after: string, resumeText
     { pattern: /\b(?:uncovering|uncovered|uncover)\b/i, roots: ['uncover'] },
     { pattern: /\b(?:proving|proved|prove)\b/i, roots: ['prov'] },
     { pattern: /\b(?:demonstrating\s+expertise|demonstrated\s+expertise|showcasing\s+expertise|showcased\s+expertise)\b/i, roots: ['expertise'] },
+    { pattern: /\b(?:managing|managed|manage)\b/i, roots: ['manag'] },
+    { pattern: /\b(?:owning|owned|own)\b/i, roots: ['own'] },
+    { pattern: /\b(?:directing|directed|direct)\b/i, roots: ['direct'] },
+    { pattern: /\b(?:partnering|partnered|partner)\b/i, roots: ['partner'] },
+    { pattern: /\b(?:conducting|conducted|conduct)\b/i, roots: ['conduct'] },
+    { pattern: /\b(?:experienced\s+in|experienced\s+with)\b/i, roots: ['experienc'] },
+    { pattern: /\b(?:responsible\s+for)\b/i, roots: ['responsib'] },
+    { pattern: /\b(?:coordinating|coordinated|coordinate)\b/i, roots: ['coordinat'] },
+    { pattern: /\b(?:setting\s+up|set\s+up)\b/i, roots: ['set up'] },
   ];
 
   for (const check of checks) {
@@ -357,6 +366,7 @@ function hasUnsupportedGroundingClaims(before: string, after: string, resumeText
       });
 
       if (!hasSupportInResume) {
+        console.log('hasUnsupportedGroundingClaims FAILED on:', { check, normAfter, normBefore, normResume });
         return true; // Unsupported claim detected!
       }
     }
@@ -412,10 +422,13 @@ function hasUnsupportedGroundingClaims(before: string, after: string, resumeText
     'resulting', 'results', 'result'
   ].map(w => w.replace(/[^a-z0-9]/g, '')));
 
+  const strippedBefore = normBefore.replace(/[^a-z0-9]/g, '');
+  const strippedResume = normResume.replace(/[^a-z0-9]/g, '');
+
   for (const word of afterWords) {
     if (word.length <= 3) continue;
     if (commonWords.has(word)) continue;
-    if (!normBefore.includes(word) && !normResume.includes(word)) {
+    if (!strippedBefore.includes(word) && !strippedResume.includes(word)) {
       return true; // Unsupported claim detected!
     }
   }
@@ -427,7 +440,8 @@ function generateSafeWordingRewrite(before: string): string {
   let after = before.trim();
   
   const weakLeadingMappings = [
-    { regex: /^(?:helped with|assisted with|worked on setting up|helped set up)\s+/i, replacement: 'Coordinated and set up ' },
+    { regex: /^(?:helped with|assisted with)\s+/i, replacement: 'Supported ' },
+    { regex: /^(?:worked on setting up|helped set up)\s+/i, replacement: 'Supported the setup of ' },
     { regex: /^(?:helped|assisted)\s+/i, replacement: 'Supported ' },
     { regex: /^(?:responsible for running|responsible for)\s+/i, replacement: 'Conducted ' },
     { regex: /^(?:run|ran|did)\s+some\s+/i, replacement: 'Conducted ' },
@@ -469,6 +483,7 @@ export function validateRewrites(
     const pair = value as Record<string, unknown>;
     const before = typeof pair.before === 'string' ? pair.before.trim() : '';
     let after = typeof pair.after === 'string' ? pair.after.trim() : '';
+    console.log('Validating:', { before, after, resumeText });
     if (!before || !source.includes(normalize(before))) continue;
     if (!after) after = before;
     if (hasSensitiveContent(before) || hasSensitiveContent(after)) continue;
@@ -497,96 +512,54 @@ export function validateRewrites(
 
     let finalAfter = after;
     let beforeQuality = scoreBulletQuality(before, targetKeywords);
+    let finalAfterQuality = scoreBulletQuality(after, targetKeywords);
     
-    let finalAfterQuality = beforeQuality;
-    let finalImprovementScore = 0;
-    let isFallback = false;
+    let finalImprovementScore = finalAfterQuality.total - beforeQuality.total;
     const isAlreadyStrong = beforeQuality.total >= 85;
 
     if (isWarningMessage) {
-      finalAfter = after;
-      finalAfterQuality = {
-        ...beforeQuality,
-        total: beforeQuality.total + 1
-      };
-      finalImprovementScore = 1;
-      isFallback = false;
-      confidence = 'Low';
-    } else if (isAlreadyStrong) {
-      finalAfter = before;
+      finalAfter = "No meaningful improvement recommended.";
       finalAfterQuality = beforeQuality;
       finalImprovementScore = 0;
-      isFallback = true;
+      confidence = 'Low';
+    } else if (isAlreadyStrong) {
+      finalAfter = "No meaningful improvement recommended.";
+      finalAfterQuality = beforeQuality;
+      finalImprovementScore = 0;
+      confidence = 'Low';
     } else if (isUngrounded || normalize(before) === normalize(after)) {
       const regenerated = generateSafeWordingRewrite(before);
       if (normalize(regenerated) !== normalize(before)) {
         const regeneratedQuality = scoreBulletQuality(regenerated, targetKeywords);
+        const regenImprovement = regeneratedQuality.total - beforeQuality.total;
         
-        const regeneratedHasMetric = hasQuantification(regenerated);
-        if (!regeneratedHasMetric && regeneratedQuality.breakdown.impact > beforeQuality.breakdown.impact) {
-          regeneratedQuality.breakdown.impact = beforeQuality.breakdown.impact;
-          regeneratedQuality.total = regeneratedQuality.breakdown.relevance +
-                                     regeneratedQuality.breakdown.specificity +
-                                     regeneratedQuality.breakdown.impact +
-                                     regeneratedQuality.breakdown.action +
-                                     regeneratedQuality.breakdown.clarity +
-                                     regeneratedQuality.breakdown.evidence;
-        }
-
-        const improvement = regeneratedQuality.total - beforeQuality.total;
-        if (improvement > 0) {
+        if (regenImprovement > 0) {
           finalAfter = regenerated;
           finalAfterQuality = regeneratedQuality;
-          finalImprovementScore = improvement;
+          finalImprovementScore = regenImprovement;
           confidence = 'High';
-          isFallback = false;
         } else {
-          finalAfter = before;
+          finalAfter = "No meaningful improvement recommended.";
           finalAfterQuality = beforeQuality;
           finalImprovementScore = 0;
           confidence = 'Low';
-          isFallback = true;
         }
       } else {
-        finalAfter = before;
+        finalAfter = "No meaningful improvement recommended.";
         finalAfterQuality = beforeQuality;
         finalImprovementScore = 0;
         confidence = 'Low';
-        isFallback = true;
       }
     } else {
-      const afterQuality = scoreBulletQuality(after, targetKeywords);
-      
-      const afterHasMetric = hasQuantification(after);
-      if (!afterHasMetric && afterQuality.breakdown.impact > beforeQuality.breakdown.impact) {
-        afterQuality.breakdown.impact = beforeQuality.breakdown.impact;
-        afterQuality.total = afterQuality.breakdown.relevance +
-                             afterQuality.breakdown.specificity +
-                             afterQuality.breakdown.impact +
-                             afterQuality.breakdown.action +
-                             afterQuality.breakdown.clarity +
-                             afterQuality.breakdown.evidence;
-      }
-
-      const improvementScore = afterQuality.total - beforeQuality.total;
-
-      if (improvementScore <= 0) {
-        finalAfter = before;
+      if (finalImprovementScore <= 0) {
+        finalAfter = "No meaningful improvement recommended.";
         finalAfterQuality = beforeQuality;
         finalImprovementScore = 0;
-        isFallback = true;
-      } else {
-        finalAfter = after;
-        finalAfterQuality = afterQuality;
-        finalImprovementScore = improvementScore;
+        confidence = 'Low';
       }
     }
     
     if (accepted.some((item) => normalize(String(item.before)) === normalize(before))) continue;
-    
-    if (isFallback || isWarningMessage || finalImprovementScore <= 0 || normalize(before) === normalize(finalAfter)) {
-      continue;
-    }
 
     let reasoning = generateReasoning(beforeQuality, finalAfterQuality, before, finalAfter);
 
