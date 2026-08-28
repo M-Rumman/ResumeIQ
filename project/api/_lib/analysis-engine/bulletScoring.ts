@@ -277,13 +277,19 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
   // 4. ACTION / OWNERSHIP (15 points)
   let action = 5;
   const first = firstWord(text);
-  if (WEAK_VERBS.has(first)) {
+  const textLower = text.toLowerCase();
+  const hasFirstPerson = /\b(i|my|we|our)\b/.test(textLower);
+  const hasWeakOwnershipPhrase = /\b(?:worked\s+on|helped\s+with|assisted\s+with|helped\s+set\s+up|took\s+notes|duties\s+included|responsible\s+for|did\s+some|run\s+surveys)\b/.test(textLower);
+
+  if (hasFirstPerson || hasWeakOwnershipPhrase) {
+    action = 3;
+  } else if (WEAK_VERBS.has(first)) {
     const cleanWords = words.map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
     const hasStrongVerbLater = cleanWords.some(w => STRONG_VERBS.has(w));
     if (hasStrongVerbLater) {
-      action = 8;
+      action = 7;
     } else {
-      action = 6;
+      action = 4;
     }
   } else if (STRONG_VERBS.has(first)) {
     const cleanWords = words.map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
@@ -294,9 +300,9 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
       action = 15;
     }
   } else if (first && first.endsWith('ed')) {
-    action = 13;
+    action = 12;
   } else if (wordCount >= 5) {
-    action = 7;
+    action = 6;
   } else {
     action = 2;
   }
@@ -308,6 +314,10 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
   if (wordCount > 45) clarity -= 2;
   if (wordCount < 8) clarity -= 3;
   if (wordCount < 5) clarity -= 2;
+
+  if (hasFirstPerson) {
+    clarity -= 8;
+  }
 
   let fluffCount = 0;
   for (const w of words) {

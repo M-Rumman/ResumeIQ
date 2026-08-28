@@ -65,7 +65,10 @@ export function generateRecommendations(canonical: CanonicalRequirements | Match
       let whyItMattersText = 'Your current mention lacks depth or metrics.';
       let warningText = 'Add quantified outcomes (e.g. scale, duration, impact) only if accurate. Do not invent metrics.';
       
-      if (isFactualCategory) {
+      if (match.requirement.category === 'location') {
+        whyItMattersText = "The candidate's location matches, but the resume does not establish availability for the required hybrid/onsite schedule.";
+        warningText = "Do not add this unless factually accurate.";
+      } else if (isFactualCategory) {
         whyItMattersText = 'The job requires a specific facet, variation, or context that is currently missing.';
         warningText = 'Update your resume to include the specific missing detail only if it is factually accurate.';
       }

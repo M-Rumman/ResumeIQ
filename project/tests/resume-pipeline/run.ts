@@ -18,6 +18,7 @@ import { educationVerificationTests } from './educationVerification.test.js';
 import { scoringCalibrationTests } from './scoringCalibration.test.js';
 import { bulletImprovementsScoringTests } from './bulletImprovementsScoring.test.js';
 import { hiringSummaryTests } from './hiringSummary.test.js';
+import { correctionsVerificationTests } from './correctionsVerification.test.js';
 
 type TestCase = { name: string; run: () => void; expectedFailure?: boolean };
 
@@ -1537,6 +1538,7 @@ tests.push(...educationVerificationTests);
 tests.push(...scoringCalibrationTests);
 tests.push(...bulletImprovementsScoringTests);
 tests.push(...hiringSummaryTests);
+tests.push(...correctionsVerificationTests);
 
 type AsyncTestCase = { name: string; run: () => void | Promise<void>; expectedFailure?: boolean };
 

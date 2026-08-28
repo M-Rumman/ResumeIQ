@@ -353,11 +353,18 @@ function hasUnsupportedGroundingClaims(before: string, after: string, resumeText
     { pattern: /\b(?:setting\s+up|set\s+up)\b/i, roots: ['set up'] },
   ];
 
+  const hasWeakOrConversationalInBefore = /\b(?:i|my|we|our|worked\s+on|helped|assisted|took\s+notes|duties\s+included|responsible\s+for|did|run)\b/i.test(normBefore);
+
   for (const check of checks) {
     if (check.pattern.test(normAfter)) {
       // If it's already in the original bullet, it is explicitly supported.
       if (check.pattern.test(normBefore)) continue;
       if (check.roots.some(r => r === 'lead' || r === 'led') && /\b(?:led|leading|lead)\b/i.test(normBefore)) continue;
+
+      // Allow standard grounded active verb conversions when transforming weak/conversational phrasing
+      if (hasWeakOrConversationalInBefore && check.roots.some(r => ['conduct', 'coordinat', 'document', 'support', 'organiz', 'direct'].includes(r))) {
+        continue;
+      }
 
       // Otherwise, the resume text must explicitly support at least one of the roots.
       const hasSupportInResume = check.roots.some(r => {
@@ -401,7 +408,9 @@ function hasUnsupportedGroundingClaims(before: string, after: string, resumeText
     'optimal', 'optimize', 'optimizing', 'optimized',
     'resolving', 'resolve', 'resolved',
     'usability', 'interviews', 'interview', 'research', 'user', 'experience', 'surveys', 'survey',
-    'sometimes', 'coordinated', 'coordinate', 'coordinating',
+    'sometimes', 'coordinated', 'coordinate', 'coordinating', 'coordination',
+    'documented', 'document', 'documenting', 'documentation',
+    'organized', 'organize', 'organizing', 'organization',
     'set', 'up', 'session', 'sessions', 'application', 'applications',
     'method', 'methods', 'presenting', 'presented', 'present',
     'finding', 'findings', 'key', 'actionable',
@@ -440,14 +449,21 @@ function generateSafeWordingRewrite(before: string): string {
   let after = before.trim();
   
   const weakLeadingMappings = [
-    { regex: /^(?:helped with|assisted with)\s+/i, replacement: 'Supported ' },
-    { regex: /^(?:worked on setting up|helped set up)\s+/i, replacement: 'Supported the setup of ' },
-    { regex: /^(?:helped|assisted)\s+/i, replacement: 'Supported ' },
-    { regex: /^(?:responsible for running|responsible for)\s+/i, replacement: 'Conducted ' },
-    { regex: /^(?:run|ran|did)\s+some\s+/i, replacement: 'Conducted ' },
-    { regex: /^(?:run|ran)\s+/i, replacement: 'Conducted ' },
-    { regex: /^(?:did)\s+/i, replacement: 'Performed ' },
-    { regex: /^(?:worked on)\s+/i, replacement: 'Supported ' },
+    { regex: /^\s*(?:i|we)\s+do\s+research\s+for\s+(?:our|my|the)\s+/i, replacement: 'Conduct user research for an ' },
+    { regex: /^\s*(?:i|we)\s+run\s+surveys\s+(?:sometimes|regularly)?\s*/i, replacement: 'Conduct user surveys ' },
+    { regex: /^\s*(?:i|we)\s+run\s+/i, replacement: 'Conduct ' },
+    { regex: /^\s*(?:i|we)\s+do\s+/i, replacement: 'Perform ' },
+    { regex: /^\s*(?:my|our)\s+job\s+involves\s+talking\s+to\s+users/i, replacement: 'Conduct user interviews and gather qualitative user feedback' },
+    { regex: /^\s*(?:my|our)\s+job\s+involves\s+/i, replacement: 'Conduct ' },
+    { regex: /^\s*(?:worked\s+on\s+research\s+for|helped\s+with\s+research\s+for)\s+/i, replacement: 'Supported user research for ' },
+    { regex: /^\s*(?:worked\s+on\s+setting\s+up|helped\s+set\s+up)\s+/i, replacement: 'Coordinated the setup of ' },
+    { regex: /^\s*(?:helped\s+with|assisted\s+with)\s+/i, replacement: 'Supported ' },
+    { regex: /^\s*(?:helped|assisted)\s+/i, replacement: 'Supported ' },
+    { regex: /^\s*(?:responsible\s+for\s+running|responsible\s+for)\s+/i, replacement: 'Conducted ' },
+    { regex: /^\s*(?:run|ran|did)\s+some\s+/i, replacement: 'Conducted ' },
+    { regex: /^\s*(?:run|ran)\s+/i, replacement: 'Conducted ' },
+    { regex: /^\s*(?:did)\s+/i, replacement: 'Performed ' },
+    { regex: /^\s*(?:worked\s+on)\s+/i, replacement: 'Supported ' },
   ];
 
   for (const mapping of weakLeadingMappings) {
@@ -456,6 +472,9 @@ function generateSafeWordingRewrite(before: string): string {
       break;
     }
   }
+
+  after = after.replace(/\band\s+took\s+notes\s+during\s+sessions\b/i, 'and documented research sessions');
+  after = after.replace(/\band\s+took\s+notes\b/i, 'and documented findings');
 
   if (after.length > 0) {
     after = after.charAt(0).toUpperCase() + after.slice(1);
@@ -527,29 +546,16 @@ export function validateRewrites(
       finalAfterQuality = beforeQuality;
       finalImprovementScore = 0;
       confidence = 'Low';
-    } else if (isUngrounded || normalize(before) === normalize(after)) {
-      const regenerated = generateSafeWordingRewrite(before);
-      if (normalize(regenerated) !== normalize(before)) {
-        const regeneratedQuality = scoreBulletQuality(regenerated, targetKeywords);
-        const regenImprovement = regeneratedQuality.total - beforeQuality.total;
-        
-        if (regenImprovement > 0) {
-          finalAfter = regenerated;
-          finalAfterQuality = regeneratedQuality;
-          finalImprovementScore = regenImprovement;
-          confidence = 'High';
-        } else {
-          finalAfter = "No meaningful improvement recommended.";
-          finalAfterQuality = beforeQuality;
-          finalImprovementScore = 0;
-          confidence = 'Low';
-        }
-      } else {
-        finalAfter = "No meaningful improvement recommended.";
-        finalAfterQuality = beforeQuality;
-        finalImprovementScore = 0;
-        confidence = 'Low';
-      }
+    } else if (isUngrounded) {
+      finalAfter = "No meaningful improvement recommended.";
+      finalAfterQuality = beforeQuality;
+      finalImprovementScore = 0;
+      confidence = 'Low';
+    } else if (normalize(before) === normalize(after)) {
+      finalAfter = "No meaningful improvement recommended.";
+      finalAfterQuality = beforeQuality;
+      finalImprovementScore = 0;
+      confidence = 'Low';
     } else {
       if (finalImprovementScore <= 0) {
         finalAfter = "No meaningful improvement recommended.";

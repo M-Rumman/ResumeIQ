@@ -49,17 +49,32 @@ export function sortMatches(matches: RequirementMatch[]): RequirementMatch[] {
     const bWeight = getRequirementWeight(b.requirement);
     if (aWeight !== bWeight) return bWeight - aWeight;
 
-    // 3. Confidence
-    const aConf = a.confidence || 0;
-    const bConf = b.confidence || 0;
-    if (aConf !== bConf) return bConf - aConf;
-
-    // 4. Evidence Quality
+    // 3. Evidence Tier Quality
     const aTier = getEvidenceTierScore(a.match_tier);
     const bTier = getEvidenceTierScore(b.match_tier);
     if (aTier !== bTier) return bTier - aTier;
 
-    // 5. Stable tie-breaker (alphabetical)
+    // 4. Evidence Specificity & Quantification
+    const getEvidenceQualityScore = (m: RequirementMatch) => {
+      let score = 0;
+      for (const ev of m.evidence || []) {
+        const text = ev.source_text || '';
+        if (/\b(?:\d+%|\$\d+|\d+x|\d+k|\d+,\d+|\d+\+)\b/i.test(text)) score += 10;
+        if (text.length > 40) score += 5;
+        if (ev.evidence_strength === 'primary') score += 5;
+      }
+      return score;
+    };
+    const aQual = getEvidenceQualityScore(a);
+    const bQual = getEvidenceQualityScore(b);
+    if (aQual !== bQual) return bQual - aQual;
+
+    // 5. Confidence
+    const aConf = a.confidence || 0;
+    const bConf = b.confidence || 0;
+    if (aConf !== bConf) return bConf - aConf;
+
+    // 6. Stable tie-breaker (alphabetical)
     const aName = a.requirement.normalized_name || '';
     const bName = b.requirement.normalized_name || '';
     return aName.localeCompare(bName);
@@ -73,7 +88,7 @@ export function rankStrengths(finalizedMatches: RequirementMatch[]): Requirement
 
 export function evaluateScores(job: JobProfile, candidate: CandidateProfile, canonical: CanonicalRequirements | MatchingResult): EvaluationResult {
   if (job.requirements.length === 0) {
-    throw new AiPipelineError('evaluator', 'INVARIANT_FAILED', 'Cannot evaluate scores for an empty requirement set.');
+    throw new AiPipelineError('evaluator' as any, 'INVARIANT_FAILED', 'Cannot evaluate scores for an empty requirement set.');
   }
 
   // 1. Job Match Scoring (Mathematically calculated from requirements)

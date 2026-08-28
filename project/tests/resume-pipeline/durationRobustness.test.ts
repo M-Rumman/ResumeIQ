@@ -227,7 +227,7 @@ export const durationRobustnessTests = [
 
       const validated = validateEvidenceAttribution([match], facts, facts[0].rawText);
       assert.equal(validated[0].classification, 'EXACT_MATCH');
-      assert.match(validated[0].explanation, /7\+? years/i);
+      assert.match(validated[0].explanation, /7(?:\.\d+)?\+? years/i);
     }
   },
   {

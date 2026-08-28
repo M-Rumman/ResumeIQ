@@ -90,7 +90,7 @@ export function applyStrictGroundingRules(
   let classification = match.classification;
   let explanation = match.explanation;
 
-  if (classification !== 'EXACT_MATCH' && classification !== 'STRONG_SEMANTIC_MATCH') {
+  if (classification !== 'EXACT_MATCH' && classification !== 'STRONG_SEMANTIC_MATCH' && classification !== 'PARTIAL_MATCH') {
     return { classification, explanation, validatedEvidence };
   }
 
@@ -116,14 +116,14 @@ export function applyStrictGroundingRules(
       
       if (!modeSatisfied) {
         classification = 'PARTIAL_MATCH';
-        explanation = `Downgraded: Candidate location matches, but there is no evidence in the resume demonstrating capability or willingness for the required work mode (${hasHybrid ? 'hybrid' : hasOnsite ? 'onsite' : 'remote'}).`;
+        explanation = `The candidate's location matches, but the resume does not establish availability for the required hybrid/onsite schedule. Do not add this unless factually accurate.`;
         return { classification, explanation, validatedEvidence };
       }
     }
   }
 
   // Seniority Validation (Case 2)
-  const isSeniorRoleReq = (match.requirement.category === 'seniority' || match.requirement.category === 'experience' || match.requirement.category === 'role' || match.requirement.category === 'hard skill') &&
+  const isSeniorRoleReq = (match.requirement.category === 'seniority' || match.requirement.category === 'experience' || (match.requirement.category as string) === 'role' || match.requirement.category === 'hard skill') &&
     (/(^|\b)senior\b/i.test(reqNameLower) || /(^|\b)senior\b/i.test(reqTextLower) || /(^|\b)sr\b/i.test(reqNameLower) || /(^|\b)sr\b/i.test(reqTextLower) || /(^|\b)lead\b/i.test(reqNameLower) || /(^|\b)lead\b/i.test(reqTextLower));
   if (isSeniorRoleReq) {
     const hasSeniorityEvidence = 
@@ -139,9 +139,13 @@ export function applyStrictGroundingRules(
   }
 
   // Experience Duration Check (Case 3)
-  const matchMinYears = (reqTextLower + ' ' + reqNameLower).match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i);
-  const reqMinYears = match.requirement.minimum_years || (matchMinYears && matchMinYears[1] ? parseInt(matchMinYears[1], 10) : 0);
-  if (reqMinYears > 0 && (match.requirement.category === 'experience' || match.requirement.category === 'years' || match.requirement.category === 'seniority' || reqNameLower.includes('experience') || reqNameLower.includes('years'))) {
+  const matchMinYears = (reqTextLower + ' ' + reqNameLower).match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i) ||
+                        (reqTextLower + ' ' + reqNameLower).match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\+|\s+plus)?\s*(?:years?|yrs?)\b/i);
+  const WORD_TO_NUM: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+  const parsedMinYears = matchMinYears ? (matchMinYears[1] && /^\d+$/.test(matchMinYears[1]) ? parseInt(matchMinYears[1], 10) : WORD_TO_NUM[matchMinYears[1].toLowerCase()] || 0) : 0;
+  const reqMinYears = match.requirement.minimum_years || parsedMinYears;
+
+  if (reqMinYears > 0) {
     const intervalsWithInternship: Array<{ start: Date, end: Date }> = [];
     const intervalsWithoutInternship: Array<{ start: Date, end: Date }> = [];
     let hasAmbiguous = false;
@@ -206,11 +210,11 @@ export function applyStrictGroundingRules(
     }
     
     if (hasInternship && roundedWith !== roundedWithout) {
-      basisExplanation = `Approximately ${Math.floor(roundedWith)} years including internship experience; approximately ${Math.floor(roundedWithout)}+ years excluding internship.`;
+      basisExplanation = `Approximately ${roundedWith} years including internship experience; approximately ${roundedWithout} years excluding internship.`;
     } else {
       const startStr = minYearInRoles ? String(minYearInRoles) : 'unknown';
       const endStr = maxYearInRoles === new Date().getFullYear() ? 'present' : maxYearInRoles ? String(maxYearInRoles) : 'present';
-      basisExplanation = `Approximately ${Math.floor(roundedWithout)}+ years of relevant research experience based on roles from ${startStr} to ${endStr}.`;
+      basisExplanation = `Approximately ${roundedWithout} years of relevant research experience based on roles from ${startStr} to ${endStr}.`;
     }
     
     if (hasAmbiguous) {

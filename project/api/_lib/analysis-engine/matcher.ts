@@ -296,9 +296,12 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
     const reqNameLower = req.normalized_name.toLowerCase().trim();
     const reqClean = reqNameLower.replace(/[^a-z0-9]/g, '');
     
-    const textToSearch = req.original_text || req.normalized_name || '';
-    const match = textToSearch.match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i);
-    const reqMinimumYears = req.minimum_years || (match && match[1] ? parseInt(match[1], 10) : 0);
+    const textToSearch = (req.original_text || '') + ' ' + (req.normalized_name || '');
+    const matchDigit = textToSearch.match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i);
+    const matchWord = textToSearch.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\+|\s+plus)?\s*(?:years?|yrs?)\b/i);
+    const WORD_MAP: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+    const parsedYears = matchDigit ? parseInt(matchDigit[1], 10) : (matchWord ? WORD_MAP[matchWord[1].toLowerCase()] || 0 : 0);
+    const reqMinimumYears = req.minimum_years || parsedYears;
 
     for (const fact of prioritizedFacts) {
       if (!isValidEvidenceForCategory(fact.type, req.category)) continue;
@@ -487,7 +490,7 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
             classification: matchedStrength,
             confidence: 1.0,
             explanation: matchedStrength === 'PARTIAL_MATCH' && (hasHybrid || hasOnsite || hasRemote) 
-                ? 'Candidate location matches, but there is no explicit evidence of the required work mode (e.g. hybrid/onsite/remote).'
+                ? "The candidate's location matches, but the resume does not establish availability for the required hybrid/onsite schedule. Do not add this unless factually accurate."
                 : 'Candidate explicitly matches the required location based on contact info or current employment.',
             match_tier: 'tier_1_deterministic',
             evidence: matchedFactsForLocation.map(f => ({

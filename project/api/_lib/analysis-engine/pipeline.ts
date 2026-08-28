@@ -124,11 +124,14 @@ export async function runAnalysisPipeline(
     m.classification === 'PARTIAL_MATCH' || m.classification === 'UNDER_EXPRESSED'
   );
 
-  // Prioritize bullets that have relevance to partial/under-expressed requirements
+  // Prioritize bullets that have relevance to partial/under-expressed requirements (Mode A)
+  // or intrinsic resume-quality weaknesses like conversational wording/weak verbs (Mode B)
   const weakCandidates = candidateContexts
     .map(b => {
       const text = b.text.toLowerCase();
       let priorityScore = 0;
+
+      // Mode A: JD Gap Relevance
       for (const req of partialAndUnderExpressed) {
         const reqName = req.requirement.normalized_name.toLowerCase();
         if (text.includes(reqName)) {
@@ -142,8 +145,16 @@ export async function runAnalysisPipeline(
           }
         }
       }
-      
+
+      // Mode B: Intrinsic Resume-Quality Weaknesses
+      const isConversational = /\b(i|my|we|our)\b/.test(text);
+      const hasWeakOwnership = /\b(?:worked\s+on|helped\s+with|assisted\s+with|helped\s+set\s+up|took\s+notes|duties\s+included|responsible\s+for|did\s+some|run\s+surveys)\b/.test(text);
       const qualityScore = scoreBulletQuality(b.text, targetKeywords).total;
+
+      if (isConversational) priorityScore += 500;
+      if (hasWeakOwnership) priorityScore += 500;
+      if (qualityScore < 75) priorityScore += (80 - qualityScore) * 10;
+
       return { ...b, qualityScore, priorityScore };
     })
     .sort((a, b) => {
@@ -313,7 +324,7 @@ export async function runAnalysisPipeline(
       missing: allMissingSkills,
       analysisFailed: analysisFailedSkills
     },
-    requirementBreakdown: sortMatches(evaluationResult.finalizedMatches),
+    requirementBreakdown: evaluationResult.finalizedMatches,
     coachingReport: [],
     atsBreakdown: evaluationResult.atsBreakdown,
     roleStrengths: allStrongSkills,
