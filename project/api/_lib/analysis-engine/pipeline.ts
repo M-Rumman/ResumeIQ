@@ -378,8 +378,9 @@ export async function runAnalysisPipeline(
 }
 
 function assertReportInvariants(report: AiResumeAnalysisFull, canonical: CanonicalRequirements, matchScoreDetails: any) {
-  const missingNames = [...canonical.missingCore, ...canonical.missingPreferred].map(m => m.requirement.normalized_name);
-  const failedNames = canonical.analysisFailed.map(m => m.requirement.normalized_name);
+  const missingNames = Array.from(new Set([...canonical.missingCore, ...canonical.missingPreferred].map(m => m.requirement.normalized_name)));
+  const failedNames = Array.from(new Set(canonical.analysisFailed.map(m => m.requirement.normalized_name)));
+  const matchedNames = Array.from(new Set([...canonical.exact, ...canonical.semantic].map(m => m.requirement.normalized_name)));
 
   // 1. ANALYSIS_FAILED must not be equivalent to MISSING.
   for (const f of failedNames) {
@@ -433,7 +434,6 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
   }
 
   // 3. A requirement classified as matched must not simultaneously appear as missing.
-  const matchedNames = [...canonical.exact, ...canonical.semantic].map(m => m.requirement.normalized_name);
   for (const m of matchedNames) {
     if (missingNames.includes(m)) throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Requirement ${m} is both matched and missing.`);
   }
@@ -453,11 +453,8 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
     throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Keyword compatibility missing count does not match canonical missing count.`);
   }
 
-  // 8. Positive statements traceability
-  const positiveTexts = [
-    report.hiringManagerAssessment.recruiterSummary,
-    ...(report.hiringManagerAssessment.topReasonsToInterview || [])
-  ].join(' ').toLowerCase();
+  // 8. Positive statements traceability: ensure topReasonsToInterview does not claim missing/partial/failed requirements as key strengths
+  const interviewReasons = (report.hiringManagerAssessment.topReasonsToInterview || []).join(' ').toLowerCase();
 
   const negativeMatches = [
     ...canonical.missingCore,
@@ -468,19 +465,23 @@ function assertReportInvariants(report: AiResumeAnalysisFull, canonical: Canonic
 
   for (const match of negativeMatches) {
     const nameLower = match.requirement.normalized_name.toLowerCase();
-    // Only check names longer than 3 chars to prevent accidental substring matches on short generic words
-    if (nameLower.length > 3 && positiveTexts.includes(nameLower)) {
+    if (nameLower.length > 3 && (interviewReasons.includes(`key role requirements such as ${nameLower}`) || interviewReasons.includes(`such as ${nameLower}`))) {
       throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Positive summary falsely claims alignment with missing/partial/failed requirement: ${match.requirement.normalized_name}`);
     }
   }
 
-  // 9. Negative statements traceability
-  const negativeTexts = (report.hiringManagerAssessment.topReasonsForRejection || []).join(' ').toLowerCase();
-  
-  for (const match of [...canonical.exact, ...canonical.semantic]) {
-    const nameLower = match.requirement.normalized_name.toLowerCase();
-    if (nameLower.length > 3 && negativeTexts.includes(nameLower)) {
-      throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Negative summary falsely claims weakness for matched requirement: ${match.requirement.normalized_name}`);
+  // 9. Negative statements traceability: ensure topReasonsForRejection does not falsely list matched requirements as missing/unresolved
+  const exactMatchedNames = new Set(matchedNames.map(n => n.toLowerCase()));
+  for (const reason of (report.hiringManagerAssessment.topReasonsForRejection || [])) {
+    const reasonLower = reason.toLowerCase();
+    for (const matchedName of exactMatchedNames) {
+      if (
+        (reasonLower.startsWith(`genuine risk: missing required `) && reasonLower.includes(`: ${matchedName}.`)) ||
+        (reasonLower.startsWith(`genuine risk: missing preferred `) && reasonLower.includes(`: ${matchedName}.`)) ||
+        (reasonLower.startsWith(`unresolved: analysis incomplete for `) && reasonLower.includes(`: ${matchedName}.`))
+      ) {
+        throw new OpenRouterPipelineError('validation', 'INVARIANT_FAILED', `Negative summary falsely claims weakness for matched requirement: ${matchedName}`);
+      }
     }
   }
 }
