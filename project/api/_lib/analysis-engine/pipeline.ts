@@ -97,16 +97,16 @@ export async function runAnalysisPipeline(
 
   // Extract true accomplishment bullets using candidate facts to avoid job titles and metadata
   const candidateContexts = candidateProfile.facts
-    .filter(f => f.type === 'experience' || f.type === 'project')
+    .filter(f => f.type === 'experience' || f.type === 'project' || (f.type === 'other' && f.sourceSection === 'summary'))
     .flatMap(f => f.evidence.split('\n').map(line => ({
       text: line.replace(/^[•\-\*·\s]+/, '').trim(),
       sourceContext: f.rawText
     })))
     .filter(b => {
       const text = b.text;
-      if (text.length < 30) return false;
-      if (/\b(?:19|20)\d{2}\b/.test(text)) return false; // Often contains years -> metadata
-      if (text.includes('|') || text.includes('—')) return false; // Common separators in headers
+      if (text.length < 12) return false;
+      if (/^(?:19|20)\d{2}\s*[-–—]\s*(?:(?:19|20)\d{2}|present|current|now)$/i.test(text)) return false;
+      if (/^[a-zA-Z\s,]+[|—–-]\s*(?:19|20)\d{2}/i.test(text) && text.length < 40) return false;
       return true;
     });
 
@@ -124,14 +124,14 @@ export async function runAnalysisPipeline(
     m.classification === 'PARTIAL_MATCH' || m.classification === 'UNDER_EXPRESSED'
   );
 
-  // Prioritize bullets that have relevance to partial/under-expressed requirements (Mode A)
-  // or intrinsic resume-quality weaknesses like conversational wording/weak verbs (Mode B)
+  // Prioritize bullets that have relevance to partial/under-expressed requirements (Trigger A)
+  // or intrinsic resume-quality weaknesses like conversational wording/weak verbs/lack of specificity (Trigger B)
   const weakCandidates = candidateContexts
     .map(b => {
       const text = b.text.toLowerCase();
       let priorityScore = 0;
 
-      // Mode A: JD Gap Relevance
+      // Trigger A: JD Gap Relevance
       for (const req of partialAndUnderExpressed) {
         const reqName = req.requirement.normalized_name.toLowerCase();
         if (text.includes(reqName)) {
@@ -146,14 +146,16 @@ export async function runAnalysisPipeline(
         }
       }
 
-      // Mode B: Intrinsic Resume-Quality Weaknesses
-      const isConversational = /\b(i|my|we|our)\b/.test(text);
-      const hasWeakOwnership = /\b(?:worked\s+on|helped\s+with|assisted\s+with|helped\s+set\s+up|took\s+notes|duties\s+included|responsible\s+for|did\s+some|run\s+surveys)\b/.test(text);
+      // Trigger B: Intrinsic Resume-Quality Weaknesses
+      const isConversational = /\b(i|my|we|our|me)\b/.test(text);
+      const hasWeakOwnership = /\b(?:worked\s+on|helped\s+with|assisted\s+with|helped\s+set\s+up|took\s+notes|duties\s+included|responsible\s+for|did\s+some|run\s+surveys|assisted|helped)\b/.test(text);
+      const hasVaguePhrasing = /\b(?:sometimes|a few|did research|worked with users|various|etc)\b/.test(text);
       const qualityScore = scoreBulletQuality(b.text, targetKeywords).total;
 
-      if (isConversational) priorityScore += 500;
-      if (hasWeakOwnership) priorityScore += 500;
-      if (qualityScore < 75) priorityScore += (80 - qualityScore) * 10;
+      if (isConversational) priorityScore += 800;
+      if (hasWeakOwnership) priorityScore += 600;
+      if (hasVaguePhrasing) priorityScore += 500;
+      if (qualityScore < 80) priorityScore += (85 - qualityScore) * 15;
 
       return { ...b, qualityScore, priorityScore };
     })

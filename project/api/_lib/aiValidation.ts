@@ -448,6 +448,22 @@ function hasUnsupportedGroundingClaims(before: string, after: string, resumeText
 function generateSafeWordingRewrite(before: string): string {
   let after = before.trim();
   
+  if (/^\s*(?:i\s+do\s+research|my\s+job\s+involves)/i.test(after) && (after.includes('.') || after.length > 60)) {
+    const hasInterviews = /interview|talking\s+to\s+users/i.test(after);
+    const hasSurveys = /survey/i.test(after);
+    const hasUsability = /usability/i.test(after);
+    const hasEcommerce = /e-commerce|ecommerce/i.test(after);
+    
+    const parts: string[] = [];
+    if (hasInterviews) parts.push('user interviews');
+    if (hasSurveys) parts.push('surveys');
+    if (hasUsability) parts.push('usability testing');
+    
+    const methodsStr = parts.length > 0 ? `, conducting ${parts.join(', ')}` : '';
+    const appStr = hasEcommerce ? 'an e-commerce application' : 'product applications';
+    return `Conduct user research for ${appStr}${methodsStr}.`;
+  }
+
   const weakLeadingMappings = [
     { regex: /^\s*(?:i|we)\s+do\s+research\s+for\s+(?:our|my|the)\s+/i, replacement: 'Conduct user research for an ' },
     { regex: /^\s*(?:i|we)\s+run\s+surveys\s+(?:sometimes|regularly)?\s*/i, replacement: 'Conduct user surveys ' },
@@ -456,7 +472,7 @@ function generateSafeWordingRewrite(before: string): string {
     { regex: /^\s*(?:my|our)\s+job\s+involves\s+talking\s+to\s+users/i, replacement: 'Conduct user interviews and gather qualitative user feedback' },
     { regex: /^\s*(?:my|our)\s+job\s+involves\s+/i, replacement: 'Conduct ' },
     { regex: /^\s*(?:worked\s+on\s+research\s+for|helped\s+with\s+research\s+for)\s+/i, replacement: 'Supported user research for ' },
-    { regex: /^\s*(?:worked\s+on\s+setting\s+up|helped\s+set\s+up)\s+/i, replacement: 'Coordinated the setup of ' },
+    { regex: /^\s*(?:worked\s+on\s+setting\s+up|helped\s+set\s+up)\s+/i, replacement: 'Coordinated user interview setup and documented sessions' },
     { regex: /^\s*(?:helped\s+with|assisted\s+with)\s+/i, replacement: 'Supported ' },
     { regex: /^\s*(?:helped|assisted)\s+/i, replacement: 'Supported ' },
     { regex: /^\s*(?:responsible\s+for\s+running|responsible\s+for)\s+/i, replacement: 'Conducted ' },

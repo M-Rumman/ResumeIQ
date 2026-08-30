@@ -117,11 +117,10 @@ function BulletImprovementGuide({ items, candidateBulletsCount }: { items: Premi
                     </h4>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 text-xs text-gray-700">
                       <div>Relevance: <span className="font-semibold">{item.beforeScoreBreakdown?.relevance ?? 0}</span>/20</div>
-                      <div>Specificity: <span className="font-semibold">{item.beforeScoreBreakdown?.specificity ?? 0}</span>/15</div>
+                      <div>Specificity: <span className="font-semibold">{item.beforeScoreBreakdown?.specificity ?? 0}</span>/20</div>
                       <div>Impact: <span className="font-semibold">{item.beforeScoreBreakdown?.impact ?? 0}</span>/20</div>
-                      <div>Action: <span className="font-semibold">{item.beforeScoreBreakdown?.action ?? 0}</span>/15</div>
-                      <div>Clarity: <span className="font-semibold">{item.beforeScoreBreakdown?.clarity ?? 0}</span>/15</div>
-                      <div>Evidence: <span className="font-semibold">{item.beforeScoreBreakdown?.evidence ?? 0}</span>/15</div>
+                      <div>Action: <span className="font-semibold">{item.beforeScoreBreakdown?.action ?? 0}</span>/20</div>
+                      <div>Clarity: <span className="font-semibold">{item.beforeScoreBreakdown?.clarity ?? 0}</span>/20</div>
                     </div>
                   </div>
 
@@ -132,11 +131,10 @@ function BulletImprovementGuide({ items, candidateBulletsCount }: { items: Premi
                     </h4>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 text-xs text-gray-700">
                       <div>Relevance: <span className="font-semibold">{item.afterScoreBreakdown?.relevance ?? 0}</span>/20</div>
-                      <div>Specificity: <span className="font-semibold">{item.afterScoreBreakdown?.specificity ?? 0}</span>/15</div>
+                      <div>Specificity: <span className="font-semibold">{item.afterScoreBreakdown?.specificity ?? 0}</span>/20</div>
                       <div>Impact: <span className="font-semibold">{item.afterScoreBreakdown?.impact ?? 0}</span>/20</div>
-                      <div>Action: <span className="font-semibold">{item.afterScoreBreakdown?.action ?? 0}</span>/15</div>
-                      <div>Clarity: <span className="font-semibold">{item.afterScoreBreakdown?.clarity ?? 0}</span>/15</div>
-                      <div>Evidence: <span className="font-semibold">{item.afterScoreBreakdown?.evidence ?? 0}</span>/15</div>
+                      <div>Action: <span className="font-semibold">{item.afterScoreBreakdown?.action ?? 0}</span>/20</div>
+                      <div>Clarity: <span className="font-semibold">{item.afterScoreBreakdown?.clarity ?? 0}</span>/20</div>
                     </div>
                   </div>
                 </div>
@@ -198,11 +196,20 @@ export function AtsScoreExplanation({ explanation }: { explanation: PremiumResul
 function ResumeQualityCard({ breakdown }: { breakdown: PremiumResults['engine']['atsBreakdown'] }) {
   const qualityItems = breakdown.filter(i => i.label !== 'Section Recognition' && i.label !== 'Readability & Formatting');
   if (qualityItems.length === 0) return null;
+  const qualityTotal = qualityItems.reduce((acc, curr) => acc + curr.score, 0);
+  const qualityMax = qualityItems.reduce((acc, curr) => acc + curr.maximum, 0);
+
   return (
-    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-      <div className="flex items-center gap-2 mb-5">
-        <FileText className="w-5 h-5 text-[#3c4a59]" />
-        <h3 className="font-bold text-gray-900">Resume Quality</h3>
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mt-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <FileText className="w-5 h-5 text-[#3c4a59]" />
+          <div>
+            <h3 className="font-bold text-gray-900">Resume Content Quality</h3>
+            <p className="text-xs text-gray-700">Writing strength, action phrasing, and measurable impact</p>
+          </div>
+        </div>
+        <span className="text-sm font-extrabold text-[#3c4a59]">{qualityTotal} / {qualityMax}</span>
       </div>
       <div className="space-y-3">
         {qualityItems.map((item) => (
@@ -222,11 +229,20 @@ function ResumeQualityCard({ breakdown }: { breakdown: PremiumResults['engine'][
 function AtsHealthCard({ breakdown }: { breakdown: PremiumResults['engine']['atsBreakdown'] }) {
   const healthItems = breakdown.filter(i => i.label === 'Section Recognition' || i.label === 'Readability & Formatting');
   if (healthItems.length === 0) return null;
+  const healthTotal = healthItems.reduce((acc, curr) => acc + curr.score, 0);
+  const healthMax = healthItems.reduce((acc, curr) => acc + curr.maximum, 0);
+
   return (
-    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-      <div className="flex items-center gap-2 mb-5">
-        <Target className="w-5 h-5 text-emerald-600" />
-        <h3 className="font-bold text-gray-900">ATS Health</h3>
+    <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mt-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Target className="w-5 h-5 text-emerald-600" />
+          <div>
+            <h3 className="font-bold text-gray-900">ATS Machine Parseability</h3>
+            <p className="text-xs text-gray-700">Machine extraction, section recognition, and layout health</p>
+          </div>
+        </div>
+        <span className="text-sm font-extrabold text-emerald-700">{healthTotal} / {healthMax}</span>
       </div>
       <div className="space-y-3">
         {healthItems.map((item) => (
@@ -1034,7 +1050,10 @@ function ResumeResultsBody({ results }: { results: PremiumResumeDisplayResults }
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Target className="w-5 h-5 text-[#3c4a59]" />
-                    <h3 className="font-bold text-gray-900">ATS Compatibility</h3>
+                    <div>
+                      <h3 className="font-bold text-gray-900">ATS Health & Resume Quality</h3>
+                      <p className="text-xs text-gray-700">Combined score: 50% ATS Parseability + 50% Resume Quality</p>
+                    </div>
                   </div>
                   <span className="text-3xl font-extrabold text-[#3c4a59]">{results.atsScore}%</span>
                 </div>

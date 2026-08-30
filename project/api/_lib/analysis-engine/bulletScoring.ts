@@ -4,7 +4,7 @@ export type ScoreBreakdown = {
   impact: number;
   action: number;
   clarity: number;
-  evidence: number;
+  evidence?: number;
 };
 
 export type BulletScore = {
@@ -158,12 +158,21 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
   const words = text.trim().split(/\s+/);
   const wordCount = words.length;
 
-  // 1. RELEVANCE (20 points)
+  if (text.length < 3) {
+    return {
+      total: 0,
+      breakdown: { relevance: 0, specificity: 0, impact: 0, action: 0, clarity: 0, evidence: 0 }
+    };
+  }
+
+  // 1. RELEVANCE (20 points max)
   let relevance = 12;
   if (!targetKeywords || targetKeywords.length === 0) {
     const hasVerb = STRONG_VERBS.has(firstWord(text));
     if (hasVerb || wordCount >= 12) {
       relevance = 18;
+    } else {
+      relevance = 14;
     }
   } else {
     let matchedCount = 0;
@@ -187,16 +196,14 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
       }
     }
   }
-  if (text.length < 3) relevance = 0;
+  relevance = Math.max(0, Math.min(20, relevance));
 
-  // 2. SPECIFICITY (15 points)
-  let specificity = 5;
+  // 2. SPECIFICITY (20 points max)
+  let specificity = 6;
   let specificTermsShared = 0;
   if (/\[\s*x\s*\]/i.test(text)) {
     specificity = 0;
   } else {
-    // Specificity evaluates clear activity/method/scope
-    // Count specific terms: capitalized words (not first word), numbers, hyphenated words
     let specificTerms = 0;
     for (let i = 1; i < words.length; i++) {
       const w = words[i];
@@ -218,28 +225,28 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
     specificTerms += longWords;
     specificTermsShared = specificTerms;
 
-    if (wordCount >= 15 && specificTerms >= 4) {
-      specificity = 15;
-    } else if (wordCount >= 12 && specificTerms >= 3) {
-      specificity = 13;
-    } else if (wordCount >= 9 && specificTerms >= 2) {
+    if (wordCount >= 14 && specificTerms >= 4) {
+      specificity = 20;
+    } else if (wordCount >= 11 && specificTerms >= 3) {
+      specificity = 17;
+    } else if (wordCount >= 8 && specificTerms >= 2) {
+      specificity = 14;
+    } else if (wordCount >= 6 && specificTerms >= 1) {
       specificity = 11;
-    } else if (wordCount >= 7 && specificTerms >= 1) {
-      specificity = 8;
-    } else if (wordCount >= 5) {
-      specificity = 5;
+    } else if (wordCount >= 4) {
+      specificity = 7;
     } else {
-      specificity = 2;
+      specificity = 3;
     }
 
     if (hasGenericPhrasing(text) && specificTerms < 3) {
-      specificity = Math.min(8, specificity);
+      specificity = Math.min(10, specificity);
     }
   }
-  if (text.length < 3) specificity = 0;
+  specificity = Math.max(0, Math.min(20, specificity));
 
-  // 3. IMPACT / OUTCOME (20 points)
-  let impact = 4;
+  // 3. IMPACT / OUTCOME (20 points max)
+  let impact = 6;
   if (hasQuantification(text)) {
     impact = 20;
   } else {
@@ -260,63 +267,63 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
     }
 
     if (hasPhrase || keywordCount >= 2) {
-      impact = 17;
+      impact = 18;
     } else if (keywordCount === 1) {
-      impact = 12;
+      impact = 14;
     } else {
       const first = firstWord(text);
       if (STRONG_VERBS.has(first)) {
-        impact = 9;
+        impact = 11;
       } else if (wordCount >= 8) {
-        impact = 6;
+        impact = 8;
       }
     }
   }
-  if (text.length < 3) impact = 0;
+  impact = Math.max(0, Math.min(20, impact));
 
-  // 4. ACTION / OWNERSHIP (15 points)
-  let action = 5;
+  // 4. ACTION / OWNERSHIP (20 points max)
+  let action = 6;
   const first = firstWord(text);
   const textLower = text.toLowerCase();
   const hasFirstPerson = /\b(i|my|we|our)\b/.test(textLower);
   const hasWeakOwnershipPhrase = /\b(?:worked\s+on|helped\s+with|assisted\s+with|helped\s+set\s+up|took\s+notes|duties\s+included|responsible\s+for|did\s+some|run\s+surveys)\b/.test(textLower);
 
-  if (hasFirstPerson || hasWeakOwnershipPhrase) {
+  if (hasFirstPerson) {
     action = 3;
-  } else if (WEAK_VERBS.has(first)) {
+  } else if (hasWeakOwnershipPhrase || WEAK_VERBS.has(first)) {
     const cleanWords = words.map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
     const hasStrongVerbLater = cleanWords.some(w => STRONG_VERBS.has(w));
     if (hasStrongVerbLater) {
-      action = 7;
+      action = 9;
     } else {
-      action = 4;
+      action = 5;
     }
   } else if (STRONG_VERBS.has(first)) {
     const cleanWords = words.map(w => w.toLowerCase().replace(/[^a-z]/g, ''));
     const hasWeakModifier = cleanWords.some(w => WEAK_VERBS.has(w));
     if (hasWeakModifier) {
-      action = 11;
+      action = 14;
     } else {
-      action = 15;
+      action = 20;
     }
   } else if (first && first.endsWith('ed')) {
-    action = 12;
+    action = 15;
   } else if (wordCount >= 5) {
-    action = 6;
+    action = 8;
   } else {
-    action = 2;
+    action = 4;
   }
-  if (text.length < 3) action = 0;
+  action = Math.max(0, Math.min(20, action));
 
-  // 5. CLARITY & CONCISENESS (15 points)
-  let clarity = 15;
-  if (wordCount > 35) clarity -= 3;
-  if (wordCount > 45) clarity -= 2;
-  if (wordCount < 8) clarity -= 3;
-  if (wordCount < 5) clarity -= 2;
+  // 5. CLARITY & CONCISENESS (20 points max)
+  let clarity = 20;
+  if (wordCount > 35) clarity -= 4;
+  if (wordCount > 45) clarity -= 3;
+  if (wordCount < 8) clarity -= 4;
+  if (wordCount < 5) clarity -= 3;
 
   if (hasFirstPerson) {
-    clarity -= 8;
+    clarity -= 10;
   }
 
   let fluffCount = 0;
@@ -326,30 +333,22 @@ export function scoreBulletQuality(text: string, targetKeywords?: string[]): Bul
       fluffCount++;
     }
   }
-  clarity -= (fluffCount * 2);
+  clarity -= (fluffCount * 3);
 
   const commaCount = (text.match(/,/g) || []).length;
-  if (commaCount > 3) clarity -= 1;
+  if (commaCount > 3) clarity -= 2;
 
   if (hasGenericPhrasing(text) && specificTermsShared < 3) {
-    clarity = Math.max(0, clarity - 3);
+    clarity = Math.max(0, clarity - 4);
   }
 
-  if (clarity < 0) clarity = 0;
-  if (text.length < 3) clarity = 0;
+  clarity = Math.max(0, Math.min(20, clarity));
 
-  // 6. EVIDENCE / CREDIBILITY / GROUNDING (15 points)
-  let evidence = 15;
-  if (/\[\s*x\s*\]/i.test(text)) {
-    evidence = 5;
-  }
-  if (text.length < 3) evidence = 0;
-
-  const total = relevance + specificity + impact + action + clarity + evidence;
+  const total = relevance + specificity + impact + action + clarity;
 
   return {
     total,
-    breakdown: { relevance, specificity, impact, action, clarity, evidence }
+    breakdown: { relevance, specificity, impact, action, clarity, evidence: 0 }
   };
 }
 
@@ -375,8 +374,7 @@ export function generateReasoning(beforeScore: BulletScore, afterScore: BulletSc
     }
   }
   if (ab.action > bb.action) reasons.push("strengthens action and ownership framing");
-  if (ab.clarity > bb.clarity) reasons.push("improves clarity and conciseness by removing fluff or optimizing length");
-  if (ab.evidence > bb.evidence) reasons.push("strengthens grounding and credibility");
+  if (ab.clarity > bb.clarity) reasons.push("improves clarity and conciseness by removing fluff or conversational phrasing");
 
   if (reasons.length > 0) {
     return "Improvement " + reasons.join(", ") + ".";

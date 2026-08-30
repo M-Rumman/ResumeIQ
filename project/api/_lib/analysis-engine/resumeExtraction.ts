@@ -313,3 +313,22 @@ export function isRoleRelevantToRequirement(factText: string, reqName: string): 
   
   return true;
 }
+
+export function isInternshipOrAcademicRole(factText: string): boolean {
+  const lower = factText.toLowerCase();
+  return /\b(intern|internship|co-op|coop|student|campus\s+(?:media\s+)?lab|academic|thesis|graduate\s+assistant|teaching\s+assistant|university\s+research)\b/i.test(lower);
+}
+
+export function isJuniorRole(factText: string): boolean {
+  const lower = factText.toLowerCase();
+  return /\b(junior|jr\.?|associate|entry-level|entry\s+level)\b/i.test(lower);
+}
+
+export function isSeniorRole(factText: string): boolean {
+  const lower = factText.toLowerCase();
+  const hasSeniorTitle = /\b(senior|sr\.?|lead|principal|staff|director|head|vp|chief)\s+(?:ux\s+)?(?:researcher|research|designer|design|scientist|engineer|manager)\b/i.test(lower) ||
+    (/\b(senior|sr\.?|lead|principal|staff|director|head|vp|chief)\b/i.test(lower) && !/\b(?:assisted|assisted\s+a|supported|reported\s+to|presented\s+to)\s+(?:a\s+)?(?:senior|lead)\b/i.test(lower));
+  const hasSeniorResponsibilities = /\b(mentored|mentoring\s+junior|managed\s+(?:a\s+)?team|led\s+end-to-end|owned\s+research\s+strategy|research\s+operations|directing\s+research)\b/i.test(lower);
+  return hasSeniorTitle || hasSeniorResponsibilities;
+}
+

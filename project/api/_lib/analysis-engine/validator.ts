@@ -5,7 +5,10 @@ import {
   extractDateRangeString,
   parseDateRange,
   calculateIntervalsDurationYears,
-  isRoleRelevantToRequirement
+  isRoleRelevantToRequirement,
+  isInternshipOrAcademicRole,
+  isSeniorRole,
+  isJuniorRole
 } from './resumeExtraction.js';
 
 function cleanWord(w: string): string {
@@ -127,9 +130,8 @@ export function applyStrictGroundingRules(
     (/(^|\b)senior\b/i.test(reqNameLower) || /(^|\b)senior\b/i.test(reqTextLower) || /(^|\b)sr\b/i.test(reqNameLower) || /(^|\b)sr\b/i.test(reqTextLower) || /(^|\b)lead\b/i.test(reqNameLower) || /(^|\b)lead\b/i.test(reqTextLower));
   if (isSeniorRoleReq) {
     const hasSeniorityEvidence = 
-      /\b(senior|sr|lead|principal|director|manager|head|vp|chief)\b/i.test(combinedEvidenceText) ||
-      /\b(leadership|mentor|coaching|strategic|influence|operations|ops|end-to-end|roadmap|ownership)\b/i.test(combinedEvidenceText) ||
-      /c-suite|executive|stakeholder/i.test(combinedEvidenceText);
+      isSeniorRole(combinedEvidenceText) ||
+      candidateFacts.some(f => (f.type === 'experience' || f.type === 'project' || f.type === 'other') && isSeniorRole(f.rawText));
       
     if (!hasSeniorityEvidence) {
       classification = 'PARTIAL_MATCH';
@@ -176,15 +178,14 @@ export function applyStrictGroundingRules(
         hasAmbiguous = true;
       }
       
-      const isIntern = /intern|student|co-op/i.test(factText);
+      const isIntern = isInternshipOrAcademicRole(factText);
       
       intervalsWithInternship.push({ start: parsedRange.start, end: parsedRange.end });
       if (!isIntern) {
         intervalsWithoutInternship.push({ start: parsedRange.start, end: parsedRange.end });
+        yearRanges.push(parsedRange.start.getFullYear());
+        yearRanges.push(parsedRange.end.getFullYear());
       }
-      
-      yearRanges.push(parsedRange.start.getFullYear());
-      yearRanges.push(parsedRange.end.getFullYear());
     }
     
     const yearsWith = calculateIntervalsDurationYears(intervalsWithInternship);
@@ -198,7 +199,7 @@ export function applyStrictGroundingRules(
     const hasInternship = intervalsWithInternship.length > intervalsWithoutInternship.length;
     
     let basisExplanation = '';
-    if (roundedWith === 0) {
+    if (roundedWith === 0 && roundedWithout === 0) {
       if (experienceFacts.length > 0) {
         classification = 'ANALYSIS_FAILED';
         explanation = `Analysis Failed: Unable to determine experience duration due to missing or ambiguous dates on relevant roles.`;
@@ -209,12 +210,13 @@ export function applyStrictGroundingRules(
       return { classification, explanation, validatedEvidence: [] };
     }
     
+    const startStr = minYearInRoles ? String(minYearInRoles) : 'unknown';
+    const endStr = maxYearInRoles === new Date().getFullYear() ? 'present' : maxYearInRoles ? String(maxYearInRoles) : 'present';
+
     if (hasInternship && roundedWith !== roundedWithout) {
-      basisExplanation = `Approximately ${roundedWith} years including internship experience; approximately ${roundedWithout} years excluding internship.`;
+      basisExplanation = `Approximately ${roundedWithout} years of relevant professional research experience based on roles from ${startStr} to ${endStr} (or approximately ${roundedWith} years including internship experience).`;
     } else {
-      const startStr = minYearInRoles ? String(minYearInRoles) : 'unknown';
-      const endStr = maxYearInRoles === new Date().getFullYear() ? 'present' : maxYearInRoles ? String(maxYearInRoles) : 'present';
-      basisExplanation = `Approximately ${roundedWithout} years of relevant research experience based on roles from ${startStr} to ${endStr}.`;
+      basisExplanation = `Approximately ${roundedWithout} years of relevant professional research experience based on roles from ${startStr} to ${endStr}.`;
     }
     
     if (hasAmbiguous) {
