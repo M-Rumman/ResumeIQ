@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { extractCandidateProfile } from '../../api/_lib/analysis-engine/resumeExtraction.js';
 import { validateRewrites } from '../../api/_lib/aiValidation.js';
 import { scoreBulletQuality } from '../../api/_lib/analysis-engine/bulletScoring.js';
+import { bulletsFromAi } from '../../src/lib/api/mapAiResults.js';
 
-type TestCase = { name: string; run: () => void };
+type TestCase = { name: string; run: () => void | Promise<void> };
 
 const dummyResume = `John Doe
 johndoe@example.com
@@ -188,21 +189,154 @@ Acme Corp | Software Engineer
       assert.equal(validatedNoSafe[0].improvementScore, 0);
       assert.equal(validatedNoSafe[0].after, 'No meaningful improvement recommended.');
     }
+  },
+  {
+    name: 'TEST 1: Weak bullet -> valid improved bullet -> improvement returned',
+    run: () => {
+      const resume = `Alex Mercer\nUX Researcher\nExperience\n- I do research for our e-commerce app.`;
+      const raw = [{
+        before: 'I do research for our e-commerce app.',
+        after: 'Conduct user research for an e-commerce application.',
+        confidence: 'High'
+      }];
+      const validated = validateRewrites(raw, resume, ['UX Research'], [{ text: raw[0].before, sourceContext: resume }]);
+      assert.equal(validated.length, 1);
+      assert.ok(validated[0].improvementScore > 0);
+      assert.ok(validated[0].afterScore > validated[0].beforeScore);
+      assert.equal(validated[0].after, 'Conduct user research for an e-commerce application.');
+      assert.equal(validated[0].groundingConfidence, 'High');
+    }
+  },
+  {
+    name: 'TEST 2: Weak bullet -> hallucinated metric -> rewrite rejected',
+    run: () => {
+      const resume = `John Doe\nExperience\n- Conducted interviews`;
+      const raw = [{
+        before: 'Conducted interviews',
+        after: 'Conducted interviews, improving product adoption by 40%',
+        confidence: 'High'
+      }];
+      const validated = validateRewrites(raw, resume, ['Interviews'], [{ text: raw[0].before, sourceContext: resume }]);
+      assert.equal(validated[0].improvementScore, 0);
+      assert.equal(validated[0].after, 'No meaningful improvement recommended.');
+    }
+  },
+  {
+    name: 'TEST 3: Weak bullet -> unsupported responsibility -> rewrite rejected',
+    run: () => {
+      const resume = `John Doe\nExperience\n- helped with usability testing`;
+      const raw = [{
+        before: 'helped with usability testing',
+        after: 'Directed and owned the usability testing program',
+        confidence: 'High'
+      }];
+      const validated = validateRewrites(raw, resume, ['Usability Testing'], [{ text: raw[0].before, sourceContext: resume }]);
+      assert.equal(validated[0].improvementScore, 0);
+      assert.equal(validated[0].after, 'No meaningful improvement recommended.');
+    }
+  },
+  {
+    name: 'TEST 4: Strong bullet -> no rewrite generated',
+    run: () => {
+      const strongBullet = 'Built and managed a 5,000-person participant panel and centralized research repository, cutting study recruitment time by 50%';
+      const resume = `John Doe\nExperience\n- ${strongBullet}`;
+      const raw = [{
+        before: strongBullet,
+        after: 'Managed a 5,000-person participant panel and repository to cut recruitment time by 50%',
+        confidence: 'High'
+      }];
+      const validated = validateRewrites(raw, resume, ['Research'], [{ text: strongBullet, sourceContext: resume }]);
+      assert.equal(validated[0].improvementScore, 0);
+      assert.equal(validated[0].after, 'No meaningful improvement recommended.');
+    }
+  },
+  {
+    name: 'TEST 5: Rewrite where After Score <= Before Score -> rejected/omitted',
+    run: () => {
+      const bullet = 'Maintained legacy systems using Java';
+      const resume = `John Doe\nExperience\n- ${bullet}`;
+      const raw = [{
+        before: bullet,
+        after: 'Maintained legacy systems using Java',
+        confidence: 'High'
+      }];
+      const validated = validateRewrites(raw, resume, ['Java'], [{ text: bullet, sourceContext: resume }]);
+      assert.equal(validated[0].improvementScore, 0);
+      assert.equal(validated[0].after, 'No meaningful improvement recommended.');
+    }
+  },
+  {
+    name: 'TEST 6: Valid backend improvement -> correctly appears in frontend mapper',
+    run: () => {
+      const validPair = {
+        before: 'I do research for our e-commerce app.',
+        beforeScore: 46,
+        after: 'Conduct user research for an e-commerce application.',
+        afterScore: 61,
+        improvementScore: 15,
+        groundingConfidence: 'High' as const,
+        whyItIsWeak: 'Uses conversational language.',
+        whatInformationIsMissing: 'None',
+        whyThisIsStronger: 'Professional active verb phrasing.'
+      };
+      const frontendBullets = bulletsFromAi({ improvedBulletPoints: [validPair] } as any);
+      assert.equal(frontendBullets.length, 1);
+      assert.equal(frontendBullets[0].before, validPair.before);
+      assert.equal(frontendBullets[0].after, validPair.after);
+      assert.equal(frontendBullets[0].improvementScore, 15);
+      assert.equal(frontendBullets[0].beforeScore, 46);
+      assert.equal(frontendBullets[0].afterScore, 61);
+    }
+  },
+  {
+    name: 'TEST 7: Empty improvement list -> UI shows empty only when genuinely empty after filtering',
+    run: () => {
+      const rejectedPair = {
+        before: 'Maintained legacy systems using Java',
+        beforeScore: 60,
+        after: 'No meaningful improvement recommended.',
+        afterScore: 60,
+        improvementScore: 0,
+        groundingConfidence: 'Low' as const
+      };
+      const frontendBullets = bulletsFromAi({ improvedBulletPoints: [rejectedPair] } as any);
+      assert.equal(frontendBullets.length, 0, 'Rejected improvements must not be passed to the frontend');
+    }
+  },
+  {
+    name: 'TEST 8: Improvement Score equals After Score - Before Score',
+    run: () => {
+      const resume = `Alex Mercer\nUX Researcher\nExperience\n- Helped set up interviews with users and took notes during sessions.`;
+      const raw = [{
+        before: 'Helped set up interviews with users and took notes during sessions.',
+        after: 'Coordinated user interview setup and documented research sessions.',
+        confidence: 'High'
+      }];
+      const validated = validateRewrites(raw, resume, ['UX Research'], [{ text: raw[0].before, sourceContext: resume }]);
+      assert.equal(validated.length, 1);
+      assert.equal(validated[0].improvementScore, validated[0].afterScore - validated[0].beforeScore);
+      assert.ok(validated[0].improvementScore > 0);
+    }
   }
 ];
 
-let passed = 0;
-let failed = 0;
-for (const test of tests) {
-  try {
-    test.run();
-    console.log(`✅ ${test.name}`);
-    passed++;
-  } catch (err: any) {
-    console.error(`❌ ${test.name}`);
-    console.error(err.stack || err);
-    failed++;
+async function runAll() {
+  let passed = 0;
+  let failed = 0;
+  for (const test of tests) {
+    try {
+      await test.run();
+      console.log(`✅ ${test.name}`);
+      passed++;
+    } catch (err: any) {
+      console.error(`❌ ${test.name}`);
+      console.error(err.stack || err);
+      failed++;
+    }
   }
+  console.log(`\nTests: ${passed} passed, ${failed} failed.`);
+  if (failed > 0) process.exit(1);
 }
-console.log(`\nTests: ${passed} passed, ${failed} failed.`);
-if (failed > 0) process.exit(1);
+
+runAll();
+

@@ -1,5 +1,5 @@
 import { parseResumeText, type StructuredResume } from '../resumeParser.js';
-import type { CandidateProfile, CandidateFact } from './types.js';
+import type { CandidateProfile, CandidateFact, JobRequirement, MatchClassification, MatchEvidence } from './types.js';
 
 /**
  * Extracts a normalized, flat list of CandidateFacts from the structured resume
@@ -331,4 +331,198 @@ export function isSeniorRole(factText: string): boolean {
   const hasSeniorResponsibilities = /\b(mentored|mentoring\s+junior|managed\s+(?:a\s+)?team|led\s+end-to-end|owned\s+research\s+strategy|research\s+operations|directing\s+research)\b/i.test(lower);
   return hasSeniorTitle || hasSeniorResponsibilities;
 }
+
+export interface ExperienceEvaluationResult {
+  classification: MatchClassification;
+  explanation: string;
+  contributingFacts: CandidateFact[];
+  evidence: MatchEvidence[];
+  verifiedProfessionalYears: number;
+  totalYearsWithInternship: number;
+  hasAmbiguousDates: boolean;
+  minYear: number | null;
+  maxYear: number | null;
+}
+
+export function evaluateExperienceRequirement(
+  req: JobRequirement,
+  candidateFacts: CandidateFact[]
+): ExperienceEvaluationResult | null {
+  const reqNameLower = req.normalized_name.toLowerCase();
+  const reqTextLower = (req.original_text || '').toLowerCase();
+
+  const matchDigit = (reqTextLower + ' ' + reqNameLower).match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i);
+  const matchWord = (reqTextLower + ' ' + reqNameLower).match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\+|\s+plus)?\s*(?:years?|yrs?)\b/i);
+  const WORD_MAP: Record<string, number> = {
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+    seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
+  };
+  const parsedMinYears = matchDigit ? parseInt(matchDigit[1], 10) : (matchWord ? WORD_MAP[matchWord[1].toLowerCase()] || 0 : 0);
+  const reqMinYears = req.minimum_years || parsedMinYears;
+
+  if (reqMinYears <= 0) {
+    return null;
+  }
+
+  let extractedKeyword = reqNameLower
+    .replace(/(\d+\+?\s*years?|of|experience|minimum|at least|required|preferred|preferred qualifications?|basic qualifications?|\s+)/gi, ' ')
+    .trim();
+  if (!extractedKeyword || extractedKeyword.length < 3) {
+    extractedKeyword = req.category === 'years' ? 'relevant' : req.normalized_name;
+  }
+
+  const experienceFacts = candidateFacts.filter(f => f.type === 'experience');
+
+  const verifiedProfessionalIntervals: Array<{ start: Date; end: Date }> = [];
+  const internshipIntervals: Array<{ start: Date; end: Date }> = [];
+  const contributingFacts: CandidateFact[] = [];
+  const yearRanges: number[] = [];
+  let hasAmbiguousDates = false;
+
+  for (const fact of experienceFacts) {
+    const factText = fact.rawText;
+    if (!isRoleRelevantToRequirement(factText, req.normalized_name)) {
+      continue;
+    }
+
+    const dateStr = extractDateRangeString(factText);
+    if (!dateStr) {
+      hasAmbiguousDates = true;
+      contributingFacts.push(fact);
+      continue;
+    }
+
+    const parsedRange = parseDateRange(dateStr);
+    if (!parsedRange) {
+      hasAmbiguousDates = true;
+      contributingFacts.push(fact);
+      continue;
+    }
+
+    if (parsedRange.isAmbiguous) {
+      hasAmbiguousDates = true;
+      contributingFacts.push(fact);
+      continue;
+    }
+
+    const isIntern = isInternshipOrAcademicRole(factText);
+    contributingFacts.push(fact);
+
+    if (isIntern) {
+      internshipIntervals.push(parsedRange);
+    } else {
+      verifiedProfessionalIntervals.push(parsedRange);
+      yearRanges.push(parsedRange.start.getFullYear());
+      yearRanges.push(parsedRange.end.getFullYear());
+    }
+  }
+
+  const verifiedProfYears = Math.round(calculateIntervalsDurationYears(verifiedProfessionalIntervals) * 10) / 10;
+  const allIntervals = [...verifiedProfessionalIntervals, ...internshipIntervals];
+  const allYearsWithInternship = Math.round(calculateIntervalsDurationYears(allIntervals) * 10) / 10;
+
+  const minYear = yearRanges.length > 0 ? Math.min(...yearRanges) : null;
+  const maxYear = yearRanges.length > 0 ? Math.max(...yearRanges) : null;
+  const currentYear = new Date().getFullYear();
+  const startStr = minYear ? String(minYear) : 'unknown';
+  const endStr = maxYear ? (maxYear >= currentYear ? 'present' : String(maxYear)) : 'present';
+
+  const evidence: MatchEvidence[] = contributingFacts.map(fact => ({
+    source_section: fact.sourceSection,
+    source_text: fact.rawText,
+    fact_id: fact.id,
+    relevance: 'direct',
+    evidence_strength: isInternshipOrAcademicRole(fact.rawText) ? 'secondary' : 'primary',
+    evidence_type: fact.type,
+    evidence_tier: 'tier_1_deterministic'
+  }));
+
+  let classification: MatchClassification;
+  let explanation = '';
+
+  if (contributingFacts.length === 0) {
+    classification = 'MISSING';
+    explanation = `Missing: No relevant ${extractedKeyword} experience found in the resume.`;
+    return {
+      classification,
+      explanation,
+      contributingFacts: [],
+      evidence: [],
+      verifiedProfessionalYears: 0,
+      totalYearsWithInternship: 0,
+      hasAmbiguousDates,
+      minYear,
+      maxYear
+    };
+  }
+
+  if (verifiedProfYears === 0 && allYearsWithInternship === 0 && hasAmbiguousDates) {
+    classification = 'ANALYSIS_FAILED';
+    explanation = `Analysis Failed: Unable to determine experience duration due to missing or ambiguous dates on relevant roles.`;
+    return {
+      classification,
+      explanation,
+      contributingFacts,
+      evidence,
+      verifiedProfessionalYears: 0,
+      totalYearsWithInternship: 0,
+      hasAmbiguousDates,
+      minYear,
+      maxYear
+    };
+  }
+
+  const keyword = reqNameLower.includes('research') ? 'research' : extractedKeyword;
+  const hasInternship = internshipIntervals.length > 0 && verifiedProfYears !== allYearsWithInternship;
+
+  let basisExplanation = '';
+  if (hasInternship) {
+    basisExplanation = `Approximately ${verifiedProfYears} years of relevant professional ${keyword} experience based on roles from ${startStr} to ${endStr} (or approximately ${allYearsWithInternship} years including internship experience).`;
+  } else {
+    basisExplanation = `Approximately ${verifiedProfYears} years of relevant professional ${keyword} experience based on roles from ${startStr} to ${endStr}.`;
+  }
+  if (hasAmbiguousDates) {
+    basisExplanation += ` (Some dates were ambiguous or incomplete).`;
+  }
+
+  if (verifiedProfYears >= reqMinYears) {
+    classification = 'EXACT_MATCH';
+    explanation = `${basisExplanation}`;
+  } else if (allYearsWithInternship >= reqMinYears && hasInternship) {
+    classification = 'PARTIAL_MATCH';
+    explanation = `Downgraded: Candidate meets the ${reqMinYears}+ year threshold only when including internship experience (approximately ${verifiedProfYears} years of professional experience from ${startStr} to ${endStr}, ~${allYearsWithInternship} years total). ${basisExplanation}`;
+  } else {
+    if (verifiedProfYears < 1 && allYearsWithInternship < 1) {
+      classification = 'MISSING';
+      explanation = `Downgraded: Candidate has only ${verifiedProfYears} years of relevant experience, which is less than the required ${reqMinYears}+ years. ${basisExplanation}`;
+      return {
+        classification,
+        explanation,
+        contributingFacts: [],
+        evidence: [],
+        verifiedProfessionalYears: verifiedProfYears,
+        totalYearsWithInternship: allYearsWithInternship,
+        hasAmbiguousDates,
+        minYear,
+        maxYear
+      };
+    } else {
+      classification = 'PARTIAL_MATCH';
+      explanation = `Downgraded: Candidate has only ${verifiedProfYears} years of relevant experience, which is less than the required ${reqMinYears}+ years. ${basisExplanation}`;
+    }
+  }
+
+  return {
+    classification,
+    explanation,
+    contributingFacts,
+    evidence,
+    verifiedProfessionalYears: verifiedProfYears,
+    totalYearsWithInternship: allYearsWithInternship,
+    hasAmbiguousDates,
+    minYear,
+    maxYear
+  };
+}
+
 

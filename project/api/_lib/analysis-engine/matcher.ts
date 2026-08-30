@@ -5,7 +5,8 @@ import {
   parseDateRange,
   isRoleRelevantToRequirement,
   isInternshipOrAcademicRole,
-  isSeniorRole
+  isSeniorRole,
+  evaluateExperienceRequirement
 } from './resumeExtraction.js';
 import type { AiObservabilityContext } from '../aiObservability.js';
 import type { CandidateProfile, JobProfile, MatchingResult, RequirementMatch, MatchClassification, CandidateFact, MatchEvidence } from './types.js';
@@ -542,151 +543,18 @@ export function getDeterministicMatches(job: JobProfile, candidate: CandidatePro
     }
 
     if (reqMinimumYears > 0) {
-      const isGeneric = req.category === 'years' || reqNameLower.replace(/(\d+\+?\s*years?|of|experience|minimum|at least|required|preferred|preferred qualifications?|basic qualifications?|\s)/gi, '').length < 3;
-      
-      let professionalIntervals: Array<{ start: Date, end: Date }> = [];
-      let internshipIntervals: Array<{ start: Date, end: Date }> = [];
-      let relevantMaxDuration = 0;
-      let relevantFacts: CandidateFact[] = [];
-      let yearRanges: number[] = [];
-      
-      if (isGeneric) {
-        relevantFacts = candidate.facts.filter(f => f.type === 'experience');
-        for (const f of candidate.facts) {
-          if (f.type !== 'experience' && f.employment_duration_years) {
-            relevantMaxDuration = Math.max(relevantMaxDuration, f.employment_duration_years);
-            relevantFacts.push(f);
-          }
-        }
-      } else {
-        const uniqueIds = new Set<string>();
-        relevantFacts = matchedFacts.map(mf => mf.fact).filter(f => {
-          if (f.type !== 'experience' && f.type !== 'project' && !(f.type === 'other' && f.employment_duration_years)) return false;
-          if (uniqueIds.has(f.id)) return false;
-          uniqueIds.add(f.id);
-          return true;
+      const expEval = evaluateExperienceRequirement(req, candidate.facts);
+      if (expEval) {
+        matches.push({
+          requirement: req,
+          classification: expEval.classification,
+          confidence: 1.0,
+          explanation: expEval.explanation,
+          match_tier: 'tier_1_deterministic',
+          evidence: expEval.evidence
         });
-
-        if (relevantFacts.length === 0) {
-            const strippedKeywords = reqNameLower.replace(/\b\d+\+?\s*(?:years?|yrs?)\b/gi, '')
-                                                 .replace(/\b(of|experience|minimum|at least|required|preferred|basic qualifications?)\b/gi, '')
-                                                 .trim();
-            if (strippedKeywords.length > 3) {
-                const stem = strippedKeywords.replace(/(ing|ed|s|ship|er)$/, '');
-                for (const f of candidate.facts) {
-                    if ((f.type === 'experience' || f.type === 'project' || (f.type === 'other' && f.employment_duration_years)) && f.rawText.toLowerCase().includes(stem)) {
-                         if (!uniqueIds.has(f.id)) {
-                             uniqueIds.add(f.id);
-                             relevantFacts.push(f);
-                         }
-                    }
-                }
-            }
-        }
+        continue;
       }
-
-      for (const f of candidate.facts) {
-        if ((f.type === 'other' || f.type === 'experience') && f.employment_duration_years && isRoleRelevantToRequirement(f.rawText, req.normalized_name) && !isInternshipOrAcademicRole(f.rawText)) {
-          relevantMaxDuration = Math.max(relevantMaxDuration, f.employment_duration_years);
-          if (!relevantFacts.some(rf => rf.id === f.id)) {
-            relevantFacts.push(f);
-          }
-        }
-      }
-
-      for (const f of relevantFacts) {
-        if (!isRoleRelevantToRequirement(f.rawText, req.normalized_name)) continue;
-        const dateStr = extractDateRangeString(f.rawText);
-        const isInternOrAcademic = isInternshipOrAcademicRole(f.rawText);
-        if (dateStr) {
-          const parsed = parseDateRange(dateStr);
-          if (parsed) {
-            if (isInternOrAcademic) {
-              internshipIntervals.push(parsed);
-            } else {
-              professionalIntervals.push(parsed);
-              yearRanges.push(parsed.start.getFullYear());
-              yearRanges.push(parsed.end.getFullYear());
-            }
-          }
-        } else {
-          if (f.employment_duration_years && !isInternOrAcademic) {
-            relevantMaxDuration = Math.max(relevantMaxDuration, f.employment_duration_years);
-          }
-          const textYearsMatch = f.rawText.match(/\b(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|research|ux|work|professional)?\b/i);
-          if (textYearsMatch && !isInternOrAcademic) {
-            const parsedYrs = parseInt(textYearsMatch[1], 10);
-            if (parsedYrs > 0 && parsedYrs < 50) {
-              relevantMaxDuration = Math.max(relevantMaxDuration, parsedYrs);
-            }
-          }
-        }
-      }
-      
-      let calculatedProfYears = calculateIntervalsDurationYears(professionalIntervals);
-      calculatedProfYears = Math.round(calculatedProfYears * 10) / 10;
-      let finalProfYears = Math.max(calculatedProfYears, relevantMaxDuration);
-
-      let allIntervals = [...professionalIntervals, ...internshipIntervals];
-      let calculatedAllYears = calculateIntervalsDurationYears(allIntervals);
-      calculatedAllYears = Math.round(calculatedAllYears * 10) / 10;
-      
-      let classification: MatchClassification;
-      let explanation = '';
-      
-      let extractedKeyword = reqNameLower.replace(/(\d+\+?\s*years?|of|experience|minimum|at least|required|preferred|preferred qualifications?|basic qualifications?|\s+)/gi, ' ').trim();
-      if (!extractedKeyword || extractedKeyword.length < 3) extractedKeyword = req.category === 'years' ? 'relevant' : req.normalized_name;
-
-      const minYearInRoles = yearRanges.length > 0 ? Math.min(...yearRanges) : null;
-      const maxYearInRoles = yearRanges.length > 0 ? Math.max(...yearRanges) : null;
-      const startStr = minYearInRoles ? String(minYearInRoles) : 'unknown';
-      const endStr = maxYearInRoles === new Date().getFullYear() ? 'present' : maxYearInRoles ? String(maxYearInRoles) : 'present';
-
-      if (relevantFacts.length === 0 || (finalProfYears === 0 && calculatedAllYears === 0)) {
-        classification = 'MISSING';
-        explanation = `Candidate does not have ${reqMinimumYears}+ years of ${extractedKeyword} experience.`;
-      } else {
-        const rawRoles = Array.from(new Set(relevantFacts.map(f => {
-          let t = f.normalizedName || f.rawText.split('\n')[0];
-          t = t.replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}.*$/i, '');
-          return t.split('-')[0].split('|')[0].trim().substring(0, 50);
-        })));
-        const rolesStr = rawRoles.join(', ');
-        const hasInternship = internshipIntervals.length > 0;
-
-        if (finalProfYears >= reqMinimumYears) {
-          classification = 'EXACT_MATCH';
-          explanation = `Approximately ${finalProfYears} years of relevant professional ${extractedKeyword} experience based on roles from ${startStr} to ${endStr}.`;
-          if (hasInternship) explanation += ` (Plus internship experience).`;
-        } else if (calculatedAllYears >= reqMinimumYears && hasInternship) {
-          classification = 'PARTIAL_MATCH';
-          explanation = `Candidate meets the ${reqMinimumYears}+ year threshold only when including internship experience (approximately ${finalProfYears} years of professional experience from ${startStr} to ${endStr}, ~${calculatedAllYears} years total).`;
-        } else {
-          classification = 'PARTIAL_MATCH';
-          explanation = `Approximately ${finalProfYears} years of relevant professional ${extractedKeyword} experience based on roles from ${startStr} to ${endStr}. Requirement was ${reqMinimumYears}+ years.`;
-          if (hasInternship) explanation += ` (Includes internship experience of ~${calculatedAllYears} years total).`;
-        }
-      }
-      
-      const evidenceFacts = relevantFacts.slice(0, 5);
-      
-      matches.push({
-        requirement: req,
-        classification,
-        confidence: 1.0,
-        explanation,
-        match_tier: 'tier_1_deterministic',
-        evidence: evidenceFacts.map(f => ({
-          source_section: f.sourceSection,
-          source_text: f.rawText,
-          fact_id: f.id,
-          relevance: 'direct',
-          evidence_strength: 'primary',
-          evidence_type: f.type,
-          evidence_tier: 'tier_1_deterministic'
-        }))
-      });
-      continue;
     }
 
     let fallbackMatch: RequirementMatch | null = null;

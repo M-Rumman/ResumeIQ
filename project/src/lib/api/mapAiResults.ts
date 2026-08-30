@@ -131,7 +131,7 @@ function mergeKeywords(ai: AiResumeAnalysisPremium): string[] {
 }
 
 /** Display only server-validated bullet rewrites. */
-function bulletsFromAi(ai: AiResumeAnalysisPremium): BulletPair[] {
+export function bulletsFromAi(ai: AiResumeAnalysisPremium): BulletPair[] {
   const fromAi = (ai.improvedBulletPoints || [])
     .filter((b) => b?.before && b?.after && typeof b?.improvementScore === 'number' && b.improvementScore > 0)
     .map((b) => ({

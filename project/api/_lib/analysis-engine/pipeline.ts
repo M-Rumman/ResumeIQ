@@ -96,9 +96,9 @@ export async function runAnalysisPipeline(
 
 
   // Extract true accomplishment bullets using candidate facts to avoid job titles and metadata
-  const candidateContexts = candidateProfile.facts
+  const candidateContextsRaw = candidateProfile.facts
     .filter(f => f.type === 'experience' || f.type === 'project' || (f.type === 'other' && f.sourceSection === 'summary'))
-    .flatMap(f => f.evidence.split('\n').map(line => ({
+    .flatMap(f => (f.rawText + '\n' + (f.evidence || '')).split('\n').map(line => ({
       text: line.replace(/^[•\-\*·\s]+/, '').trim(),
       sourceContext: f.rawText
     })))
@@ -109,6 +109,17 @@ export async function runAnalysisPipeline(
       if (/^[a-zA-Z\s,]+[|—–-]\s*(?:19|20)\d{2}/i.test(text) && text.length < 40) return false;
       return true;
     });
+
+  // Deduplicate candidateContexts by text
+  const candidateContexts: typeof candidateContextsRaw = [];
+  const seenCandidateTexts = new Set<string>();
+  for (const c of candidateContextsRaw) {
+    const key = c.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!seenCandidateTexts.has(key)) {
+      seenCandidateTexts.add(key);
+      candidateContexts.push(c);
+    }
+  }
 
   const candidateBullets = candidateContexts.map(c => c.text);
 
@@ -159,6 +170,7 @@ export async function runAnalysisPipeline(
 
       return { ...b, qualityScore, priorityScore };
     })
+    .filter(b => b.qualityScore < 85)
     .sort((a, b) => {
       if (b.priorityScore !== a.priorityScore) {
         return b.priorityScore - a.priorityScore; // Higher priority score first

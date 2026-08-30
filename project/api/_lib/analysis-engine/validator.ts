@@ -8,7 +8,8 @@ import {
   isRoleRelevantToRequirement,
   isInternshipOrAcademicRole,
   isSeniorRole,
-  isJuniorRole
+  isJuniorRole,
+  evaluateExperienceRequirement
 } from './resumeExtraction.js';
 
 function cleanWord(w: string): string {
@@ -141,104 +142,13 @@ export function applyStrictGroundingRules(
   }
 
   // Experience Duration Check (Case 3)
-  const matchMinYears = (reqTextLower + ' ' + reqNameLower).match(/\b(\d+)(?:\+)?\s*(?:years?|yrs?)\b/i) ||
-                        (reqTextLower + ' ' + reqNameLower).match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:\+|\s+plus)?\s*(?:years?|yrs?)\b/i);
-  const WORD_TO_NUM: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
-  const parsedMinYears = matchMinYears ? (matchMinYears[1] && /^\d+$/.test(matchMinYears[1]) ? parseInt(matchMinYears[1], 10) : WORD_TO_NUM[matchMinYears[1].toLowerCase()] || 0) : 0;
-  const reqMinYears = match.requirement.minimum_years || parsedMinYears;
-
-  if (reqMinYears > 0) {
-    const intervalsWithInternship: Array<{ start: Date, end: Date }> = [];
-    const intervalsWithoutInternship: Array<{ start: Date, end: Date }> = [];
-    let hasAmbiguous = false;
-    let yearRanges: number[] = [];
-
-    const experienceFacts = candidateFacts.filter(f => f.type === 'experience');
-    
-    for (const fact of experienceFacts) {
-      const factText = fact.rawText;
-      
-      if (!isRoleRelevantToRequirement(factText, match.requirement.normalized_name)) {
-        continue;
-      }
-      
-      const dateStr = extractDateRangeString(factText);
-      if (!dateStr) {
-        hasAmbiguous = true;
-        continue;
-      }
-      
-      const parsedRange = parseDateRange(dateStr);
-      if (!parsedRange) {
-        hasAmbiguous = true;
-        continue;
-      }
-      
-      if (parsedRange.isAmbiguous) {
-        hasAmbiguous = true;
-      }
-      
-      const isIntern = isInternshipOrAcademicRole(factText);
-      
-      intervalsWithInternship.push({ start: parsedRange.start, end: parsedRange.end });
-      if (!isIntern) {
-        intervalsWithoutInternship.push({ start: parsedRange.start, end: parsedRange.end });
-        yearRanges.push(parsedRange.start.getFullYear());
-        yearRanges.push(parsedRange.end.getFullYear());
-      }
-    }
-    
-    const yearsWith = calculateIntervalsDurationYears(intervalsWithInternship);
-    const yearsWithout = calculateIntervalsDurationYears(intervalsWithoutInternship);
-    
-    const roundedWith = Math.round(yearsWith * 10) / 10;
-    const roundedWithout = Math.round(yearsWithout * 10) / 10;
-    
-    const minYearInRoles = yearRanges.length > 0 ? Math.min(...yearRanges) : null;
-    const maxYearInRoles = yearRanges.length > 0 ? Math.max(...yearRanges) : null;
-    const hasInternship = intervalsWithInternship.length > intervalsWithoutInternship.length;
-    
-    let basisExplanation = '';
-    if (roundedWith === 0 && roundedWithout === 0) {
-      if (experienceFacts.length > 0) {
-        classification = 'ANALYSIS_FAILED';
-        explanation = `Analysis Failed: Unable to determine experience duration due to missing or ambiguous dates on relevant roles.`;
-        return { classification, explanation, validatedEvidence: [] };
-      }
-      classification = 'MISSING';
-      explanation = `Missing: No relevant research experience found in the resume.`;
-      return { classification, explanation, validatedEvidence: [] };
-    }
-    
-    const startStr = minYearInRoles ? String(minYearInRoles) : 'unknown';
-    const endStr = maxYearInRoles === new Date().getFullYear() ? 'present' : maxYearInRoles ? String(maxYearInRoles) : 'present';
-
-    if (hasInternship && roundedWith !== roundedWithout) {
-      basisExplanation = `Approximately ${roundedWithout} years of relevant professional research experience based on roles from ${startStr} to ${endStr} (or approximately ${roundedWith} years including internship experience).`;
-    } else {
-      basisExplanation = `Approximately ${roundedWithout} years of relevant professional research experience based on roles from ${startStr} to ${endStr}.`;
-    }
-    
-    if (hasAmbiguous) {
-      basisExplanation += ` (Some dates were ambiguous or incomplete).`;
-    }
-    
-    const primaryYears = roundedWithout;
-    if (primaryYears >= reqMinYears) {
-      classification = 'EXACT_MATCH';
-      explanation = `${basisExplanation}`;
-    } else if (roundedWith >= reqMinYears) {
-      classification = 'PARTIAL_MATCH';
-      explanation = `Downgraded: Candidate meets the requirement only when including internship experience. ${basisExplanation}`;
-    } else {
-      classification = primaryYears < 1 ? 'MISSING' : 'PARTIAL_MATCH';
-      explanation = `Downgraded: Candidate has only ${primaryYears} years of relevant experience, which is less than the required ${reqMinYears}+ years. ${basisExplanation}`;
-      if (classification === 'MISSING') {
-        return { classification, explanation, validatedEvidence: [] };
-      }
-    }
-    
-    return { classification, explanation, validatedEvidence };
+  const expEval = evaluateExperienceRequirement(match.requirement, candidateFacts);
+  if (expEval) {
+    return {
+      classification: expEval.classification,
+      explanation: expEval.explanation,
+      validatedEvidence: expEval.evidence
+    };
   }
 
   // Education Field Verification (Case 4)
