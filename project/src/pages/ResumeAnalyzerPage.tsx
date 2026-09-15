@@ -30,9 +30,13 @@ import ResumeFileUpload from '../components/ResumeFileUpload';
 import { canExportPdf } from '../lib/planAccess.js';
 import { FREE_DAILY_RESUME_LIMIT } from '../lib/planConfig.js';
 import { downloadResumeAnalysisPdf } from '../utils/exportReportPdf.js';
+import { exportResumePdf, exportResumeDocx } from '../utils/exportResumeFormats';
 import { usePaywallAccess } from '../hooks/usePaywallAccess';
 import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
+import OptimizationStudio from '../components/optimization/OptimizationStudio';
+import LinkedInSyncModal from '../components/optimization/LinkedInSyncModal';
+import { Linkedin, Split, BarChart3 } from 'lucide-react';
 
 type AnalysisResults = ResumeDisplayResults;
 type PremiumResults = PremiumResumeDisplayResults;
@@ -753,6 +757,10 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
     loading: true,
   });
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingResumePdf, setExportingResumePdf] = useState(false);
+  const [exportingResumeDocx, setExportingResumeDocx] = useState(false);
+  const [viewMode, setViewMode] = useState<'studio' | 'report'>('studio');
+  const [showLinkedInModal, setShowLinkedInModal] = useState(false);
   const [reportId, setReportId] = useState<string | null>(null);
 
 
@@ -869,16 +877,63 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <div className="flex items-center gap-3 mb-3">
             <LogoMark className="w-10 h-10 rounded-xl" />
-            <h1 className="text-3xl font-extrabold text-gray-900">AI Resume Analyzer</h1>
+            <h1 className="text-3xl font-extrabold text-gray-900">AI Resume Optimizer & Analyzer</h1>
           </div>
           <p className="text-gray-900 text-base font-medium ml-[52px]">
-            Upload a PDF or DOCX resume, or paste text, then add a job description for ATS feedback.
+            ATS optimization, keyword matching, live real-time grading, bullet generator, tailored cover letters, and multi-format exports.
           </p>
+
+          <div className="flex flex-wrap items-center justify-between gap-4 mt-6 ml-[52px]">
+            <div className="flex rounded-2xl bg-white/80 p-1.5 border border-gray-200 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode('studio')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  viewMode === 'studio'
+                    ? 'bg-[#3c4a59] text-white shadow-sm'
+                    : 'text-gray-700 hover:text-gray-900'
+                }`}
+              >
+                <Split className="w-4 h-4" />
+                <span>Optimization Studio (Side-by-Side & Live Tools)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('report')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  viewMode === 'report'
+                    ? 'bg-[#3c4a59] text-white shadow-sm'
+                    : 'text-gray-700 hover:text-gray-900'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>Full ATS Deep Analysis Report</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLinkedInModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs font-bold transition-colors shadow-sm"
+            >
+              <Linkedin className="w-4 h-4 text-[#0a66c2]" />
+              <span>1-Click LinkedIn Sync</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid lg:grid-cols-2 gap-8">
+        {viewMode === 'studio' ? (
+          <OptimizationStudio
+            resumeText={resumeText}
+            jobDescription={jobDescription}
+            onResumeChange={setResumeText}
+            onJdChange={setJobDescription}
+          />
+        ) : (
+          <>
+            <div className="grid lg:grid-cols-2 gap-8">
           <div className="glass-card-solid">
             <div className="px-6 pt-6 pb-4 border-b border-gray-50">
               <h2 className="font-bold text-gray-900">Your Resume</h2>
@@ -1002,6 +1057,41 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
                   PDF Export (Pro)
                 </button>
               )}
+
+              {/* Multi-Format Resume Downloads */}
+              <button
+                type="button"
+                disabled={exportingResumePdf}
+                onClick={async () => {
+                  setExportingResumePdf(true);
+                  try {
+                    await exportResumePdf(resumeText, 'ResuV-Optimized-Resume');
+                  } finally {
+                    setExportingResumePdf(false);
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 self-center text-sm font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-4 py-2.5 rounded-xl transition-colors disabled:opacity-60"
+              >
+                <Download className="w-4 h-4" />
+                {exportingResumePdf ? 'Exporting…' : 'Download Resume (PDF)'}
+              </button>
+
+              <button
+                type="button"
+                disabled={exportingResumeDocx}
+                onClick={async () => {
+                  setExportingResumeDocx(true);
+                  try {
+                    await exportResumeDocx(resumeText, 'ResuV-Optimized-Resume');
+                  } finally {
+                    setExportingResumeDocx(false);
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 self-center text-sm font-bold text-white bg-[#3c4a59] hover:bg-[#252f38] px-4 py-2.5 rounded-xl transition-all shadow-sm active:scale-95 disabled:opacity-60"
+              >
+                <Download className="w-4 h-4" />
+                {exportingResumeDocx ? 'Generating…' : 'Download Resume (DOCX)'}
+              </button>
             </div>
 
             {saveSuccess && (
@@ -1029,7 +1119,19 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
             )}
           </div>
         )}
+          </>
+        )}
       </div>
+
+      <LinkedInSyncModal
+        isOpen={showLinkedInModal}
+        onClose={() => setShowLinkedInModal(false)}
+        onImportResume={(imported) => {
+          setResumeText(imported);
+          setViewMode('studio');
+        }}
+      />
+
       {showDailyLimitModal && (
         <DailyUsageLimitModal
           featureLabel="Resume Analysis"
