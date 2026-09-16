@@ -15,6 +15,8 @@ import { usePaywallCheckout } from '../hooks/usePaywallCheckout';
 import DailyUsageLimitModal from '../components/DailyUsageLimitModal';
 import { fetchAiInterviewPrep } from '../lib/api/interviewPrepApi.js';
 import { mapAiInterviewToDisplayWithContext } from '../lib/api/mapInterviewAi.js';
+
+// Lucide Icons
 import {
   MessageSquare,
   ChevronDown,
@@ -27,7 +29,23 @@ import {
   Star,
   Mic,
   ListChecks,
+  Bot,
+  BarChart3,
+  FileCheck,
+  Library,
+  PenTool,
+  TrendingUp,
 } from 'lucide-react';
+
+// Specialized Interview Suite Components
+import InterviewMockSimulator from '../components/interview/InterviewMockSimulator';
+import PerformanceAnalyticsView, { type PerformanceMetrics } from '../components/interview/PerformanceAnalyticsView';
+import ResumeJdCustomizer from '../components/interview/ResumeJdCustomizer';
+import QuestionLibraryView from '../components/interview/QuestionLibraryView';
+import CodingSandboxAndWhiteboard from '../components/interview/CodingSandboxAndWhiteboard';
+import StarFrameworkCoach from '../components/interview/StarFrameworkCoach';
+import ProgressReadinessDashboard from '../components/interview/ProgressReadinessDashboard';
+import type { QuestionItem } from '../utils/interviewQuestionsData';
 
 interface Question {
   question: string;
@@ -112,7 +130,32 @@ interface InterviewPrepPageProps {
   onNavigate: (page: string) => void;
 }
 
+type ActiveTab =
+  | 'mock_interview'
+  | 'performance_analytics'
+  | 'resume_jd'
+  | 'question_library'
+  | 'coding_whiteboard'
+  | 'star_coach'
+  | 'progress_readiness'
+  | 'role_generator';
+
 export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps) {
+  const [activeTab, setActiveTab] = useState<ActiveTab>('mock_interview');
+
+  // Shared state across tabs
+  const [latestSessionMetrics, setLatestSessionMetrics] = useState<PerformanceMetrics | null>(null);
+  const [mockCustomQuestions, setMockCustomQuestions] = useState<
+    Array<{
+      id: string;
+      stage: string;
+      question: string;
+      tip: string;
+      suggestedPoints: string[];
+    }>
+  >([]);
+
+  // Original Role Generator State
   const [jobRole, setJobRole] = useState('');
   const [experienceLevel, setExperienceLevel] = useState('mid');
   const [skills, setSkills] = useState('');
@@ -143,8 +186,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     reportId,
   });
 
-  // A newly generated report should render in full immediately; the daily free
-  // allowance is not a preview-only experience.
   const hasFullAccess = !PAYMENTS_ENABLED || reportUnlocked || Boolean(reportId);
 
   async function refreshUsageStatus() {
@@ -241,6 +282,38 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     }, 100);
   }
 
+  // Cross-tab triggers
+  const handleFinishMockSession = (metrics: PerformanceMetrics) => {
+    setLatestSessionMetrics(metrics);
+    setActiveTab('performance_analytics');
+  };
+
+  const handleLaunchMockFromTailored = (
+    questions: Array<{
+      id: string;
+      stage: string;
+      question: string;
+      tip: string;
+      suggestedPoints: string[];
+    }>
+  ) => {
+    setMockCustomQuestions(questions);
+    setActiveTab('mock_interview');
+  };
+
+  const handlePracticeQuestionFromLibrary = (q: QuestionItem) => {
+    setMockCustomQuestions([
+      {
+        id: q.id,
+        stage: `1. ${q.title}`,
+        question: q.question,
+        tip: q.tip,
+        suggestedPoints: [q.idealAnswer, ...q.keyCriteria],
+      },
+    ]);
+    setActiveTab('mock_interview');
+  };
+
   const categories = results
     ? [
         {
@@ -273,170 +346,269 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
       ]
     : [];
 
+  const navTabs = [
+    { id: 'mock_interview' as const, label: 'AI Mock Interview', icon: Bot },
+    { id: 'performance_analytics' as const, label: 'Instant Analytics', icon: BarChart3 },
+    { id: 'resume_jd' as const, label: 'Resume & JD Tailoring', icon: FileCheck },
+    { id: 'question_library' as const, label: 'Question Bank', icon: Library },
+    { id: 'coding_whiteboard' as const, label: 'Coding & Whiteboard', icon: PenTool },
+    { id: 'star_coach' as const, label: 'STAR Coach', icon: Star },
+    { id: 'progress_readiness' as const, label: 'Readiness & Trends', icon: TrendingUp },
+    { id: 'role_generator' as const, label: 'Role Question Generator', icon: MessageSquare },
+  ];
+
   return (
     <div className="min-h-screen">
-      {/* Header */}
+      {/* Header Banner */}
       <div className="glass-panel border-b border-[rgba(255,255,255,0.35)] rounded-none">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-[#3c4a59] rounded-xl flex items-center justify-center">
-              <MessageSquare className="w-5 h-5 text-white" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-[#3c4a59] rounded-2xl flex items-center justify-center shadow-md">
+                <Bot className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
+                  AI Interview Preparation Suite
+                </h1>
+                <p className="text-xs sm:text-sm text-gray-700 font-medium">
+                  Realistic persona mock interviews, real-time speech analytics, and tailored candidate readiness.
+                </p>
+              </div>
             </div>
-            <h1 className="text-3xl font-extrabold text-gray-900">AI Interview Preparation</h1>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold bg-emerald-50 text-emerald-800 px-3 py-1 rounded-full border border-emerald-200 shadow-sm flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live AI Engine Active
+              </span>
+            </div>
           </div>
-          <p className="text-gray-900 text-base font-medium ml-[52px]">
-            Enter your target job role to generate personalized interview questions.
-          </p>
+
+          {/* Navigation Bar / Mode Switcher */}
+          <div className="mt-8 flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none border-b border-gray-200/60">
+            {navTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    isActive
+                      ? 'bg-[#3c4a59] text-white shadow-md shadow-gray-300'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/60'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {/* Input Card */}
-        <div className="glass-card glass-card-interactive p-8">
-          <div className="space-y-5">
-            <div>
-              <label htmlFor="job-role" className="block text-sm font-semibold text-gray-700 mb-2">
-                Target Job Role
-              </label>
-              <input
-                id="job-role"
-                type="text"
-                value={jobRole}
-                onChange={(e) => setJobRole(e.target.value)}
-                placeholder="e.g. Frontend Developer, Data Scientist, Marketing Manager..."
-                className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400 bg-gray-50 transition-all"
-                data-clarity-mask="true"
-              />
-            </div>
+      {/* Main Content Body */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* TAB 1: AI MOCK INTERVIEW */}
+        {activeTab === 'mock_interview' && (
+          <InterviewMockSimulator
+            customQuestions={mockCustomQuestions.length > 0 ? mockCustomQuestions : undefined}
+            onFinishSession={handleFinishMockSession}
+          />
+        )}
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="experience-level" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Experience Level
-                </label>
-                <select
-                  id="experience-level"
-                  value={experienceLevel}
-                  onChange={(e) => setExperienceLevel(e.target.value)}
-                  className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 bg-gray-50"
-                >
-                  <option value="entry">Entry / Junior</option>
-                  <option value="mid">Mid-Level</option>
-                  <option value="senior">Senior / Lead</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="skills" className="block text-sm font-semibold text-gray-700 mb-2">
-                  Key Skills
-                </label>
-                <input
-                  id="skills"
-                  type="text"
-                  value={skills}
-                  onChange={(e) => setSkills(e.target.value)}
-                  placeholder="React, TypeScript, Node.js"
-                  className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 placeholder-gray-400 bg-gray-50"
-                  data-clarity-mask="true"
-                />
-              </div>
-            </div>
+        {/* TAB 2: INSTANT PERFORMANCE ANALYTICS */}
+        {activeTab === 'performance_analytics' && (
+          <PerformanceAnalyticsView
+            metrics={latestSessionMetrics || undefined}
+            onRetry={() => setActiveTab('mock_interview')}
+            onNextQuestion={() => setActiveTab('question_library')}
+            onOpenCoach={() => setActiveTab('star_coach')}
+          />
+        )}
 
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={!jobRole.trim() || loading}
-              className={`w-full sm:w-auto flex items-center justify-center gap-2 font-semibold px-6 py-3 rounded-xl text-sm transition-all ${
-                jobRole.trim() && !loading
-                  ? 'bg-[#3c4a59] text-white hover:bg-[#2e3a47] shadow-md shadow-gray-300 active:scale-95'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  This may take a while
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Generate
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </div>
-          <p className="text-xs text-primary mt-3">
-            Role-specific HR, technical, and behavioral questions plus communication and prep tips.
-          </p>
-          {upgradeMessage && (
-            <div className="mt-6">
-              <UpgradePrompt
-                message={upgradeMessage}
-                onUpgrade={() => paywallCheckout.subscribePro()}
-              />
-            </div>
-          )}
-          {saveError && (
-            <p className="text-sm text-center text-red-600 font-medium mt-4">{saveError}</p>
-          )}
-        </div>
+        {/* TAB 3: RESUME & JD TAILORING */}
+        {activeTab === 'resume_jd' && (
+          <ResumeJdCustomizer
+            onLaunchMockWithQuestions={handleLaunchMockFromTailored}
+          />
+        )}
 
-        {/* Results */}
-        {results && (
-          <div id="interview-results" className="mt-10 space-y-8">
-            <div className="flex items-center gap-2">
-              <div className="h-px flex-1 bg-gray-200" />
-              <h2 className="font-extrabold text-gray-900 text-xl px-4">
-                Interview Questions for{' '}
-                <span className="text-[#3c4a59] font-extrabold">{jobRole}</span>
-              </h2>
-              <div className="h-px flex-1 bg-gray-200" />
-            </div>
+        {/* TAB 4: QUESTION LIBRARY */}
+        {activeTab === 'question_library' && (
+          <QuestionLibraryView
+            onPracticeQuestion={handlePracticeQuestionFromLibrary}
+            onOpenCodeSandbox={() => setActiveTab('coding_whiteboard')}
+          />
+        )}
 
-            {saveSuccess && (
-              <p className="text-center text-sm text-[#3c4a59] font-medium">
-                Session saved successfully. View it anytime on your Dashboard.
-              </p>
-            )}
+        {/* TAB 5: CODING & SYSTEM DESIGN WHITEBOARD */}
+        {activeTab === 'coding_whiteboard' && <CodingSandboxAndWhiteboard />}
 
-            {PAYMENTS_ENABLED && !hasFullAccess && (
-              <p className="text-center text-xs text-primary">
-                Premium sections are locked. Unlock this report for $2 or upgrade to Pro for $5/month.
-              </p>
-            )}
+        {/* TAB 6: STAR METHODOLOGY COACH */}
+        {activeTab === 'star_coach' && <StarFrameworkCoach />}
 
-            {paywallCheckout.error && (
-              <p className="text-center text-sm text-red-600 font-medium">{paywallCheckout.error}</p>
-            )}
+        {/* TAB 7: PROGRESS & READINESS DASHBOARD */}
+        {activeTab === 'progress_readiness' && (
+          <ProgressReadinessDashboard
+            onStartNewSession={() => setActiveTab('mock_interview')}
+            latestMetrics={latestSessionMetrics}
+          />
+        )}
 
-            {!PAYMENTS_ENABLED ? (
-              <div className="space-y-8">
-                <InterviewResultsBody categories={categories} results={results} />
-                <PaywallCheckoutPreview onPricingSoon={() => onNavigate('pricing')} />
-              </div>
-            ) : (
-              <>
-                <div id="paywall-free-preview" className="space-y-8">
-                  <InterviewResultsPreview categories={categories} results={results} />
+        {/* TAB 8: ROLE QUESTION GENERATOR */}
+        {activeTab === 'role_generator' && (
+          <div className="max-w-4xl mx-auto space-y-8">
+            <div className="glass-card glass-card-interactive p-8">
+              <div className="space-y-5">
+                <div>
+                  <label htmlFor="job-role" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Target Job Role
+                  </label>
+                  <input
+                    id="job-role"
+                    type="text"
+                    value={jobRole}
+                    onChange={(e) => setJobRole(e.target.value)}
+                    placeholder="e.g. Frontend Developer, Data Scientist, Marketing Manager..."
+                    className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400 bg-gray-50 transition-all"
+                    data-clarity-mask="true"
+                  />
                 </div>
-                {hasFullAccess || !reportId ? (
-                  <InterviewResultsPremium categories={categories} results={results} />
-                ) : (
-                  <PaywallBlurGate
-                    unlocked={false}
-                    previewPercent={0}
-                    reportId={reportId}
-                    onUnlockReport={paywallCheckout.unlockReport}
-                    onSubscribePro={paywallCheckout.subscribePro}
-                  >
-                    <InterviewResultsPremium categories={categories} results={results} />
-                  </PaywallBlurGate>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="experience-level" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Experience Level
+                    </label>
+                    <select
+                      id="experience-level"
+                      value={experienceLevel}
+                      onChange={(e) => setExperienceLevel(e.target.value)}
+                      className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 bg-gray-50"
+                    >
+                      <option value="entry">Entry / Junior</option>
+                      <option value="mid">Mid-Level</option>
+                      <option value="senior">Senior / Lead</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="skills" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Key Skills
+                    </label>
+                    <input
+                      id="skills"
+                      type="text"
+                      value={skills}
+                      onChange={(e) => setSkills(e.target.value)}
+                      placeholder="React, TypeScript, Node.js"
+                      className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 placeholder-gray-400 bg-gray-50"
+                      data-clarity-mask="true"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={!jobRole.trim() || loading}
+                  className={`w-full sm:w-auto flex items-center justify-center gap-2 font-semibold px-6 py-3 rounded-xl text-sm transition-all ${
+                    jobRole.trim() && !loading
+                      ? 'bg-[#3c4a59] text-white hover:bg-[#2e3a47] shadow-md shadow-gray-300 active:scale-95'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Generating Role-Specific Questions...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate Questions
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-primary mt-3">
+                Role-specific HR, technical, and behavioral questions plus communication and prep tips.
+              </p>
+              {upgradeMessage && (
+                <div className="mt-6">
+                  <UpgradePrompt
+                    message={upgradeMessage}
+                    onUpgrade={() => paywallCheckout.subscribePro()}
+                  />
+                </div>
+              )}
+              {saveError && (
+                <p className="text-sm text-center text-red-600 font-medium mt-4">{saveError}</p>
+              )}
+            </div>
+
+            {/* Results */}
+            {results && (
+              <div id="interview-results" className="mt-10 space-y-8">
+                <div className="flex items-center gap-2">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <h2 className="font-extrabold text-gray-900 text-xl px-4">
+                    Interview Questions for{' '}
+                    <span className="text-[#3c4a59] font-extrabold">{jobRole}</span>
+                  </h2>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+
+                {saveSuccess && (
+                  <p className="text-center text-sm text-[#3c4a59] font-medium">
+                    Session saved successfully. View it anytime on your Dashboard.
+                  </p>
                 )}
-              </>
+
+                {PAYMENTS_ENABLED && !hasFullAccess && (
+                  <p className="text-center text-xs text-primary">
+                    Premium sections are locked. Unlock this report for $2 or upgrade to Pro for $5/month.
+                  </p>
+                )}
+
+                {paywallCheckout.error && (
+                  <p className="text-center text-sm text-red-600 font-medium">{paywallCheckout.error}</p>
+                )}
+
+                {!PAYMENTS_ENABLED ? (
+                  <div className="space-y-8">
+                    <InterviewResultsBody categories={categories} results={results} />
+                    <PaywallCheckoutPreview onPricingSoon={() => onNavigate('pricing')} />
+                  </div>
+                ) : (
+                  <>
+                    <div id="paywall-free-preview" className="space-y-8">
+                      <InterviewResultsPreview categories={categories} results={results} />
+                    </div>
+                    {hasFullAccess || !reportId ? (
+                      <InterviewResultsPremium categories={categories} results={results} />
+                    ) : (
+                      <PaywallBlurGate
+                        unlocked={false}
+                        previewPercent={0}
+                        reportId={reportId}
+                        onUnlockReport={paywallCheckout.unlockReport}
+                        onSubscribePro={paywallCheckout.subscribePro}
+                      >
+                        <InterviewResultsPremium categories={categories} results={results} />
+                      </PaywallBlurGate>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}
       </div>
+
       {showDailyLimitModal && (
         <DailyUsageLimitModal
           featureLabel="Interview Prep"
@@ -592,65 +764,65 @@ function InterviewResultsPremium({
 }) {
   return (
     <div className="space-y-8">
-            {categories.slice(1).map((category) => (
-              <InterviewCategoryCard key={category.id} {...category} />
+      {categories.slice(1).map((category) => (
+        <InterviewCategoryCard key={category.id} {...category} />
+      ))}
+
+      {results.communicationTips && results.communicationTips.length > 0 && (
+        <div className="glass-card glass-card-interactive p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Mic className="w-5 h-5 text-[#3c4a59]" />
+            <h3 className="font-bold text-gray-900">Communication Tips</h3>
+          </div>
+          <ul className="space-y-2">
+            {results.communicationTips.map((tip, i) => (
+              <li key={i} className="text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                {tip}
+              </li>
             ))}
+          </ul>
+        </div>
+      )}
 
-            {results.communicationTips && results.communicationTips.length > 0 && (
-              <div className="glass-card glass-card-interactive p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <Mic className="w-5 h-5 text-[#3c4a59]" />
-                  <h3 className="font-bold text-gray-900">Communication Tips</h3>
-                </div>
-                <ul className="space-y-2">
-                  {results.communicationTips.map((tip, i) => (
-                    <li key={i} className="text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
-                      {tip}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      {results.preparationSuggestions && results.preparationSuggestions.length > 0 && (
+        <div className="glass-card glass-card-interactive p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <ListChecks className="w-5 h-5 text-emerald-600" />
+            <h3 className="font-bold text-gray-900">Preparation Suggestions</h3>
+          </div>
+          <ul className="space-y-2">
+            {results.preparationSuggestions.map((tip, i) => (
+              <li key={i} className="text-sm text-gray-600 flex items-start gap-2.5">
+                <span className="w-5 h-5 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">
+                  {i + 1}
+                </span>
+                {tip}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-            {results.preparationSuggestions && results.preparationSuggestions.length > 0 && (
-              <div className="glass-card glass-card-interactive p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <ListChecks className="w-5 h-5 text-emerald-600" />
-                  <h3 className="font-bold text-gray-900">Preparation Suggestions</h3>
-                </div>
-                <ul className="space-y-2">
-                  {results.preparationSuggestions.map((tip, i) => (
-                    <li key={i} className="text-sm text-gray-600 flex items-start gap-2.5">
-                      <span className="w-5 h-5 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">
-                        {i + 1}
-                      </span>
-                      {tip}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* STAR Tips */}
-            <div className="bg-gradient-to-br from-[#3c4a59] to-[#2e3a47] rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
-                    <Star className="w-5 h-5 text-white" />
-                  </div>
-                  <h3 className="font-bold text-white">STAR Method Answer Tips</h3>
-                </div>
-              </div>
-              <div className="p-6">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {results.starTips.map((tip, i) => (
-                    <div key={i} className="bg-white/10 border border-white/20 rounded-xl p-4">
-                      <p className="text-sm text-primary leading-relaxed">{tip}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+      {/* STAR Tips */}
+      <div className="bg-gradient-to-br from-[#3c4a59] to-[#2e3a47] rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-6 py-5 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
+              <Star className="w-5 h-5 text-white" />
             </div>
+            <h3 className="font-bold text-white">STAR Method Answer Tips</h3>
+          </div>
+        </div>
+        <div className="p-6">
+          <div className="grid sm:grid-cols-2 gap-4">
+            {results.starTips.map((tip, i) => (
+              <div key={i} className="bg-white/10 border border-white/20 rounded-xl p-4">
+                <p className="text-sm text-primary leading-relaxed">{tip}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
