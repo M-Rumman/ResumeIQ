@@ -70,18 +70,149 @@ export const BLOG_ARTICLES: BlogArticle[] = [
     ],
   },
   {
-    slug: 'resume-mistakes-that-cost-interviews', title: '20 Resume Mistakes That Cost Interviews',
+    slug: 'resume-mistakes-that-cost-interviews',
+    title: '20 Resume Mistakes That Cost Interviews',
     excerpt: 'The avoidable details that make a strong candidate harder for both ATS systems and recruiters to understand.',
-    category: 'Resume Writing', author: { name: 'Daniel Kim', role: 'Resume Coach', initials: 'DK' }, readingTime: '9 min read', publishDate: 'July 2026',
+    category: 'Resume Writing',
+    author: { name: 'Daniel Kim', role: 'Resume Coach', initials: 'DK' },
+    readingTime: '9 min read',
+    publishDate: 'July 2026',
     coverImage: 'https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=1000&q=85',
-    metaTitle: '20 Resume Mistakes That Cost Interviews | ResuV', metaDescription: 'Avoid common resume mistakes that reduce clarity and interview chances.', tags: ['Resume Writing', 'Recruiters', 'Career Advice'],
+    metaTitle: '20 Resume Mistakes That Cost Interviews | ResuV',
+    metaDescription: 'Avoid common resume mistakes that reduce clarity and interview chances.',
+    tags: ['Resume Writing', 'Recruiters', 'Career Advice'],
+    content: [
+      {
+        paragraphs: [
+          'Most resume mistakes are not fatal in isolation; rather, they accumulate to create friction. When a recruiter has 150 applicants for an open role, any point of confusion is reason enough to move to the next file.',
+          'Here are the 20 most frequent resume errors, grouped by category, and how to fix them.',
+        ],
+      },
+      {
+        heading: 'Category A: ATS & Formatting Errors',
+        numbered: [
+          'Tables and Text Boxes: Text inside graphic callout boxes or nested tables frequently fails to parse in older ATS platforms, resulting in dropped work history.',
+          'Header/Footer Placement: Vital contact information placed inside the document header or footer margin can be completely bypassed by parsing software.',
+          'Saving as Incompatible Formats: Submitting .pages, .png, or non-standard file types. Stick to .pdf (unless explicitly instructed to provide .docx).',
+          'Icons Instead of Text: Replacing phone or email headers with small graphic icons. Parsers cannot decode glyphs.',
+          'Creative Color Palettes: Low-contrast grey-on-white text, neon section accents, or colored backgrounds that render unreadable on monochrome office monitors.',
+        ],
+      },
+      {
+        heading: 'Category B: Framing & Content Weaknesses',
+        numbered: [
+          'The "Task Dump" Phenomenon: Listing daily chores instead of business outcomes ("Responsible for responding to customer tickets" vs. "Resolved 45+ enterprise tier-3 support tickets daily while maintaining a 98% CSAT score").',
+          'The Objective Statement: Using outdated statements like "Seeking an entry-level position where I can utilize my skills." Replace this with a direct Professional Summary focused on what you deliver.',
+          'Missing Context for Numbers: Throwing out metrics without a baseline ("Increased revenue by $500K"—was that out of a $1M quota or a $50M target?).',
+          'First-Person Pronouns: Using "I", "me", "my", or "we". Resumes use implied third-person active verbs ("Spearheaded," "Engineered," "Delivered").',
+          'The Passive Voice: Phrases like "Was assigned to oversee" instead of "Directed" or "Managed".',
+        ],
+      },
+      {
+        heading: 'Category C: Structural & Visual Friction',
+        numbered: [
+          'Unjustified Page Count: A 1.25-page resume with trailing blank space. Either edit tightly down to a crisp single page, or expand meaningfully to two full pages.',
+          'Inconsistent Date Formatting: Switching between 06/2023 - Present, June 2023 – Current, and 2023–Pres.. Pick one standard (MM/YYYY – MM/YYYY) and stick to it.',
+          'Cluttered Margins: Setting margins below 0.5 inches to cram text in. Dense documents cause visual fatigue. Maintain 0.5" to 0.75" margins.',
+          'Burying the Most Recent Role: Placing education or 10-year-old certifications above relevant, current professional experience.',
+          'Over-Categorizing Skills: Breaking out 40 different micro-skills into 10 categories. Keep it to 3–4 focused lines.',
+        ],
+      },
+      {
+        heading: 'Category D: Professionalism & Credibility Red Flags',
+        numbered: [
+          'Unprofessional Contact Details: Using outdated email domains or quirky handles (skaterdude99@...). Use a simple firstname.lastname@... address.',
+          'Full Physical Street Addresses: Listing your street name and apartment number. Modern standard requires only: City, State (or Metro Area).',
+          'Unexplained Career Gaps: Leaving unexplained multi-year gaps. Label them clearly: Career Sabbatical (Family Care / Professional Development).',
+          'Outdated Tech Stacks Front and Center: Highlighting technologies obsolete for your target role (e.g., listing SVN over Git, or Flash for web development).',
+          'Lack of Proofreading: Typographical errors in company names, tool names (e.g., "Github" instead of "GitHub"), or grammatical slips in your first bullet point.',
+        ],
+        callout: 'Review your resume against this 20-point checklist before every submission. Removing friction makes it easy for recruiters to say yes.',
+      },
+    ],
   },
   {
-    slug: 'engineering-resume-guide', title: 'The Engineering Resume Guide: Projects That Prove Your Skills',
+    slug: 'engineering-resume-guide',
+    title: 'The Engineering Resume Guide: Projects That Prove Your Skills',
     excerpt: 'Turn technical coursework, prototypes, and internships into evidence a hiring manager can quickly assess.',
-    category: 'Engineering Careers', author: { name: 'Aisha Rahman', role: 'Engineering Career Coach', initials: 'AR' }, readingTime: '10 min read', publishDate: 'June 2026',
+    category: 'Engineering Careers',
+    author: { name: 'Aisha Rahman', role: 'Engineering Career Coach', initials: 'AR' },
+    readingTime: '10 min read',
+    publishDate: 'June 2026',
     coverImage: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=1000&q=85',
-    metaTitle: 'Engineering Resume Guide | ResuV', metaDescription: 'Build an engineering resume that clearly demonstrates practical technical experience.', tags: ['Engineering', 'Projects', 'Students'],
+    metaTitle: 'Engineering Resume Guide | ResuV',
+    metaDescription: 'Build an engineering resume that clearly demonstrates practical technical experience.',
+    tags: ['Engineering', 'Projects', 'Students'],
+    content: [
+      {
+        paragraphs: [
+          'Engineering managers are naturally skeptical of claims on resumes. Anyone can list C++, Distributed Systems, or Machine Learning in a skills list.',
+          'What separates mid-tier engineering resumes from top-tier ones is verifiable implementation proof. If you have limited professional tenure—or are pivoting to a new technical specialty—your Projects Section is your most important asset.',
+        ],
+      },
+      {
+        heading: '1. The Anatomy of an Elite Engineering Project Entry',
+        paragraphs: [
+          'Do not format a project like a homework assignment. Frame it like an engineering case study using the C-T-A-R (Context, Tech Stack, Action, Result) formula:',
+        ],
+        code: '[ Project Name ] | [ Core Stack Used ] | [ GitHub / Live Demo Link ]\n├── Context: What problem did this system solve, and what was the constraint?\n├── Implementation: What architecture, algorithm, or pattern did you deploy?\n└── Quantitative Result: Performance benchmarks, query optimization, or active users.',
+      },
+      {
+        subheading: 'Weak Project Example',
+        paragraphs: [
+          'Chat App (React, Node.js, MongoDB)',
+          '• Built a full-stack chat application where users can send messages.',
+          '• Implemented authentication and database storage.',
+        ],
+      },
+      {
+        subheading: 'Strong Engineering Project Example',
+        paragraphs: [
+          'Real-Time Distributed Messaging Platform | Go, WebSockets, Redis, Docker | github.com/username/realtime-chat',
+        ],
+        bullets: [
+          'Architected a distributed messaging engine supporting 5,000 concurrent WebSocket connections with <40ms p99 message latency.',
+          'Implemented Redis Pub/Sub backplane to scale message broadcasting across 3 containerized application instances.',
+          'Mitigated cold-start connection spikes by introducing token bucket rate-limiting at the reverse proxy level.',
+        ],
+      },
+      {
+        heading: '2. The 3 Types of Projects That Impress Hiring Managers',
+        subheading: 'Type 1: The "Systems & Infrastructure" Project',
+        paragraphs: [
+          'Showcases that you understand the operational reality of production software beyond writing business logic.',
+          'Ideas: A custom HTTP server built from raw sockets, a distributed key-value store with raft consensus, or an automated infrastructure-as-code deployment pipeline.',
+          'Keywords to feature: Throughput, latency, caching layers, thread safety, concurrency.',
+        ],
+      },
+      {
+        subheading: 'Type 2: The Open Source Contribution',
+        paragraphs: [
+          'Proves you can read existing production codebases, navigate git workflows, follow style guidelines, and accept code review feedback.',
+          'Example format: Contributor | Kubernetes Ingress-NGINX Project',
+        ],
+        bullets: [
+          'Fixed edge-case SSL termination bug affecting websocket upgrades (PR #12489).',
+          'Added automated end-to-end integration tests in Go covering ingress path routing edge cases.',
+        ],
+      },
+      {
+        subheading: 'Type 3: The Applied Domain Project (ML, Data, Embedded)',
+        paragraphs: [
+          'Shows applied problem-solving rather than running standard tutorial datasets (e.g., skip the Titanic survival predictor or MNIST digit recognizer).',
+          'Ideas: Scraping unique unstructured data, executing an end-to-end ETL pipeline, deploying models with ONNX runtime, or compiling an embedded firmware driver.',
+        ],
+      },
+      {
+        heading: '3. Engineering Resume Checklist: Projects Section',
+        bullets: [
+          'Functional Links: Every project must link to clean, documented repositories with descriptive README.md files (including setup instructions and architecture diagrams).',
+          'Architectural Decisions: State why you chose a specific technology over an alternative (e.g., "Selected PostgreSQL over MongoDB due to relational constraints and strict ACID requirements").',
+          'Edge Cases & Failure Modes: Mention how the application handles errors, rate-limiting, edge-case validation, or retries.',
+        ],
+        callout: 'An engineering project with verified metrics, benchmark numbers, and live deployment links carries more weight with hiring managers than a dozen unverified bullet points.',
+      },
+    ],
   },
   {
     slug: 'best-resume-format-2026', title: 'Best Resume Format in 2026: The Ultimate Guide to Landing More Interviews',
@@ -115,25 +246,188 @@ export const BLOG_ARTICLES: BlogArticle[] = [
     ],
   },
   {
-    slug: 'how-recruiters-read-resumes', title: 'How Recruiters Read Resumes in the First 10 Seconds',
+    slug: 'how-recruiters-read-resumes',
+    title: 'How Recruiters Read Resumes in the First 10 Seconds',
     excerpt: 'The visual and evidence signals that help a recruiter identify role fit at a glance.',
-    category: 'Career Advice', author: { name: 'Daniel Kim', role: 'Resume Coach', initials: 'DK' }, readingTime: '6 min read', publishDate: 'June 2026',
+    category: 'Career Advice',
+    author: { name: 'Daniel Kim', role: 'Resume Coach', initials: 'DK' },
+    readingTime: '6 min read',
+    publishDate: 'June 2026',
     coverImage: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1000&q=85',
-    metaTitle: 'How Recruiters Read Resumes | ResuV', metaDescription: 'Understand the first signals recruiters use when reviewing a resume.', tags: ['Recruiters', 'Resume Review', 'Career Advice'],
+    metaTitle: 'How Recruiters Read Resumes | ResuV',
+    metaDescription: 'Understand the first signals recruiters use when reviewing a resume.',
+    tags: ['Recruiters', 'Resume Review', 'Career Advice'],
+    content: [
+      {
+        paragraphs: [
+          'Recruiters do not read your resume from top to bottom on the first pass; they scan it.',
+          'Eye-tracking studies consistently show that recruiters spend between 6 to 10 seconds deciding whether a candidate lands in the “Review Further” or “Reject” pile. During this initial triage, they are not evaluating your full career narrative—they are answering three binary questions:',
+        ],
+        numbered: [
+          'Does this person meet the core threshold for this title and seniority level?',
+          'Have they worked in comparable environments or tech stacks?',
+          'Is their career trajectory progressing, stagnant, or disjointed?',
+        ],
+      },
+      {
+        paragraphs: [
+          'To survive the initial 10-second sweep, your resume must be structured for immediate cognitive clarity.',
+        ],
+      },
+      {
+        heading: '1. The "F-Pattern" Scan: Where Eyes Actually Go',
+        bullets: [
+          'The Top Horizontal Sweep: Header, current title, most recent employer, and location.',
+          'The Left-Side Vertical Track: Job titles, dates of employment, and company names.',
+          'The Second Horizontal Sweep: The first 1–2 bullet points under the most recent position.',
+          'The Bottom Sweep: Education or a core technical/skills summary block.',
+        ],
+        paragraphs: [
+          'If your most critical achievements are buried in the fifth bullet of a job you held four years ago, they will not be seen.',
+        ],
+        code: '[ Top 1/3 of Page: High Value Real Estate ]\n├── Name & Clean Contact Links (LinkedIn/GitHub/Portfolio)\n├── Target Role Title & 2-line Value Summary\n└── Key Competencies / Core Tech Stack (5–8 key items)\n\n[ Middle: Reverse Chronological Work History ]\n├── Company Name | Job Title | Dates (Right-aligned)\n│   ├── Bullet 1: Highest-impact achievement (Metric + Action)\n│   ├── Bullet 2: Core responsibility & scope (Team size, budget, tool)\n│   └── Bullet 3: Secondary achievement',
+      },
+      {
+        heading: '2. The 3 Anchors Recruiters Look For Instantly',
+        subheading: 'Anchor 1: Clear Role Progression',
+        paragraphs: [
+          'Recruiters look at dates and titles on the left margin. If titles are vague (e.g., “Specialist II”), append industry-standard clarity in parentheses:',
+          'Example: Specialist II (Senior Product Marketing Lead) | SaaS Corp (2023 – Present)',
+        ],
+      },
+      {
+        subheading: 'Anchor 2: Contextual Scope',
+        paragraphs: [
+          'Titles mean different things at different companies. A "Lead Engineer" at a seed-stage startup handles different challenges than one at an enterprise bank. Give immediate context in your opening bullet:',
+          '• Weak: "Led development team on customer portal."',
+          '• Strong: "Led a team of 6 engineers to rebuild a B2B billing engine supporting 120k daily active users."',
+        ],
+      },
+      {
+        subheading: 'Anchor 3: Hard Metrics Over Soft Adjectives',
+        paragraphs: [
+          'Adjectives like “hardworking,” “results-oriented,” or “dynamic” register as visual noise. Numbers create visual friction that stops the scanning eye.',
+          'Incorporate percentages, dollar amounts, time saved, or team sizes: $1.4M, 38%, 12-person squad, 10k+ requests/sec.',
+        ],
+      },
+      {
+        heading: '3. Visual Traps That Kill the First 10 Seconds',
+        bullets: [
+          'Multi-Column Layouts: Split columns disrupt natural horizontal scanning and confuse ATS parsers.',
+          'Skill Rating Bars (e.g., 4/5 stars in Python): Subjective, non-verifiable, and wastes vertical space.',
+          'Dense Text Blocks: Paragraphs longer than 3 lines are routinely skipped. Limit bullets to 1–2 lines maximum.',
+        ],
+        callout: 'Structure your resume so your strongest proof signals appear in the top 30% of the first page.',
+      },
+    ],
   },
   {
-    slug: 'tailor-your-resume-for-every-job', title: 'How to Tailor Your Resume for Every Job',
+    slug: 'tailor-your-resume-for-every-job',
+    title: 'How to Tailor Your Resume for Every Job',
     excerpt: 'A repeatable process for aligning your evidence with one job description without overstating experience.',
-    category: 'Job Search', author: { name: 'Aisha Rahman', role: 'Engineering Career Coach', initials: 'AR' }, readingTime: '8 min read', publishDate: 'May 2026',
+    category: 'Job Search',
+    author: { name: 'Aisha Rahman', role: 'Engineering Career Coach', initials: 'AR' },
+    readingTime: '8 min read',
+    publishDate: 'May 2026',
     coverImage: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?auto=format&fit=crop&w=1000&q=85',
-    metaTitle: 'Tailor Your Resume for Every Job | ResuV', metaDescription: 'Use job descriptions to tailor your resume truthfully and strategically.', tags: ['Job Search', 'Keywords', 'Resume Tailoring'],
+    metaTitle: 'Tailor Your Resume for Every Job | ResuV',
+    metaDescription: 'Use job descriptions to tailor your resume truthfully and strategically.',
+    tags: ['Job Search', 'Keywords', 'Resume Tailoring'],
+    content: [
+      {
+        paragraphs: [
+          'Tailoring your resume does not mean rewriting your entire work history for every application. Doing so is unsustainable and often leads to unnatural keyword stuffing.',
+          'Instead, tailoring is an exercise in evidence re-prioritization: ensuring that the specific proof a company values most is positioned where they will see it first.',
+        ],
+      },
+      {
+        heading: 'Step 1: Deconstruct the Job Description (The 3-Bucket Method)',
+        paragraphs: [
+          'Print or copy the target job description. Highlight requirements into three distinct buckets:',
+        ],
+        bullets: [
+          'Non-Negotiables (Hard Filters): Tools, certifications, years in a specific domain (e.g., AWS Solutions Architect, 5+ yrs B2B SaaS, SQL).',
+          'Core Deliverables (Outcomes): The exact problems they are hiring you to solve (e.g., Reduce churn, scale microservices, build SDR team).',
+          'Contextual Nuances (Company Stage): Indicators of environment and working style (e.g., Cross-functional, ambiguity, zero-to-one, HIPAA compliance).',
+        ],
+      },
+      {
+        heading: 'Step 2: The 80/20 Master Resume System',
+        paragraphs: [
+          'Maintain a single Master Resume containing every role, metric, project, and certification you have ever earned. When applying for a specific role:',
+        ],
+        numbered: [
+          'Keep the Core 80% Unchanged: Your career history, company names, and fundamental employment dates remain fixed.',
+          'The Target Header: Adjust the sub-headline under your name to match the target title (e.g., Full Stack Engineer | React & Node.js Architecture).',
+          'The Top 2 Bullets of Your Last 2 Roles: Swap bullet order so the most relevant project appears first.',
+          'The Core Skills Section: Reorder skills to place the tools explicitly mentioned in the job description at the front of the list.',
+        ],
+      },
+      {
+        heading: 'Step 3: Align Evidence Without Overstating',
+        paragraphs: [
+          'Never claim ownership of tools or domains you haven\'t worked with. If a job calls for a skill you possess at an intermediate level, frame it through application rather than inflated claims:',
+          '• Inflated (High Risk): "Expert in Kubernetes and enterprise cloud migration." (Fails technical screening)',
+          '• Tailored with Integrity: "Collaborated with DevOps to deploy containerized microservices via Kubernetes, reducing local staging build times by 25%."',
+        ],
+      },
+      {
+        heading: 'Checklist: Before Submitting',
+        bullets: [
+          'Does the first half of page 1 reflect at least 3 direct matches from the job post’s "Requirements" section?',
+          'Did I replace generic verbs with the specific action verbs used in the posting?',
+          'Have I removed obsolete tools or legacy workflows that distract from the core profile?',
+        ],
+        callout: 'A 15-minute tailored pass using the 80/20 rule will consistently outperform sending 100 generic blast applications.',
+      },
+    ],
   },
   {
-    slug: 'resume-keywords-explained', title: 'Resume Keywords Explained: What to Add and Where',
+    slug: 'resume-keywords-explained',
+    title: 'Resume Keywords Explained: What to Add and Where',
     excerpt: 'Learn the difference between a keyword you can prove and a phrase you should not add without evidence.',
-    category: 'ATS Optimization', author: { name: 'Maya Ahmed', role: 'Career Strategy Editor', initials: 'MA' }, readingTime: '8 min read', publishDate: 'May 2026',
+    category: 'ATS Optimization',
+    author: { name: 'Maya Ahmed', role: 'Career Strategy Editor', initials: 'MA' },
+    readingTime: '8 min read',
+    publishDate: 'May 2026',
     coverImage: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1000&q=85',
-    metaTitle: 'Resume Keywords Explained | ResuV', metaDescription: 'Use relevant resume keywords while keeping every claim truthful.', tags: ['Keywords', 'ATS', 'Resume Writing'],
+    metaTitle: 'Resume Keywords Explained | ResuV',
+    metaDescription: 'Use relevant resume keywords while keeping every claim truthful.',
+    tags: ['Keywords', 'ATS', 'Resume Writing'],
+    content: [
+      {
+        paragraphs: [
+          'A common misconception in the modern job search is that an Applicant Tracking System (ATS) auto-rejects any resume lacking a magic 95% keyword match.',
+          'In reality, most modern ATS platforms act like a search engine and database. Recruiters use boolean search strings (e.g., ("Product Manager") AND ("FinTech" OR "Payments") AND ("Stripe" OR "PCI")) to surface qualified applicants from large pools.',
+          'If your resume lacks the relevant terminology, you will not appear in their search results. However, simply stuffing keywords into a disconnected block will not help you pass human evaluation.',
+        ],
+      },
+      {
+        heading: '1. Proven Keywords vs. Empty Phrases',
+        paragraphs: [
+          'A keyword only holds value when it is backed by verifiable evidence.',
+        ],
+        code: '[ EMPTY PHRASE ] ──> "Cross-functional leadership, strategic thinking, agile methodology."\n                      (Zero evidence. ATS registers words; recruiter dismisses them.)\n\n[ PROVEN KEYWORD ] ─> "Led Agile sprint planning across 4 cross-functional squads to deliver\n                       a SOC-2 compliant authentication pipeline 2 weeks ahead of schedule."\n                      (Includes keywords: Agile, Sprint Planning, SOC-2, Authentication.)',
+      },
+      {
+        heading: '2. The 3 Types of Keywords You Must Balance',
+        code: '                 ▲\n                / \\\n               / Hard \\\n              / Skills \\        Languages, Tools, Frameworks, Certifications\n             /──────────\\       (Python, Tableau, Salesforce, PMP, ISO 27001)\n            /  Domain &   \\\n           / Methodology   \\    Process & Specialized Industry Knowledge\n          /─────────────────\\   (CI/CD, SEO, GTM Strategy, ETL, Basel III)\n         /   Action & Scope  \\  Impact Metrics, Organizational Scale\n        /_____________________\\ (P&L Management, Multi-tenant, Global Expansion)',
+        numbered: [
+          'Hard Skills & Tooling: Exact names of technologies, software, and certifications. Use exact spelling (e.g., write JavaScript, not JS; include both Amazon Web Services and AWS once).',
+          'Methodologies & Domain Knowledge: Concepts central to your discipline (Sprint Planning, A/B Testing, User Journey Mapping, Zero-Trust Architecture).',
+          'Scope Keywords: Indicators of scale (Enterprise, Greenfield, High-Throughput, B2B, Regulated).',
+        ],
+      },
+      {
+        heading: '3. Strategic Keyword Placement: Where They Belong',
+        bullets: [
+          'Professional Summary: High-level role identifiers and primary domain (e.g., "Data Engineer specializing in distributed pipeline design and Snowflake data warehousing.")',
+          'Work Experience Bullets: Tool + context + business result (e.g., "Built automated CI/CD pipelines using GitHub Actions, cutting deployment cycle times by 40%.")',
+          'Skills & Competencies: Categorized list for clean parsing (e.g., Languages: Go, Python, SQL | Cloud/DevOps: Docker, AWS, Terraform).',
+        ],
+        callout: 'Warning on "White Fonting": Never hide white-text keywords in your resume header or footer to trick the ATS. Modern systems strip formatting to plain text, exposing the trick to recruiters immediately and leading to automated rejections.',
+      },
+    ],
   },
   {
     slug: 'software-engineer-interview-questions', title: 'Top Interview Questions for Software Engineers',
