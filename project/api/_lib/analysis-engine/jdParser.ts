@@ -35,6 +35,10 @@ CRITICAL INSTRUCTIONS:
 4. "original_text" and "source_text" MUST be exact quotes from the provided JD.
 5. You MUST consistently extract seniority requirements (e.g., "Senior", "Lead") as category "seniority".
 6. You MUST consistently extract location, hybrid/remote work mode, and work authorization constraints (e.g., "Chicago, IL Hybrid", "U.S. citizen") as category "location" or "other".
+7. Atomic Entities Only: Extract hard skills, soft skills, and tools as individual, atomic entities.
+8. Split Conjunctions: If the JD contains "Python and C++", extract them as two separate requirements ("Python", "C++"). If it contains "Gazebo and RViz", extract ["Gazebo", "RViz"].
+9. Remove Filler/Qualifiers: Never extract filler phrases, proficiency levels, or alternatives (e.g., "SolidWorks or equivalent" -> "SolidWorks").
+10. Exclude Credentials from Skills: Do not categorize "Bachelor's Degree" as a skill; categorize under category "education".
 `;
 
 export function validateAndProcessRequirements(parsedRequirements: any[], jobDescriptionText: string): JobRequirement[] {

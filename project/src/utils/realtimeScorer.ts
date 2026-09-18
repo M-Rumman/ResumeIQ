@@ -91,7 +91,7 @@ export function calculateRealtimeScore(text: string): RealTimeScoreReport {
   let impactTip = '';
 
   if (impactRatio >= 0.4) {
-    impactScore = 25;
+    impactScore = 24;
     impactFeedback = `Exceptional impact! ${Math.round(impactRatio * 100)}% of bullets include metrics or numbers.`;
     impactTip = 'Continue framing accomplishments using the X-Y-Z formula (Accomplished X, measured by Y, by doing Z).';
   } else if (impactRatio >= 0.25) {
@@ -125,7 +125,7 @@ export function calculateRealtimeScore(text: string): RealTimeScoreReport {
   let brevityTip = '';
 
   if (tooLongCount === 0 && idealCount / totalBullets >= 0.6) {
-    brevityScore = 25;
+    brevityScore = 24;
     brevityFeedback = 'Bullets are concise, punchy, and easy for recruiters to skim quickly.';
     brevityTip = 'Maintain concise 1-2 line bullets across all positions.';
   } else if (tooLongCount <= 2) {
@@ -133,7 +133,7 @@ export function calculateRealtimeScore(text: string): RealTimeScoreReport {
     brevityFeedback = 'Good conciseness across most bullet points.';
     brevityTip = tooLongCount > 0 ? `Condense ${tooLongCount} overly long run-on bullets into tighter sentences.` : 'Keep bullet length between 12-25 words.';
   } else {
-    brevityScore = Math.max(8, 25 - tooLongCount * 3 - tooShortCount * 2);
+    brevityScore = Math.min(24, Math.max(8, 25 - tooLongCount * 3 - tooShortCount * 2));
     brevityFeedback = `${tooLongCount} bullet points are over 36 words and may lose recruiter attention.`;
     brevityTip = 'Break lengthy multi-clause sentences into two separate focused achievements.';
   }
@@ -153,13 +153,18 @@ export function calculateRealtimeScore(text: string): RealTimeScoreReport {
     }
   }
 
+  // Check for bullet formatting inconsistency (mixing symbol bullets with plain-text paragraph descriptions)
+  const symbolBulletCount = lines.filter(l => /^[•\-*]|\d+\.\s+/.test(l)).length;
+  const plainParagraphCount = lines.filter(l => !/^[•\-*]|\d+\.\s+/.test(l) && l.length > 50 && !/^[A-Z\s]{3,30}$/.test(l) && !/:$/.test(l)).length;
+  const hasInconsistentBullets = symbolBulletCount >= 2 && plainParagraphCount >= 2;
+
   const activeVoiceRatio = actionVerbStartCount / totalBullets;
   let styleScore = 18;
   let styleFeedback = '';
   let styleTip = '';
 
   if (activeVoiceRatio >= 0.55 && !firstPersonFound) {
-    styleScore = 25;
+    styleScore = 24;
     styleFeedback = `Excellent executive style! ${Math.round(activeVoiceRatio * 100)}% of bullets start with strong power verbs.`;
     styleTip = 'Tone is authoritative, active, and free of first-person pronouns.';
   } else if (activeVoiceRatio >= 0.35) {
@@ -174,11 +179,18 @@ export function calculateRealtimeScore(text: string): RealTimeScoreReport {
     styleTip = 'Start every bullet with a power verb like "Architected", "Spearheaded", or "Streamlined".';
   }
 
+  // Penalize heavily for inconsistent bullet formatting (e.g. bullets in some sections, plain paragraphs in others)
+  if (hasInconsistentBullets) {
+    styleScore = Math.max(8, styleScore - 5);
+    styleFeedback += ' Inconsistent bullet styling detected: some roles use bullet characters while others use plain paragraphs.';
+    styleTip = 'Standardize bullet formatting: use round bullet points (•) consistently across all roles.';
+  }
+
   // 4. STRUCTURE PILLAR (0-25)
   const lowerText = text.toLowerCase();
   const hasEmail = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(text);
   const hasPhone = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(text);
-  const hasExpHeading = /\b(experience|work history|employment)\b/.test(lowerText);
+  const hasExpHeading = /\b(experience|work history|employment|professional experience and projects)\b/.test(lowerText);
   const hasEduHeading = /\b(education|academic|degree)\b/.test(lowerText);
   const hasSkillsHeading = /\b(skills|technical skills|technologies)\b/.test(lowerText);
 
@@ -187,21 +199,27 @@ export function calculateRealtimeScore(text: string): RealTimeScoreReport {
   if (hasPhone) structurePoints += 5;
   if (hasExpHeading) structurePoints += 5;
   if (hasEduHeading) structurePoints += 5;
-  if (hasSkillsHeading) structurePoints += 5;
+  if (hasSkillsHeading) structurePoints += 4; // Max allowable is 24/25 per category rule
 
   let structureFeedback = '';
   let structureTip = '';
 
-  if (structurePoints === 25) {
+  if (structurePoints >= 24) {
     structureFeedback = 'All essential sections and contact channels are present and well-structured.';
     structureTip = 'Your resume follows the standard hierarchy recognized by all enterprise ATS engines.';
-  } else if (structurePoints >= 20) {
+  } else if (structurePoints >= 19) {
     structureFeedback = 'Good standard document hierarchy.';
     structureTip = !hasPhone ? 'Add a contact phone number.' : !hasSkillsHeading ? 'Add a dedicated Skills section.' : 'Maintain clear uppercase headings.';
   } else {
     structureFeedback = 'Missing key resume sections or contact information.';
     structureTip = 'Ensure your resume includes Contact Info, Experience, Education, and Skills.';
   }
+
+  // Crucial Rule: Maximum allowable score for any category is 24/25
+  impactScore = Math.min(24, Math.max(0, impactScore));
+  brevityScore = Math.min(24, Math.max(0, brevityScore));
+  styleScore = Math.min(24, Math.max(0, styleScore));
+  structurePoints = Math.min(24, Math.max(0, structurePoints));
 
   const overallScore = Math.min(100, Math.max(15, impactScore + brevityScore + styleScore + structurePoints));
 

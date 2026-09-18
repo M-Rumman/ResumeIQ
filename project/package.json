@@ -17,6 +17,7 @@
     "test:resume-extraction": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/resumeExtraction.test.ts",
     "test:matcher": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/matcher.test.ts",
     "test:evaluator": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/evaluator.test.ts",
+    "test:system-prompt-spec": "node node_modules/tsx/dist/cli.mjs tests/resume-pipeline/systemPromptSpec.test.ts",
     "audit:seo": "tsx scripts/audit-seo.ts"
   },
   "dependencies": {

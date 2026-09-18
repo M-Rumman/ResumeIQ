@@ -22,7 +22,7 @@ export function extractCandidateProfile(resumeText: string): CandidateProfile {
 
   const hasExplicitProjects = hasExplicitHeading(['projects', 'project experience', 'portfolio', 'personal projects', 'academic projects']);
   const hasExplicitSkills = hasExplicitHeading(['skills', 'technical skills', 'core competencies']);
-  const hasExplicitExperience = hasExplicitHeading(['experience', 'work experience', 'employment history']);
+  const hasExplicitExperience = hasExplicitHeading(['experience', 'work experience', 'employment history', 'employment', 'professional experience', 'professional experience and projects', 'work history']);
   const hasExplicitEducation = hasExplicitHeading(['education', 'academic background']);
 
   // Extract skills
@@ -160,11 +160,32 @@ export function parseExplicitDuration(text: string): number {
 }
 
 export function parseExperienceDuration(text: string): number {
-  const dateStr = extractDateRangeString(text);
-  if (!dateStr) return 0;
-  const parsed = parseDateRange(dateStr);
-  if (!parsed) return 0;
-  const years = calculateIntervalsDurationYears([parsed]);
+  const clean = text.replace(/–|—/g, '-');
+  const intervals: Array<{ start: Date, end: Date, isAmbiguous: boolean }> = [];
+  
+  // Extract date ranges from each line to capture multiple roles
+  const lines = clean.split('\n');
+  for (const line of lines) {
+    const dateStr = extractDateRangeString(line);
+    if (dateStr) {
+      const parsed = parseDateRange(dateStr);
+      if (parsed) {
+        intervals.push(parsed);
+      }
+    }
+  }
+
+  // Fallback to searching entire text if line-by-line found nothing
+  if (intervals.length === 0) {
+    const dateStr = extractDateRangeString(clean);
+    if (dateStr) {
+      const parsed = parseDateRange(dateStr);
+      if (parsed) intervals.push(parsed);
+    }
+  }
+
+  if (intervals.length === 0) return 0;
+  const years = calculateIntervalsDurationYears(intervals);
   return Math.round(years * 10) / 10;
 }
 
@@ -417,9 +438,24 @@ export function evaluateExperienceRequirement(
     }
   }
 
-  const verifiedProfYears = Math.round(calculateIntervalsDurationYears(verifiedProfessionalIntervals) * 10) / 10;
+  let explicitDurationYears = 0;
+  for (const fact of candidateFacts) {
+    const factYears = fact.employment_duration_years || parseExplicitDuration(fact.rawText);
+    if (factYears > 0 && isRoleRelevantToRequirement(fact.rawText, req.normalized_name)) {
+      explicitDurationYears = Math.max(explicitDurationYears, factYears);
+      if (!contributingFacts.includes(fact)) contributingFacts.push(fact);
+    }
+  }
+
+  let verifiedProfYears = Math.round(calculateIntervalsDurationYears(verifiedProfessionalIntervals) * 10) / 10;
+  if (explicitDurationYears > verifiedProfYears) {
+    verifiedProfYears = explicitDurationYears;
+  }
   const allIntervals = [...verifiedProfessionalIntervals, ...internshipIntervals];
-  const allYearsWithInternship = Math.round(calculateIntervalsDurationYears(allIntervals) * 10) / 10;
+  let allYearsWithInternship = Math.round(calculateIntervalsDurationYears(allIntervals) * 10) / 10;
+  if (explicitDurationYears > allYearsWithInternship) {
+    allYearsWithInternship = explicitDurationYears;
+  }
 
   const minYear = yearRanges.length > 0 ? Math.min(...yearRanges) : null;
   const maxYear = yearRanges.length > 0 ? Math.max(...yearRanges) : null;
@@ -476,7 +512,10 @@ export function evaluateExperienceRequirement(
   const hasInternship = internshipIntervals.length > 0 && verifiedProfYears !== allYearsWithInternship;
 
   let basisExplanation = '';
-  if (hasInternship) {
+  if (explicitDurationYears > 0 && verifiedProfYears >= reqMinYears) {
+    basisExplanation = `Approximately ${verifiedProfYears} years of relevant professional ${keyword} experience based on explicitly stated duration.`;
+    hasAmbiguousDates = false;
+  } else if (hasInternship) {
     basisExplanation = `Approximately ${verifiedProfYears} years of relevant professional ${keyword} experience based on roles from ${startStr} to ${endStr} (or approximately ${allYearsWithInternship} years including internship experience).`;
   } else {
     basisExplanation = `Approximately ${verifiedProfYears} years of relevant professional ${keyword} experience based on roles from ${startStr} to ${endStr}.`;

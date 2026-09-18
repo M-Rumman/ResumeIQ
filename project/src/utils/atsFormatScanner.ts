@@ -37,19 +37,19 @@ export function scanResumeFormatting(resumeText: string, _rawFileContext?: { fil
   }
 
   // 1. Check for Tables or Grid Delimiters
-  // ATS parsers scramble table columns and read across rows instead of down columns
-  const tableBorderMatches = resumeText.match(/[|+][-=]{3,}[|+]|\|(?:\s*[^|\n]+\s*\|){2,}/g) || [];
-  const multipleTabs = resumeText.match(/\t{2,}|\s{6,}[^\n]+\s{6,}/g) || [];
-  if (tableBorderMatches.length > 0 || multipleTabs.length >= 4) {
+  // Task 4: Do NOT flag for tables unless explicit markdown table syntax (|---|) or severe tab-spacing that destroys text flow
+  const tableBorderMatches = resumeText.match(/\|(?:\s*-+\s*\|)+|[|+][-=]{3,}[|+]/g) || [];
+  const severeTabs = resumeText.match(/\t{3,}|\t[^\n\t]+\t[^\n\t]+\t/g) || [];
+  if (tableBorderMatches.length > 0 || severeTabs.length >= 4) {
     deduction += 25;
     issues.push({
       id: 'table_detected',
       category: 'tables',
       severity: 'critical',
       title: 'Table or Multi-Column Grid Layout Detected',
-      description: 'Found tabulations or table borders that Applicant Tracking Systems cannot reliably read. Parsers often merge cells horizontally, misassigning your titles and dates.',
+      description: 'Found explicit markdown table syntax or severe tab-spacing that destroys ATS text flow. Parsers often merge cells horizontally, misassigning your titles and dates.',
       remediation: 'Convert all tables to a clean, single-column vertical layout with standard bullet points.',
-      detectedCount: tableBorderMatches.length || multipleTabs.length,
+      detectedCount: tableBorderMatches.length || severeTabs.length,
     });
   } else {
     passedChecks.push('Single-column flow without unreadable table structures');
@@ -74,19 +74,19 @@ export function scanResumeFormatting(resumeText: string, _rawFileContext?: { fil
   }
 
   // 3. Check for Unusual Characters, Dingbats, and Font Mojibake
-  // ATS parsers crash or drop words containing broken encoding
-  const mojibakeMatches = resumeText.match(/[âÃ]|[\u0080-\u009F]|[\uE000-\uF8FF]/g) || [];
+  // Task 4: Do NOT flag "Unreadable Characters or Custom Font Encoding" unless the text actually contains unparsed unicode replacement characters (\uFFFD). Standard text extraction means font is readable.
+  const unicodeReplacementMatches = resumeText.match(/\uFFFD/g) || [];
   const nonStandardBullets = resumeText.match(/[❖➢➤➔■◆★☆✓✔✕✖]/g) || [];
-  if (mojibakeMatches.length > 0) {
+  if (unicodeReplacementMatches.length > 0) {
     deduction += 20;
     issues.push({
       id: 'unusual_fonts_encoding',
       category: 'fonts',
       severity: 'critical',
       title: 'Unreadable Characters or Custom Font Encoding',
-      description: `Found ${mojibakeMatches.length} unreadable character artifacts. This happens when custom icons, non-standard system fonts, or unusual typography are used.`,
+      description: `Found ${unicodeReplacementMatches.length} unparsed unicode replacement characters (\uFFFD). This indicates custom font encoding or corrupted text extraction.`,
       remediation: 'Use standard ATS-safe fonts (Arial, Calibri, Helvetica, Times New Roman, Georgia) and standard keyboard characters.',
-      detectedCount: mojibakeMatches.length,
+      detectedCount: unicodeReplacementMatches.length,
     });
   } else if (nonStandardBullets.length > 3) {
     deduction += 10;
@@ -157,7 +157,7 @@ export function scanResumeFormatting(resumeText: string, _rawFileContext?: { fil
   // 6. Section Heading Recognition
   const textLower = resumeText.toLowerCase();
   const standardSections = [
-    { name: 'Experience / Work History', regex: /\b(experience|work history|employment|work experience)\b/ },
+    { name: 'Experience / Work History', regex: /\b(experience|work history|employment|work experience|professional experience and projects)\b/ },
     { name: 'Education', regex: /\b(education|academic|degrees|university|college)\b/ },
     { name: 'Skills', regex: /\b(skills|technical skills|competencies|technologies)\b/ },
   ];
@@ -167,6 +167,19 @@ export function scanResumeFormatting(resumeText: string, _rawFileContext?: { fil
     if (!section.regex.test(textLower)) {
       missingSections++;
     }
+  }
+
+  // Check for non-standard compound headings that benefit from an exact standard rename
+  const compoundHeadingMatch = resumeText.match(/\b(professional\s+experience\s+(?:and|&)\s+projects|work\s+history\s+(?:and|&)\s+projects)\b/i);
+  if (compoundHeadingMatch) {
+    issues.push({
+      id: 'compound_heading_rename',
+      category: 'structure',
+      severity: 'info',
+      title: 'Actionable ATS Heading Rename',
+      description: `Heading "${compoundHeadingMatch[0]}" combines multiple categories. While intelligent parsers process both, older legacy ATS engines may misclassify entries under compound titles.`,
+      remediation: `Change '${compoundHeadingMatch[0]}' to 'Experience' to ensure 100% legacy ATS compatibility.`,
+    });
   }
 
   if (missingSections > 0) {

@@ -96,6 +96,8 @@ const SECTION_ALIASES = {
     'employment', 'internships', 'internship', 'research experience', 'leadership',
     'leadership experience', 'activities', 'extracurriculars', 'leadership and extracurriculars',
     'positions of responsibility', 'professional background', 'volunteering', 'volunteer experience',
+    'professional experience and projects', 'professional experience & projects',
+    'work experience and projects', 'experience and projects',
   ],
   projects: [
     'projects', 'project experience', 'selected projects', 'personal projects', 'academic projects',
@@ -141,6 +143,7 @@ const TECHNICAL_KEYWORD_RULES: Record<keyof TechnicalKeywordGroups, KeywordRule[
   simulationTools: [
     { keyword: 'ANSYS' }, { keyword: 'Proteus' }, { keyword: 'LTSpice', aliases: ['lt spice'] },
     { keyword: 'Simulink' }, { keyword: 'Multisim' },
+    { keyword: 'Gazebo' }, { keyword: 'RViz', aliases: ['rviz2'] },
   ],
   microcontrollers: [
     { keyword: 'STM32' }, { keyword: 'Arduino' }, { keyword: 'ESP32' }, { keyword: 'Raspberry Pi' },
@@ -151,15 +154,24 @@ const TECHNICAL_KEYWORD_RULES: Record<keyof TechnicalKeywordGroups, KeywordRule[
     { keyword: 'MQTT' }, { keyword: 'TCP IP', aliases: ['tcp/ip'] },
   ],
   frameworks: [
-    { keyword: 'ROS', aliases: ['ros2', 'robot operating system'] }, { keyword: 'React' },
-    { keyword: 'Node JS', aliases: ['node.js', 'nodejs'] }, { keyword: 'TensorFlow' }, { keyword: 'PyTorch' },
+    { keyword: 'ROS2', aliases: ['ros 2'] },
+    { keyword: 'ROS', aliases: ['robot operating system'] },
+    { keyword: 'Nav2', aliases: ['nav 2', 'navigation 2'] },
+    { keyword: 'React' },
+    { keyword: 'Node JS', aliases: ['node.js', 'nodejs'] },
+    { keyword: 'TensorFlow' },
+    { keyword: 'PyTorch' },
   ],
   engineeringConcepts: [
     { keyword: 'PID Control', aliases: ['pid'] }, { keyword: 'Sensor Integration' }, { keyword: 'PCB Design' },
-    { keyword: 'Circuit Design' }, { keyword: 'Circuit Validation' }, { keyword: 'Firmware Development' },
-    { keyword: 'Embedded Programming' },
+    { keyword: 'Circuit Design' }, { keyword: 'Circuit Validation', aliases: ['motor control validation'] },
+    { keyword: 'Firmware Development' }, { keyword: 'Embedded Programming' },
+    { keyword: 'BLDC Motor Control', aliases: ['bldc', 'bldc motor', 'brushless dc motor', 'brushless dc'] },
+    { keyword: 'Lidar', aliases: ['lidar sensor', '2d lidar', '3d lidar'] },
   ],
   algorithms: [
+    { keyword: 'SLAM', aliases: ['simultaneous localization and mapping'] },
+    { keyword: 'AMCL', aliases: ['adaptive monte carlo localization'] },
     { keyword: 'FSM', aliases: ['finite state machine'] }, { keyword: 'Path Planning' },
     { keyword: 'Kalman Filter' }, { keyword: 'Computer Vision' },
   ],
@@ -269,6 +281,13 @@ function getSection(line: string): ResumeSection | null {
   // title, not a new section heading (for example, "Capstone Design Project").
   if (candidates[0].section === 'projects' && words.length >= 3
     && /\b(?:capstone|prototype|robot|design|simulation)\b/i.test(line)) return null;
+
+  // Task 1: Combined headings like "Professional Experience and Projects" or
+  // "Work History and Projects" should resolve to 'experience'.
+  if (candidates.some((c) => c.section === 'experience') && candidates.some((c) => c.section === 'projects')) {
+    return 'experience';
+  }
+
   // A one-word canonical signal is enough (for example, "Competencies").
   // For mixed headings require an unambiguous best semantic match.
   if (words.length === 1 || candidates.length === 1 || candidates[0].score > candidates[1].score) {
@@ -434,9 +453,57 @@ function recoverProjectBlocks(lines: string[]): ProjectLine[][] {
   return recovered;
 }
 
-/** Splits common grouped-skill delimiters without changing other resume sections. */
+/**
+ * Splits common grouped-skill delimiters, conjunctions, and removes qualifiers
+ * to extract atomic entities according to Task 2.
+ */
 function splitSkillEntries(value: string): string[] {
-  return value.split(/\s*(?:,|;|\||â€¢|Â·)\s*/).map((item) => item.trim()).filter(Boolean);
+  // 1. Exclude credentials from skills (Bachelor's Degree, etc.)
+  let cleaned = value.replace(
+    /\b(?:bachelor(?:'s)?(?:\s+degree)?|master(?:'s)?(?:\s+degree)?|doctorate|ph\.?d\.?|associate(?:'s)?(?:\s+degree)?|b\.?s\.?|m\.?s\.?|b\.?e\.?|m\.?e\.?|b\.?tech|m\.?tech)\b/gi,
+    ''
+  );
+
+  // 2. Remove filler phrases and qualifiers
+  cleaned = cleaned
+    .replace(/\b(?:or equivalent|or similar|at least \w+|proficiency in|proficient with|proficient in\/with|knowledge of|familiar with|familiarity with|working knowledge of|hands-on experience with|expert in|experienced in|skilled in)\b/gi, '')
+    .trim();
+
+  // 3. First split by major delimiters: comma, semicolon, pipe, bullet, newline
+  const majorTokens = cleaned
+    .split(/\s*(?:,|;|\||•|·|\n)\s*/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const results: string[] = [];
+
+  for (const token of majorTokens) {
+    let subTokens: string[] = [];
+
+    if (/\b(?:and|&)\b/i.test(token)) {
+      subTokens = token.split(/\s+(?:and|&)\s+/i);
+    } else if (/\s+or\s+/i.test(token)) {
+      subTokens = token.split(/\s+or\s+/i);
+    } else if (/\s*\/\s*/.test(token) && !/\b(?:tcp\/ip|ci\/cd)\b/i.test(token)) {
+      subTokens = token.split(/\s*\/\s*/);
+    } else {
+      subTokens = [token];
+    }
+
+    for (const sub of subTokens) {
+      const trimmed = sub
+        .replace(/^[•\-*–—\s]+|[•\-*–—\s]+$/g, '')
+        .replace(/\b(?:or equivalent|or similar)\b/gi, '')
+        .trim();
+      if (trimmed && trimmed.length >= 1 && trimmed.length <= 50) {
+        if (!/^(?:degree|bachelor|master|b\.?s|m\.?s)$/i.test(trimmed)) {
+          results.push(trimmed);
+        }
+      }
+    }
+  }
+
+  return unique(results);
 }
 
 type ProjectLine = { raw: string; text: string };
@@ -444,16 +511,19 @@ type ProjectLine = { raw: string; text: string };
 const PROJECT_TECHNOLOGY_HEADINGS = new Set([
   'tools and skills', 'technologies', 'technology', 'technologies used', 'software used', 'software',
 ]);
-const EXPERIENCE_ENTRY_PATTERN = /\b(?:intern(?:ship)?|engineer|research assistant|company|ltd|inc|manager|director|vp|president|founder|co-founder|associate|analyst|coordinator|supervisor|lead|specialist|developer|consultant|architect|administrator)\b/i;
+const EXPERIENCE_ENTRY_PATTERN = /\b(?:intern(?:ship)?|director|engineer|research assistant|researcher|company|ltd|inc|llc|center|lab|laboratory|manager|vp|president|founder|co-founder|associate|analyst|coordinator|supervisor|lead|specialist|developer|consultant|architect|administrator)\b/i;
 const PROJECT_ENTRY_PATTERN = /\b(?:project|prototype|robot|design|simulation|capstone)\b/i;
 const LEADERSHIP_ACTIVITY_PATTERN = /\b(?:led|leadership|society|club|team|extracurricular|position of responsibility)\b/i;
 
-/** Experience evidence takes precedence when an entry includes both signals. */
+/** Experience evidence takes precedence when an entry includes formal role or date signals. */
 function classifyPracticalEntry(value: string, fallback: 'experience' | 'projects'): 'experience' | 'projects' {
   if (EXPERIENCE_ENTRY_PATTERN.test(value)) return 'experience';
   if (fallback === 'experience' && LEADERSHIP_ACTIVITY_PATTERN.test(value)) return 'experience';
+  // Date associated with organization/context indicates experience
+  if (fallback === 'experience' && /\b(?:19|20)\d{2}\b/.test(value)) return 'experience';
   if (fallback === 'experience' && isProjectBullet(value)) return 'experience';
-  if (PROJECT_ENTRY_PATTERN.test(value)) return 'projects';
+  // Built system without formal company role classifies as Project
+  if (PROJECT_ENTRY_PATTERN.test(value) && !EXPERIENCE_ENTRY_PATTERN.test(value)) return 'projects';
   return fallback;
 }
 
@@ -684,6 +754,15 @@ const TECHNICAL_NORMALIZATIONS: Array<{ canonical: string; aliases: string[]; ca
   { canonical: 'Machine Learning', aliases: ['machine learning', 'ml'], category: 'AI', domains: ['AI', 'Data'], related: ['Artificial Intelligence'] },
   { canonical: 'Artificial Intelligence', aliases: ['artificial intelligence', 'ai'], category: 'AI', domains: ['AI'], related: ['Machine Learning'] },
   { canonical: 'Microcontroller', aliases: ['microcontroller', 'micro controller'], category: 'Embedded', domains: ['Embedded', 'Electronics'], related: ['Embedded Systems'] },
+  { canonical: 'ROS2', aliases: ['ros2', 'ros 2'], category: 'Frameworks', domains: ['Robotics', 'Software'], related: ['ROS', 'Nav2'] },
+  { canonical: 'ROS', aliases: ['ros', 'robot operating system'], category: 'Frameworks', domains: ['Robotics', 'Software'], related: ['ROS2'] },
+  { canonical: 'Nav2', aliases: ['nav2', 'nav 2', 'navigation2'], category: 'Frameworks', domains: ['Robotics', 'Software'], related: ['ROS2', 'SLAM'] },
+  { canonical: 'SLAM', aliases: ['slam'], category: 'Algorithms', domains: ['Robotics', 'AI'], related: ['Nav2', 'AMCL'] },
+  { canonical: 'AMCL', aliases: ['amcl'], category: 'Algorithms', domains: ['Robotics', 'Software'], related: ['SLAM', 'Nav2'] },
+  { canonical: 'Lidar', aliases: ['lidar', 'lidar sensor'], category: 'Electronics', domains: ['Electronics', 'Robotics'], related: ['Sensor Integration'] },
+  { canonical: 'BLDC Motor Control', aliases: ['bldc', 'bldc motor', 'bldc motor control', 'brushless dc'], category: 'Engineering Concepts', domains: ['Electronics', 'Mechanical'], related: ['Motor Control'] },
+  { canonical: 'Gazebo', aliases: ['gazebo'], category: 'Simulation Software', domains: ['Robotics', 'Simulation'], related: ['ROS2', 'RViz'] },
+  { canonical: 'RViz', aliases: ['rviz', 'rviz2'], category: 'Simulation Software', domains: ['Robotics', 'Simulation'], related: ['ROS2', 'Gazebo'] },
 ];
 
 function matchesTerm(value: string, term: string): boolean {

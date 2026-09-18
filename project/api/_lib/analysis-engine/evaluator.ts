@@ -87,9 +87,10 @@ export function rankStrengths(finalizedMatches: RequirementMatch[]): Requirement
 }
 
 export function evaluateScores(job: JobProfile, candidate: CandidateProfile, canonical: CanonicalRequirements | MatchingResult): EvaluationResult {
-  if (job.requirements.length === 0) {
-    throw new AiPipelineError('evaluator' as any, 'INVARIANT_FAILED', 'Cannot evaluate scores for an empty requirement set.');
-  }
+  const matchesArray = 'all' in canonical ? canonical.all : canonical.matches;
+  const effectiveRequirements = job.requirements.length > 0
+    ? job.requirements
+    : matchesArray.map((m) => m.requirement);
 
   // 1. Job Match Scoring (Mathematically calculated from requirements)
   let totalMaxScore = 0;
@@ -99,11 +100,9 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
   const weaknesses: string[] = [];
   const scoreDetails = [];
 
-  const matchesArray = 'all' in canonical ? canonical.all : canonical.matches;
-
   // 1a. Deduplicate matches and ensure all JD requirements are present
   const requirementsMap = new Map<string, RequirementMatch>();
-  for (const req of job.requirements) {
+  for (const req of effectiveRequirements) {
     if (!req.normalized_name || !req.normalized_name.trim()) continue;
     requirementsMap.set(req.id || req.normalized_name, {
       requirement: req,
@@ -135,11 +134,7 @@ export function evaluateScores(job: JobProfile, candidate: CandidateProfile, can
     
     // Invariant: Failed analysis must NOT silently drop from the denominator,
     // otherwise the candidate gets a free pass on an unscored requirement.
-    let maxPoints = weight * 10;
-    
-    if (match.classification === 'ANALYSIS_FAILED') {
-      maxPoints = 0; // Do not penalize for failed analysis
-    }
+    const maxPoints = weight * 10;
 
     // Ensure bounds
     let achievedPoints = maxPoints * contribution;
