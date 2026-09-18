@@ -796,6 +796,9 @@ Respond with valid JSON only.`;
 const INTERVIEW_SYSTEM_PROMPT = `You are a senior interview coach (like ChatGPT preparing someone for a job interview).
 Respond with valid JSON only — no markdown.
 
+STRICT MINIMUM OUTPUT GUARANTEE:
+Every category and combination of applied filters (Role + Difficulty + Topic/Skills) MUST return a minimum of 3 to 5 distinct, high-quality questions. You must never return fewer than 3 distinct questions in technicalQuestions, behavioralQuestions, or hrQuestions.
+
 Schema:
 {
   "technicalQuestions": [{"question": "string", "idealAnswer": "string — 2-4 sentences", "tip": "string", "followUpQuestions": ["string"]}],
@@ -806,7 +809,7 @@ Schema:
   "preparationSuggestions": ["string — MINIMUM 5 suggestions"]
 }
 
-Provide 5 questions per category tailored to the role and experience level.
+Provide 3 to 5 distinct questions per category tailored strictly to the role and experience level.
 idealAnswer must be complete and helpful — not one-liners.
 followUpQuestions: 1-2 likely follow-ups per question.`;
 
@@ -3028,6 +3031,69 @@ function normalizeResumeAnalysis(raw: any): AiResumeAnalysisFull {
   return result;
 }
 
+const DEFAULT_TECH_FALLBACKS = [
+  {
+    question: 'How do you approach investigating a high-latency bottleneck or intermittent failure in a distributed production service?',
+    idealAnswer: 'I isolate the blast radius using APM telemetry and metrics, inspect database slow queries and connection pool locks, replicate with isolated load benchmarks, and apply targeted caching or query indexing.',
+    tip: 'Walk through systematic triage: logs, traces, database metrics, and rollback or mitigation.',
+    followUpQuestions: ['How do you communicate during an active incident?', 'What post-mortem safeguards do you establish?'],
+  },
+  {
+    question: 'Can you explain the architectural trade-offs between horizontal scaling and caching at the edge or memory layer?',
+    idealAnswer: 'Horizontal scaling adds node redundancy and throughput but introduces distributed consensus and session affinity challenges. Caching (e.g. Redis) drastically cuts latency but requires robust cache invalidation strategies.',
+    tip: 'Compare read vs write heavy workloads, consistency models, and operational costs.',
+    followUpQuestions: ['How do you handle cache stampedes?', 'What eviction policies do you choose and why?'],
+  },
+  {
+    question: 'Describe how you maintain code quality, automated test coverage, and backwards compatibility in fast-shipping CI/CD pipelines.',
+    idealAnswer: 'We enforce automated linting, unit tests, and integration contract tests in CI, alongside feature flags and database migration versioning to guarantee safe zero-downtime rollouts.',
+    tip: 'Mention shift-left testing, canary deployments, and semantic versioning.',
+    followUpQuestions: ['How do you handle schema migrations without downtime?', 'When is a test suite too slow?'],
+  },
+];
+
+const DEFAULT_BEHAVIORAL_FALLBACKS = [
+  {
+    question: 'Tell me about a time you had a strong disagreement with a colleague or stakeholder regarding technical direction. How did you resolve it?',
+    idealAnswer: 'I gathered objective benchmark data and user impact metrics, scheduled a collaborative sync to discuss trade-offs openly, and aligned on an iterative MVP with measurable evaluation criteria.',
+    tip: 'Use the STAR format. Highlight data-driven persuasion, mutual respect, and committing to team outcomes.',
+    followUpQuestions: ['What would you do if consensus could not be reached?', 'How do you prevent lingering resentment?'],
+  },
+  {
+    question: 'Describe a project where initial specifications were vague or constantly shifting. How did you navigate ambiguity and deliver?',
+    idealAnswer: 'I created an interactive prototype within days to anchor discussions, established explicit phase-1 acceptance criteria, and scheduled bi-weekly user feedback loops to steer technical decisions.',
+    tip: 'Demonstrate proactive ownership, prototyping, and stakeholder management.',
+    followUpQuestions: ['How did you prioritize competing asks?', 'What metrics proved success?'],
+  },
+  {
+    question: 'Tell me about a significant engineering mistake or bad architectural choice you made in the past. What was the impact and what did you learn?',
+    idealAnswer: 'I deployed a database migration that locked an active table under unexpected peak traffic. I immediately rolled it back, conducted a blameless post-mortem, and introduced automated lock linting in CI.',
+    tip: 'Show self-awareness, technical humility, ownership, and actionable long-term learning.',
+    followUpQuestions: ['How did your team respond?', 'How did you prevent similar incidents across other services?'],
+  },
+];
+
+const DEFAULT_HR_FALLBACKS = [
+  {
+    question: 'What motivated you to apply for this specific role, and how does it fit into your long-term engineering career trajectory?',
+    idealAnswer: 'My passion is building resilient, user-centric systems at scale. This role aligns with my experience in modern full-stack architectures and gives me the opportunity to solve high-impact scalability challenges.',
+    tip: 'Connect company mission and technical challenges to your concrete personal skills and aspirations.',
+    followUpQuestions: ['What kind of culture brings out your best work?', 'Where do you see yourself in 3 years?'],
+  },
+  {
+    question: 'What is an area of constructive feedback you received recently, and what concrete steps did you take to improve?',
+    idealAnswer: 'Feedback indicated I was taking on too many exploratory tasks concurrently. I adopted a rigorous priority matrix and transparent weekly capacity check-ins, which improved on-time delivery by 25%.',
+    tip: 'Choose a genuine developmental skill, avoid clichés like perfectionism, and show measurable improvement.',
+    followUpQuestions: ['How do you track personal growth?', 'How do you give constructive feedback to peers?'],
+  },
+  {
+    question: 'How do you maintain focus, productivity, and work-life balance when handling multiple competing deadlines?',
+    idealAnswer: 'I prioritize deliverables by business impact vs engineering effort, practice deep-work focus time blocks, and communicate proactively with stakeholders whenever scope adjustments are necessary.',
+    tip: 'Demonstrate mature time-management, prioritization frameworks, and proactive communication.',
+    followUpQuestions: ['How do you push back on unreasonable timelines?', 'What tools do you use for personal task tracking?'],
+  },
+];
+
 function normalizeInterviewPrep(raw: any): AiInterviewPrepFull {
   const o = raw || {};
 
@@ -3049,12 +3115,32 @@ function normalizeInterviewPrep(raw: any): AiInterviewPrepFull {
       .filter((q) => q.question.length > 0);
   };
 
+  const ensureMin = (
+    list: Array<{ question: string; idealAnswer: string; tip: string; followUpQuestions: string[] }>,
+    fallbacks: Array<{ question: string; idealAnswer: string; tip: string; followUpQuestions: string[] }>
+  ) => {
+    const existing = new Set(list.map((q) => q.question.toLowerCase().trim()));
+    const result = [...list];
+    for (const fb of fallbacks) {
+      if (result.length >= 3) break;
+      if (!existing.has(fb.question.toLowerCase().trim())) {
+        result.push(fb);
+        existing.add(fb.question.toLowerCase().trim());
+      }
+    }
+    return result;
+  };
+
   const arr = (v: any) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
 
+  const technicalQuestions = ensureMin(mapQs(o.technicalQuestions), DEFAULT_TECH_FALLBACKS);
+  const behavioralQuestions = ensureMin(mapQs(o.behavioralQuestions), DEFAULT_BEHAVIORAL_FALLBACKS);
+  const hrQuestions = ensureMin(mapQs(o.hrQuestions), DEFAULT_HR_FALLBACKS);
+
   return {
-    technicalQuestions: mapQs(o.technicalQuestions),
-    behavioralQuestions: mapQs(o.behavioralQuestions),
-    hrQuestions: mapQs(o.hrQuestions),
+    technicalQuestions,
+    behavioralQuestions,
+    hrQuestions,
     preparationRoadmap: arr(o.preparationRoadmap),
     communicationTips: arr(o.communicationTips),
     preparationSuggestions: arr(o.preparationSuggestions),

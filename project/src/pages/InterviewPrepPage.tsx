@@ -22,7 +22,6 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  ArrowRight,
   Users,
   Code2,
   Brain,
@@ -31,21 +30,18 @@ import {
   ListChecks,
   Bot,
   BarChart3,
-  FileCheck,
-  Library,
   PenTool,
-  TrendingUp,
+  Search,
+  Layers,
+  Play,
 } from 'lucide-react';
 
 // Specialized Interview Suite Components
 import InterviewMockSimulator from '../components/interview/InterviewMockSimulator';
 import PerformanceAnalyticsView, { type PerformanceMetrics } from '../components/interview/PerformanceAnalyticsView';
-import ResumeJdCustomizer from '../components/interview/ResumeJdCustomizer';
-import QuestionLibraryView from '../components/interview/QuestionLibraryView';
 import CodingSandboxAndWhiteboard from '../components/interview/CodingSandboxAndWhiteboard';
 import StarFrameworkCoach from '../components/interview/StarFrameworkCoach';
-import ProgressReadinessDashboard from '../components/interview/ProgressReadinessDashboard';
-import type { QuestionItem } from '../utils/interviewQuestionsData';
+import { getGuaranteedQuestions, type QuestionItem } from '../utils/interviewQuestionsData';
 
 interface Question {
   question: string;
@@ -133,17 +129,14 @@ interface InterviewPrepPageProps {
 type ActiveTab =
   | 'mock_interview'
   | 'performance_analytics'
-  | 'resume_jd'
-  | 'question_library'
   | 'coding_whiteboard'
   | 'star_coach'
-  | 'progress_readiness'
   | 'role_generator';
 
 export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('mock_interview');
 
-  // Shared state across tabs
+  // Shared state across tabs (initialized empty / null)
   const [latestSessionMetrics, setLatestSessionMetrics] = useState<PerformanceMetrics | null>(null);
   const [mockCustomQuestions, setMockCustomQuestions] = useState<
     Array<{
@@ -155,10 +148,16 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     }>
   >([]);
 
-  // Original Role Generator State
+  // Dynamic Role & Question Generator Filters & State
   const [jobRole, setJobRole] = useState('');
   const [experienceLevel, setExperienceLevel] = useState('mid');
   const [skills, setSkills] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
+  const [selectedTopic, setSelectedTopic] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<InterviewData | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -207,7 +206,16 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     });
   }
 
+  // Force clean slate initialization on component mount
   useEffect(() => {
+    setLatestSessionMetrics(null);
+    try {
+      localStorage.removeItem('interview_metrics');
+      localStorage.removeItem('interview_session_analytics');
+      localStorage.removeItem('latest_interview_metrics');
+    } catch {
+      // ignore
+    }
     refreshUsageStatus();
   }, []);
 
@@ -288,18 +296,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
     setActiveTab('performance_analytics');
   };
 
-  const handleLaunchMockFromTailored = (
-    questions: Array<{
-      id: string;
-      stage: string;
-      question: string;
-      tip: string;
-      suggestedPoints: string[];
-    }>
-  ) => {
-    setMockCustomQuestions(questions);
-    setActiveTab('mock_interview');
-  };
 
   const handlePracticeQuestionFromLibrary = (q: QuestionItem) => {
     setMockCustomQuestions([
@@ -349,13 +345,17 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
   const navTabs = [
     { id: 'mock_interview' as const, label: 'AI Mock Interview', icon: Bot },
     { id: 'performance_analytics' as const, label: 'Instant Analytics', icon: BarChart3 },
-    { id: 'resume_jd' as const, label: 'Resume & JD Tailoring', icon: FileCheck },
-    { id: 'question_library' as const, label: 'Question Bank', icon: Library },
     { id: 'coding_whiteboard' as const, label: 'Coding & Whiteboard', icon: PenTool },
     { id: 'star_coach' as const, label: 'STAR Coach', icon: Star },
-    { id: 'progress_readiness' as const, label: 'Readiness & Trends', icon: TrendingUp },
-    { id: 'role_generator' as const, label: 'Role Question Generator', icon: MessageSquare },
+    { id: 'role_generator' as const, label: 'Dynamic Role & Question Generator', icon: MessageSquare },
   ];
+
+  const guaranteedQuestions = getGuaranteedQuestions({
+    industry: selectedTopic,
+    difficulty: selectedDifficulty,
+    category: selectedCategory,
+    searchQuery: searchQuery,
+  });
 
   return (
     <div className="min-h-screen">
@@ -424,47 +424,42 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
           <PerformanceAnalyticsView
             metrics={latestSessionMetrics || undefined}
             onRetry={() => setActiveTab('mock_interview')}
-            onNextQuestion={() => setActiveTab('question_library')}
+            onNextQuestion={() => setActiveTab('role_generator')}
             onOpenCoach={() => setActiveTab('star_coach')}
           />
         )}
 
-        {/* TAB 3: RESUME & JD TAILORING */}
-        {activeTab === 'resume_jd' && (
-          <ResumeJdCustomizer
-            onLaunchMockWithQuestions={handleLaunchMockFromTailored}
-          />
-        )}
-
-        {/* TAB 4: QUESTION LIBRARY */}
-        {activeTab === 'question_library' && (
-          <QuestionLibraryView
-            onPracticeQuestion={handlePracticeQuestionFromLibrary}
-            onOpenCodeSandbox={() => setActiveTab('coding_whiteboard')}
-          />
-        )}
-
-        {/* TAB 5: CODING & SYSTEM DESIGN WHITEBOARD */}
+        {/* TAB 3: CODING & SYSTEM DESIGN WHITEBOARD */}
         {activeTab === 'coding_whiteboard' && <CodingSandboxAndWhiteboard />}
 
-        {/* TAB 6: STAR METHODOLOGY COACH */}
+        {/* TAB 4: STAR METHODOLOGY COACH */}
         {activeTab === 'star_coach' && <StarFrameworkCoach />}
 
-        {/* TAB 7: PROGRESS & READINESS DASHBOARD */}
-        {activeTab === 'progress_readiness' && (
-          <ProgressReadinessDashboard
-            onStartNewSession={() => setActiveTab('mock_interview')}
-            latestMetrics={latestSessionMetrics}
-          />
-        )}
-
-        {/* TAB 8: ROLE QUESTION GENERATOR */}
+        {/* TAB 5: DYNAMIC ROLE & QUESTION GENERATOR (CONSOLIDATED) */}
         {activeTab === 'role_generator' && (
-          <div className="max-w-4xl mx-auto space-y-8">
-            <div className="glass-card glass-card-interactive p-8">
-              <div className="space-y-5">
+          <div className="max-w-5xl mx-auto space-y-8 animate-fadeIn">
+            {/* Header Description */}
+            <div className="glass-card p-6 sm:p-8 space-y-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-[#3c4a59]" />
+                <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Unified Question Suite & Generator
+                </span>
+              </div>
+              <h2 className="text-2xl font-extrabold text-gray-900">
+                Dynamic Role & Question Generator
+              </h2>
+              <p className="text-sm text-gray-600 leading-relaxed max-w-3xl">
+                Configure tailored interview question sets with dynamic role, category, difficulty, and domain filters. Every matrix combination is guaranteed to yield at least 2 to 3 distinct questions.
+              </p>
+            </div>
+
+            {/* Comprehensive Filter & Generation Panel */}
+            <div className="glass-card glass-card-interactive p-6 sm:p-8 space-y-6">
+              <div className="grid sm:grid-cols-2 gap-4">
+                {/* Target Job Role */}
                 <div>
-                  <label htmlFor="job-role" className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label htmlFor="job-role" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
                     Target Job Role
                   </label>
                   <input
@@ -472,73 +467,137 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
                     type="text"
                     value={jobRole}
                     onChange={(e) => setJobRole(e.target.value)}
-                    placeholder="e.g. Frontend Developer, Data Scientist, Marketing Manager..."
-                    className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent placeholder-gray-400 bg-gray-50 transition-all"
+                    placeholder="e.g. Frontend Engineer, Fullstack Architect, Data Scientist..."
+                    className="w-full px-4 py-2.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3c4a59] placeholder-gray-400 bg-white transition-all"
                     data-clarity-mask="true"
                   />
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="experience-level" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Experience Level
-                    </label>
-                    <select
-                      id="experience-level"
-                      value={experienceLevel}
-                      onChange={(e) => setExperienceLevel(e.target.value)}
-                      className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 bg-gray-50"
+                {/* Experience Level / Difficulty */}
+                <div>
+                  <label htmlFor="experience-level" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    Experience Level / Difficulty
+                  </label>
+                  <select
+                    id="experience-level"
+                    value={experienceLevel}
+                    onChange={(e) => {
+                      setExperienceLevel(e.target.value);
+                      setSelectedDifficulty(e.target.value);
+                    }}
+                    className="w-full px-4 py-2.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3c4a59] bg-white"
+                  >
+                    <option value="entry">Entry / Junior</option>
+                    <option value="mid">Mid-Level</option>
+                    <option value="senior">Senior / Lead</option>
+                    <option value="staff">Staff / Principal</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 2: Category, Topic/Industry, and Skills */}
+              <div className="grid sm:grid-cols-3 gap-4">
+                {/* Category Filter */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    Question Category
+                  </label>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full px-4 py-2.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3c4a59] bg-white"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="behavioral">Behavioral (STAR)</option>
+                    <option value="technical_dsa">DSA & Coding</option>
+                    <option value="system_design">System Design</option>
+                    <option value="hr_culture">HR & Culture Fit</option>
+                    <option value="situational">Situational Leadership</option>
+                  </select>
+                </div>
+
+                {/* Topic / Industry Filter */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    Topic / Industry
+                  </label>
+                  <select
+                    value={selectedTopic}
+                    onChange={(e) => setSelectedTopic(e.target.value)}
+                    className="w-full px-4 py-2.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3c4a59] bg-white"
+                  >
+                    <option value="all">All Industries & Topics</option>
+                    <option value="tech">Tech & Software</option>
+                    <option value="fintech">Fintech & Finance</option>
+                    <option value="healthcare">Healthcare & Biotech</option>
+                    <option value="general">General Cross-Industry</option>
+                  </select>
+                </div>
+
+                {/* Key Skills */}
+                <div>
+                  <label htmlFor="skills" className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    Key Skills / Focus
+                  </label>
+                  <input
+                    id="skills"
+                    type="text"
+                    value={skills}
+                    onChange={(e) => setSkills(e.target.value)}
+                    placeholder="React, TypeScript, Kafka, AWS..."
+                    className="w-full px-4 py-2.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3c4a59] placeholder-gray-400 bg-white"
+                    data-clarity-mask="true"
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Keyword Search & Action Button */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Quick filter questions by keywords (e.g. LCP, Redis, Outage, Cache)..."
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3c4a59] bg-white"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-2.5 text-xs text-gray-400 hover:text-gray-600"
                     >
-                      <option value="entry">Entry / Junior</option>
-                      <option value="mid">Mid-Level</option>
-                      <option value="senior">Senior / Lead</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="skills" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Key Skills
-                    </label>
-                    <input
-                      id="skills"
-                      type="text"
-                      value={skills}
-                      onChange={(e) => setSkills(e.target.value)}
-                      placeholder="React, TypeScript, Node.js"
-                      className="w-full px-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-400 placeholder-gray-400 bg-gray-50"
-                      data-clarity-mask="true"
-                    />
-                  </div>
+                      Clear
+                    </button>
+                  )}
                 </div>
 
                 <button
                   type="button"
                   onClick={handleGenerate}
                   disabled={!jobRole.trim() || loading}
-                  className={`w-full sm:w-auto flex items-center justify-center gap-2 font-semibold px-6 py-3 rounded-xl text-sm transition-all ${
+                  className={`w-full sm:w-auto flex items-center justify-center gap-2 font-bold px-6 py-2.5 rounded-xl text-xs transition-all ${
                     jobRole.trim() && !loading
-                      ? 'bg-[#3c4a59] text-white hover:bg-[#2e3a47] shadow-md shadow-gray-300 active:scale-95'
+                      ? 'bg-[#3c4a59] text-white hover:bg-[#2e3a47] shadow-md active:scale-95 cursor-pointer'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
                 >
                   {loading ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Generating Role-Specific Questions...
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Generating AI Prep...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4" />
-                      Generate Questions
-                      <ArrowRight className="w-4 h-4" />
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      Generate AI Role Questions
                     </>
                   )}
                 </button>
               </div>
-              <p className="text-xs text-primary mt-3">
-                Role-specific HR, technical, and behavioral questions plus communication and prep tips.
-              </p>
+
               {upgradeMessage && (
-                <div className="mt-6">
+                <div className="mt-4">
                   <UpgradePrompt
                     message={upgradeMessage}
                     onUpgrade={() => paywallCheckout.subscribePro()}
@@ -546,36 +605,26 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
                 </div>
               )}
               {saveError && (
-                <p className="text-sm text-center text-red-600 font-medium mt-4">{saveError}</p>
+                <p className="text-xs text-center text-red-600 font-medium">{saveError}</p>
               )}
             </div>
 
-            {/* Results */}
+            {/* AI Generated Results (if triggered) */}
             {results && (
-              <div id="interview-results" className="mt-10 space-y-8">
+              <div id="interview-results" className="space-y-8 animate-fadeIn">
                 <div className="flex items-center gap-2">
                   <div className="h-px flex-1 bg-gray-200" />
-                  <h2 className="font-extrabold text-gray-900 text-xl px-4">
-                    Interview Questions for{' '}
-                    <span className="text-[#3c4a59] font-extrabold">{jobRole}</span>
-                  </h2>
+                  <h3 className="font-extrabold text-gray-900 text-lg px-4">
+                    AI Generated Interview Package for{' '}
+                    <span className="text-[#3c4a59]">{jobRole}</span>
+                  </h3>
                   <div className="h-px flex-1 bg-gray-200" />
                 </div>
 
                 {saveSuccess && (
-                  <p className="text-center text-sm text-[#3c4a59] font-medium">
-                    Session saved successfully. View it anytime on your Dashboard.
+                  <p className="text-center text-xs text-emerald-700 font-semibold bg-emerald-50 py-1.5 px-3 rounded-full border border-emerald-200 max-w-md mx-auto">
+                    Session saved. Minimum question guarantees enforced across all categories.
                   </p>
-                )}
-
-                {PAYMENTS_ENABLED && !hasFullAccess && (
-                  <p className="text-center text-xs text-primary">
-                    Premium sections are locked. Unlock this report for $2 or upgrade to Pro for $5/month.
-                  </p>
-                )}
-
-                {paywallCheckout.error && (
-                  <p className="text-center text-sm text-red-600 font-medium">{paywallCheckout.error}</p>
                 )}
 
                 {!PAYMENTS_ENABLED ? (
@@ -605,6 +654,125 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
                 )}
               </div>
             )}
+
+            {/* Curated Question Matrix with Minimum 2-3 Output Guarantee */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 pb-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-gray-900 text-base">
+                    Question Matrix & Practice Triggers
+                  </h3>
+                  <span className="text-[11px] font-bold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-100">
+                    {guaranteedQuestions.length} Questions (≥ 3 Guaranteed)
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Filters applied: {selectedCategory !== 'all' ? selectedCategory : 'All Types'} · {selectedDifficulty !== 'all' ? selectedDifficulty : 'All Levels'} · {selectedTopic !== 'all' ? selectedTopic : 'All Domains'}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {guaranteedQuestions.map((q) => {
+                  const isExpanded = expandedQuestionId === q.id;
+                  return (
+                    <div
+                      key={q.id}
+                      className="glass-card p-5 space-y-3 border border-gray-200/80 hover:border-gray-300 transition-all"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200">
+                            {q.category.replace('_', ' ')}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            {q.difficulty}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            {q.industry}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {q.category === 'technical_dsa' && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('coding_whiteboard')}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-slate-900 px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
+                            >
+                              <PenTool className="w-3 h-3" />
+                              IDE Sandbox
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handlePracticeQuestionFromLibrary(q)}
+                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-[#3c4a59] hover:bg-[#2e3a47] px-3 py-1 rounded-lg shadow-sm active:scale-95 transition-all"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            Practice with AI
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-extrabold text-sm text-gray-900 leading-snug">
+                          {q.title}
+                        </h4>
+                        <p className="text-xs text-gray-700 mt-1 leading-relaxed">
+                          {q.question}
+                        </p>
+                      </div>
+
+                      {/* Expandable Model Answer & Rubric */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedQuestionId(isExpanded ? null : q.id)}
+                          className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
+                        >
+                          {isExpanded ? 'Hide Ideal Answer & Evaluation Rubric' : 'View Ideal Answer & Evaluation Rubric'}
+                        </button>
+
+                        {isExpanded && (
+                          <div className="mt-3 p-4 bg-gray-50/90 rounded-xl border border-gray-200 space-y-3 text-xs animate-fadeIn">
+                            <div>
+                              <span className="font-bold text-emerald-800 block mb-1">
+                                Model Answer:
+                              </span>
+                              <p className="text-gray-800 leading-relaxed bg-emerald-50/60 p-3 rounded-lg border border-emerald-100">
+                                {q.idealAnswer}
+                              </p>
+                            </div>
+
+                            <div>
+                              <span className="font-bold text-slate-700 block mb-1">
+                                Coach Tip:
+                              </span>
+                              <p className="text-gray-700 leading-relaxed">
+                                {q.tip}
+                              </p>
+                            </div>
+
+                            {q.keyCriteria && q.keyCriteria.length > 0 && (
+                              <div>
+                                <span className="font-bold text-slate-700 block mb-1">
+                                  Key Evaluation Rubric:
+                                </span>
+                                <ul className="list-disc list-inside text-gray-600 space-y-0.5">
+                                  {q.keyCriteria.map((c, i) => (
+                                    <li key={i}>{c}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>

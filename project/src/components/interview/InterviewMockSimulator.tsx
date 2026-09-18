@@ -15,6 +15,7 @@ import {
   Eye,
   CheckCircle2,
   Zap,
+  AlertCircle,
 } from 'lucide-react';
 import RealTimeCopilotModal from './RealTimeCopilotModal';
 import type { PerformanceMetrics } from './PerformanceAnalyticsView';
@@ -168,9 +169,15 @@ export default function InterviewMockSimulator({
   const [isRecording, setIsRecording] = useState(false);
   const [candidateAnswer, setCandidateAnswer] = useState('');
   const [manualTextMode, setManualTextMode] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Video / Camera State
   const [cameraActive, setCameraActive] = useState(false);
+  const [hasVideoPermission, setHasVideoPermission] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [eyeContactScore] = useState(85);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -208,7 +215,7 @@ export default function InterviewMockSimulator({
   useEffect(() => {
     return () => {
       stopCamera();
-      stopSpeechRecognition();
+      stopRecording();
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
@@ -240,8 +247,9 @@ export default function InterviewMockSimulator({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Camera handling
+  // Camera handling with getUserMedia({ video: true })
   const startCamera = async () => {
+    setCameraError(null);
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -251,13 +259,22 @@ export default function InterviewMockSimulator({
         mediaStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          try {
+            await videoRef.current.play();
+          } catch {
+            // Autoplay handle
+          }
         }
+        setHasVideoPermission(true);
         setCameraActive(true);
+      } else {
+        throw new Error('Camera device API unavailable in this browser.');
       }
     } catch (err) {
       console.warn('Camera access not granted or unavailable:', err);
+      setHasVideoPermission(false);
       setCameraActive(false);
+      setCameraError('Camera access denied or unavailable. Check browser permissions.');
     }
   };
 
@@ -269,6 +286,7 @@ export default function InterviewMockSimulator({
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setHasVideoPermission(false);
     setCameraActive(false);
   };
 
@@ -347,20 +365,68 @@ export default function InterviewMockSimulator({
     }
   };
 
+  const startRecording = async () => {
+    setMicError(null);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Microphone device API is not supported in this browser.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      if (typeof MediaRecorder !== 'undefined') {
+        const mediaRecorder = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+        mediaRecorder.start(250);
+        mediaRecorderRef.current = mediaRecorder;
+      }
+
+      setIsRecording(true);
+      setTimerActive(true);
+      startSpeechRecognition();
+    } catch (err) {
+      console.warn('Microphone permission denied or unavailable:', err);
+      setMicError('Microphone permission denied. Please allow microphone access in your browser settings to record your response.');
+      setIsRecording(false);
+      setTimerActive(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+      mediaRecorderRef.current = null;
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current = null;
+    }
+    stopSpeechRecognition();
+    setIsRecording(false);
+    setTimerActive(false);
+  };
+
   const stopSpeechRecognition = () => {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
-    setIsRecording(false);
-    setTimerActive(false);
   };
 
   const toggleRecording = () => {
     if (isRecording) {
-      stopSpeechRecognition();
+      stopRecording();
     } else {
-      startSpeechRecognition();
+      startRecording();
     }
   };
 
@@ -381,7 +447,7 @@ export default function InterviewMockSimulator({
 
   // Handle advancing to next question or finishing
   const handleNextQuestion = () => {
-    stopSpeechRecognition();
+    stopRecording();
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -566,7 +632,7 @@ export default function InterviewMockSimulator({
               <button
                 onClick={() => {
                   stopCamera();
-                  stopSpeechRecognition();
+                  stopRecording();
                   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
                   setSessionStarted(false);
                   onExit?.();
@@ -633,6 +699,13 @@ export default function InterviewMockSimulator({
                   </button>
                 </div>
 
+                {micError && (
+                  <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 animate-fadeIn">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-red-500" />
+                    <span>{micError}</span>
+                  </div>
+                )}
+
                 {manualTextMode ? (
                   <textarea
                     rows={6}
@@ -656,6 +729,7 @@ export default function InterviewMockSimulator({
                     {/* Mic Toggle Button */}
                     <div className="flex items-center justify-center pt-2">
                       <button
+                        type="button"
                         onClick={toggleRecording}
                         className={`flex items-center gap-3 px-6 py-3 rounded-full text-xs font-bold shadow-md transition-all active:scale-95 ${
                           isRecording
@@ -663,8 +737,18 @@ export default function InterviewMockSimulator({
                             : 'bg-[#3c4a59] text-white hover:bg-[#2e3a47]'
                         }`}
                       >
-                        {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                        {isRecording ? 'Stop Recording' : 'Start Answering (Mic)'}
+                        {isRecording ? (
+                          <>
+                            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
+                            <MicOff className="w-4 h-4" />
+                            Recording... (Click to Stop)
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-4 h-4" />
+                            Start Answering (Mic)
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -708,10 +792,10 @@ export default function InterviewMockSimulator({
                     </span>
                   </div>
                   <button
-                    onClick={cameraActive ? stopCamera : startCamera}
+                    onClick={hasVideoPermission && cameraActive ? stopCamera : startCamera}
                     className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
                   >
-                    {cameraActive ? 'Turn Off' : 'Enable Camera'}
+                    {hasVideoPermission && cameraActive ? 'Turn Off' : 'Enable Camera'}
                   </button>
                 </div>
 
@@ -721,24 +805,29 @@ export default function InterviewMockSimulator({
                     autoPlay
                     playsInline
                     muted
-                    className={`w-full h-full object-cover ${cameraActive ? 'block' : 'hidden'}`}
+                    className={`w-full h-full object-cover ${hasVideoPermission && cameraActive ? 'block' : 'hidden'}`}
                   />
 
-                  {!cameraActive && (
-                    <div className="text-center p-6 space-y-2 text-slate-400">
+                  {(!hasVideoPermission || !cameraActive) && (
+                    <div className="text-center p-6 space-y-3 text-slate-400">
                       <VideoOff className="w-8 h-8 mx-auto text-slate-500" />
                       <p className="text-xs font-medium">Camera is disabled.</p>
+                      {cameraError && (
+                        <p className="text-[11px] text-red-400 max-w-xs mx-auto">{cameraError}</p>
+                      )}
                       <button
+                        type="button"
                         onClick={startCamera}
-                        className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700"
+                        className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-1.5 rounded-lg border border-slate-700 inline-flex items-center gap-1.5 cursor-pointer font-semibold"
                       >
+                        <Video className="w-3.5 h-3.5 text-emerald-400" />
                         Turn on Camera
                       </button>
                     </div>
                   )}
 
                   {/* Face Centering Grid Overlay */}
-                  {cameraActive && (
+                  {hasVideoPermission && cameraActive && (
                     <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
                       <div className="w-40 h-52 border border-dashed border-emerald-400/40 rounded-full flex items-center justify-center">
                         <span className="text-[10px] text-emerald-300 font-bold bg-slate-950/60 px-2 py-0.5 rounded-full">

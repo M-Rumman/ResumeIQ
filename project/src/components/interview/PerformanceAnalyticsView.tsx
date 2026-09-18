@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import {
   Gauge,
   Eye,
@@ -25,30 +26,64 @@ export interface PerformanceMetrics {
 }
 
 interface PerformanceAnalyticsProps {
-  metrics?: PerformanceMetrics;
+  metrics?: PerformanceMetrics | null;
   onRetry?: () => void;
   onNextQuestion?: () => void;
   onOpenCoach?: () => void;
 }
 
 export default function PerformanceAnalyticsView({
-  metrics = {
-    wpm: 138,
-    fillerCount: 3,
-    fillerWords: { um: 2, like: 1 },
-    eyeContactPercent: 82,
-    clarityScore: 86,
-    structureScore: 90,
-    durationSeconds: 94,
-    questionText: 'How do you prioritize competing deadlines across multiple engineering initiatives?',
-    personaName: 'Alex Rivera (Talent & HR Partner)',
-    transcript:
-      'In my previous role, I often faced competing priorities between feature velocity and infrastructure stability. To handle this, I instituted a data-backed prioritization matrix, um, ranking items by customer impact and engineering effort. Like, I scheduled weekly alignment meetings with Product and Design to agree on sprint trade-offs. As a result, our team maintained a 95% on-time sprint completion rate with zero unexpected regressions.',
-  },
+  metrics = null,
   onRetry,
   onNextQuestion,
   onOpenCoach,
 }: PerformanceAnalyticsProps) {
+  // Clear cached analytics payload on initialization
+  useEffect(() => {
+    try {
+      localStorage.removeItem('interview_metrics');
+      localStorage.removeItem('interview_session_analytics');
+      localStorage.removeItem('latest_interview_metrics');
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  if (!metrics) {
+    return (
+      <div className="glass-card p-10 sm:p-14 text-center max-w-2xl mx-auto space-y-6 animate-fadeIn">
+        <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-100 text-[#3c4a59] mx-auto flex items-center justify-center shadow-sm">
+          <Gauge className="w-8 h-8 text-[#3c4a59]" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-extrabold text-gray-900">No Session Analytics Yet</h2>
+          <p className="text-sm text-gray-600 leading-relaxed max-w-md mx-auto">
+            Instant Analytics starts with a blank slate. Complete a mock interview session to view real-time speech pacing, filler words, eye contact, and structured scoring.
+          </p>
+        </div>
+        <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={onRetry}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#3c4a59] text-white hover:bg-[#2e3a47] font-bold text-xs shadow-md active:scale-95 transition-all cursor-pointer"
+          >
+            <Mic className="w-4 h-4" />
+            Start Mock Interview
+          </button>
+          {onOpenCoach && (
+            <button
+              type="button"
+              onClick={onOpenCoach}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-bold text-xs shadow-sm transition-all cursor-pointer"
+            >
+              Explore STAR Coach
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
   // Highlight filler words in transcript
   const fillerList = Object.keys(metrics.fillerWords || {});
   const formattedTranscript = metrics.transcript ? (

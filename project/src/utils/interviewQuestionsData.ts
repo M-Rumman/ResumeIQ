@@ -327,5 +327,166 @@ export const QUESTION_LIBRARY: QuestionItem[] = [
     idealAnswer: 'First, never evaluate on accuracy. In a 0.1% fraud dataset, a dumb model predicting non-fraud gives 99.9% accuracy while failing 100% of fraud. We use Precision-Recall AUC (PR-AUC), F-beta score (weighting recall higher), and cost-weighted confusion matrices. For modeling: 1) Resampling techniques like SMOTE or intelligent undersampling, 2) Cost-sensitive loss functions such as Focal Loss or class-weighted XGBoost, and 3) Stratified k-fold cross-validation strictly segregated across time horizons to prevent data leakage.',
     keyCriteria: ['Immediately identifies accuracy fallacy', 'Suggests PR-AUC and cost matrix metrics', 'Describes SMOTE / Focal Loss mechanisms'],
     commonPitfalls: ['Recommending ROC-AUC without acknowledging PR-AUC superiority for extreme imbalance']
+  },
+
+  // --- HEALTHCARE & BIOTECH ---
+  {
+    id: 'health-1',
+    title: 'HIPAA Compliance & Protected Health Information (PHI) Architecture',
+    question: 'How do you design a cloud-native architecture that processes electronic health records (EHR) while strictly enforcing HIPAA compliance and end-to-end encryption?',
+    industry: 'healthcare',
+    role: 'backend',
+    difficulty: 'senior',
+    category: 'system_design',
+    tags: ['Healthcare', 'HIPAA', 'Encryption', 'Security', 'Compliance'],
+    tip: 'Address data encryption at rest (AES-256 with KMS), encryption in transit (TLS 1.3), role-based access control (RBAC), and immutable audit access logging.',
+    idealAnswer: 'A HIPAA-compliant architecture enforces: 1) Mandatory encryption at rest using envelope encryption (AWS KMS / HashiCorp Vault with customer-managed keys) and TLS 1.3 in transit. 2) Strict least-privilege IAM and attribute-based access control (ABAC) with automated session timeouts. 3) Immutable append-only audit logging for every read/write access using AWS CloudTrail and write-once S3 Glacier buckets. 4) Data masking and de-identification pipelines conforming to HIPAA Safe Harbor rules before ingestion into analytics data lakes.',
+    keyCriteria: ['Covers encryption at rest & in transit', 'Mentions immutable audit logging', 'Explains de-identification for analytics'],
+    commonPitfalls: ['Treating HIPAA as purely a legal document rather than a rigorous architectural standard', 'Neglecting access audit logs']
+  },
+  {
+    id: 'health-2',
+    title: 'Clinical Data Pipeline Reliability & FHIR Standards',
+    question: 'How do you ingest and validate continuous HL7/FHIR telemetry streams from hospital diagnostic monitors without data loss during intermittent network outages?',
+    industry: 'healthcare',
+    role: 'data_science',
+    difficulty: 'mid',
+    category: 'technical_dsa',
+    tags: ['Healthcare', 'FHIR', 'Streaming', 'Kafka', 'Fault-Tolerance'],
+    tip: 'Discuss local gateway edge buffering, store-and-forward message queues, FHIR schema validation, and idempotent deduplication.',
+    idealAnswer: 'We deploy an edge gateway on local hospital networks running embedded message brokers that buffer incoming diagnostic streams to disk during WAN outages. Once connectivity resumes, it streams to cloud Kafka topics using mutual TLS. Ingestion workers parse payloads against strict HL7 FHIR JSON schemas, validate checksums, and perform upserts keyed by device_uuid and observation_timestamp to prevent duplicate biometric data.',
+    keyCriteria: ['Store-and-forward architecture for edge resilience', 'FHIR schema parsing knowledge', 'Idempotent ingestion guarantees'],
+    commonPitfalls: ['Assuming continuous uninhibited hospital internet connectivity']
+  },
+  {
+    id: 'health-3',
+    title: 'High-Stakes Clinical Decision Support Alignment',
+    question: 'Describe how you work with medical doctors, regulatory specialists, and data scientists when evaluating false-positive vs false-negative thresholds in clinical diagnostic tools.',
+    industry: 'healthcare',
+    role: 'general',
+    difficulty: 'senior',
+    category: 'behavioral',
+    tags: ['Healthcare', 'STAR', 'Regulatory', 'Ethics', 'Stakeholder Alignment'],
+    tip: 'Explain how clinical costs differ drastically: a false negative could endanger a patient, while a false positive leads to unnecessary invasive biopsies.',
+    idealAnswer: 'Situation: Our oncology diagnostic model flagged potential lung lesions, but high false-positive rates caused clinician alert fatigue. Task: Re-calibrate threshold trade-offs collaboratively with clinical oncologists and regulatory counsel. Action: I organized joint case reviews mapping out the clinical cost matrix. We tuned the algorithm for 99.2% sensitivity (minimizing false negatives) while introducing a secondary multi-tier verification model that reduced benign alert triggers by 42%. Result: Gained unanimous clinical buy-in, passed FDA 510(k) pre-market review, and reduced physician diagnostic triage time by 30%.',
+    keyCriteria: ['Empathy for clinician workflow and patient safety', 'Clear communication of statistical trade-offs to non-engineers', 'Measurable diagnostic improvement'],
+    commonPitfalls: ['Prioritizing pure mathematical F1 scores over clinical patient outcomes']
+  },
+
+  // --- GENERAL CROSS-INDUSTRY & ENTRY/MID TECH ---
+  {
+    id: 'gen-1',
+    title: 'CSS Layouts: Flexbox vs CSS Grid & Responsive Design',
+    question: 'When would you choose CSS Grid over Flexbox, and how do you ensure fluid responsive layouts without relying excessively on brittle media query breakpoints?',
+    industry: 'tech',
+    role: 'frontend',
+    difficulty: 'entry',
+    category: 'technical_dsa',
+    tags: ['CSS', 'Flexbox', 'Grid', 'Responsive Design'],
+    tip: 'Explain one-dimensional (Flexbox) vs two-dimensional (Grid) layouts, and modern CSS functions like clamp(), minmax(), and auto-fit.',
+    idealAnswer: 'Flexbox is designed for 1-dimensional content flow (rows OR columns) where item sizes adjust dynamically based on content. CSS Grid is 2-dimensional (rows AND columns simultaneously) intended for rigid layout scaffolding. To build fluid responsive layouts without dozens of media queries, I combine CSS Grid with repeat(auto-fit, minmax(280px, 1fr)) alongside CSS clamp() for fluid typography and spacing.',
+    keyCriteria: ['1D vs 2D layout distinction', 'Usage of auto-fit and minmax()', 'Understanding fluid typography with clamp()'],
+    commonPitfalls: ['Claiming Grid makes Flexbox obsolete']
+  },
+  {
+    id: 'gen-2',
+    title: 'State Management Architecture in Modern Single-Page Apps',
+    question: 'How do you decide between local React component state, Context API, and external state stores like Zustand or Redux Toolkit in large client applications?',
+    industry: 'tech',
+    role: 'frontend',
+    difficulty: 'mid',
+    category: 'system_design',
+    tags: ['React', 'State Management', 'Architecture', 'Zustand', 'Context API'],
+    tip: 'Analyze re-render blast radiuses, Context API lack of selector subscriptions, and server state caching (TanStack Query) vs client state.',
+    idealAnswer: '1) Server state (API responses) belongs in TanStack Query or SWR for automatic cache invalidation and deduplication. 2) Local state (inputs, modal toggles) stays in useState/useReducer colocated within the component. 3) Context API is reserved for low-velocity global state like theme or auth. 4) For high-frequency, multi-component client state, external stores with atomic selectors like Zustand eliminate unnecessary re-renders across the component tree.',
+    keyCriteria: ['Separates server state from client state', 'Understands Context API re-render overhead', 'Selects Zustand/Redux for granular subscriptions'],
+    commonPitfalls: ['Putting all remote REST/GraphQL data directly into global client state']
+  },
+  {
+    id: 'gen-3',
+    title: 'Web Accessibility (a11y) & Semantic HTML Standards',
+    question: 'How do you audit and implement Web Content Accessibility Guidelines (WCAG 2.1 AA) compliance across interactive web components like modals, dropdowns, and tab panels?',
+    industry: 'general',
+    role: 'frontend',
+    difficulty: 'mid',
+    category: 'behavioral',
+    tags: ['Accessibility', 'a11y', 'WCAG', 'ARIA', 'Keyboard Navigation'],
+    tip: 'Focus on native HTML semantic elements first, keyboard navigation (focus traps, Esc key), ARIA live regions, and automated Lighthouse/axe-core audits.',
+    idealAnswer: 'I follow a semantic-first approach: native <button>, <dialog>, and <nav> elements have built-in accessibility semantics. For custom components, I ensure: 1) Full keyboard navigability (Tab, Enter, Space, Escape) with focus traps in modals. 2) ARIA attributes (aria-expanded, aria-controls, aria-haspopup, role="tabpanel"). 3) Color contrast exceeding 4.5:1 for normal text. 4) Automated CI checks with axe-core and manual testing using screen readers (VoiceOver, NVDA).',
+    keyCriteria: ['Semantic HTML before ARIA', 'Focus management and keyboard navigation', 'Screen reader and automated testing workflows'],
+    commonPitfalls: ['Wrapping <div> with onClick without tabIndex, onKeyDown, or ARIA role']
   }
 ];
+
+export interface FilterOptions {
+  industry?: string;
+  role?: string;
+  difficulty?: string;
+  category?: string;
+  searchQuery?: string;
+}
+
+/**
+ * Strict guarantee: returns at least 2 to 3 distinct questions for ANY filter matrix.
+ */
+export function getGuaranteedQuestions(filters: FilterOptions): QuestionItem[] {
+  const {
+    industry = 'all',
+    role = 'all',
+    difficulty = 'all',
+    category = 'all',
+    searchQuery = '',
+  } = filters;
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  // 1. Direct match
+  const directMatches = QUESTION_LIBRARY.filter((item) => {
+    if (industry !== 'all' && item.industry !== industry && item.industry !== 'general') return false;
+    if (role !== 'all' && item.role !== role && item.role !== 'general') return false;
+    if (difficulty !== 'all' && item.difficulty !== difficulty) return false;
+    if (category !== 'all' && item.category !== category) return false;
+
+    if (normalizedQuery) {
+      const matchTitle = item.title.toLowerCase().includes(normalizedQuery);
+      const matchQ = item.question.toLowerCase().includes(normalizedQuery);
+      const matchTag = item.tags.some((t) => t.toLowerCase().includes(normalizedQuery));
+      if (!matchTitle && !matchQ && !matchTag) return false;
+    }
+    return true;
+  });
+
+  if (directMatches.length >= 3) {
+    return directMatches;
+  }
+
+  // 2. Supplement with related items sharing Category or Role/Difficulty
+  const result = [...directMatches];
+  const seenIds = new Set(result.map((q) => q.id));
+
+  for (const item of QUESTION_LIBRARY) {
+    if (result.length >= 3) break;
+    if (seenIds.has(item.id)) continue;
+
+    const matchesCategory = category === 'all' || item.category === category;
+    const matchesDifficulty = difficulty === 'all' || item.difficulty === difficulty;
+    const matchesRole = role === 'all' || item.role === role || item.role === 'general';
+
+    if (matchesCategory || (matchesDifficulty && matchesRole)) {
+      result.push(item);
+      seenIds.add(item.id);
+    }
+  }
+
+  // 3. If still fewer than 3, add general fallback questions to guarantee minimum 3
+  for (const item of QUESTION_LIBRARY) {
+    if (result.length >= 3) break;
+    if (!seenIds.has(item.id)) {
+      result.push(item);
+      seenIds.add(item.id);
+    }
+  }
+
+  return result;
+}
+

@@ -78,7 +78,7 @@ const FRAMEWORK_GUIDES: MethodGuide[] = [
       },
       {
         letter: 'P',
-        name: 'Point',
+        name: 'Point (Conclusion)',
         desc: 'Reiterate your core takeaway with a forward-looking conclusion.',
         example: 'That is why end-to-end integration contracts deliver significantly higher ROI for fast-shipping teams.',
       },
@@ -253,16 +253,25 @@ export default function StarFrameworkCoach() {
           </span>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {currentMethodGuide.steps.map((step) => (
-            <div key={step.letter} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="w-7 h-7 rounded-lg bg-[#3c4a59] text-white flex items-center justify-center font-extrabold text-xs shadow-sm">
-                  {step.letter}
-                </span>
-                <span className="font-bold text-gray-900 text-xs">{step.name}</span>
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 ${
+            currentMethodGuide.steps.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4'
+          } gap-4`}
+        >
+          {currentMethodGuide.steps.map((step, index) => (
+            <div
+              key={`${currentMethodGuide.id}-${step.name}-${index}`}
+              className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2 flex flex-col justify-between"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg bg-[#3c4a59] text-white flex items-center justify-center font-extrabold text-xs shadow-sm">
+                    {step.letter}
+                  </span>
+                  <span className="font-bold text-gray-900 text-xs">{step.name}</span>
+                </div>
+                <p className="text-[11px] text-gray-600 leading-relaxed">{step.desc}</p>
               </div>
-              <p className="text-[11px] text-gray-600 leading-relaxed">{step.desc}</p>
               <div className="pt-2 border-t border-gray-100 text-[10px] text-gray-700 italic bg-gray-50 p-2 rounded-lg">
                 "{step.example}"
               </div>
