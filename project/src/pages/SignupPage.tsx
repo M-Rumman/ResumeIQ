@@ -5,6 +5,7 @@ import { createUserProfile } from '../lib/createUserProfile.js';
 import { getEmailVerificationRedirectUrl, storePendingVerificationEmail } from '../lib/emailVerification.js';
 import { isRedirectUrlError } from '../lib/authRedirects.js';
 import { getSignupErrorMessage } from '../lib/authErrors.js';
+import LogoMark from '../components/LogoMark';
 
 interface SignupPageProps {
   onNavigate: (page: string) => void;
@@ -96,6 +97,10 @@ export default function SignupPage({ onNavigate }: SignupPageProps) {
 
       <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="glass-card p-8 scroll-reveal is-visible">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <LogoMark className="w-8 h-8" />
+            <span className="font-display text-2xl font-extrabold text-primary tracking-[0.03em]">ResuV</span>
+          </div>
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="signup-name" className="block text-sm font-semibold text-gray-700 mb-2">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Mail, ArrowRight, Loader2 } from 'lucide-react';
 import { sendPasswordResetEmail } from '../lib/passwordReset.js';
+import LogoMark from '../components/LogoMark';
 
 interface ForgotPasswordPageProps {
   onNavigate: (page: string) => void;
@@ -54,6 +55,10 @@ export default function ForgotPasswordPage({ onNavigate, initialEmail = '' }: Fo
 
       <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="glass-card p-8 scroll-reveal is-visible">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <LogoMark className="w-8 h-8" />
+            <span className="font-display text-2xl font-extrabold text-primary tracking-[0.03em]">ResuV</span>
+          </div>
           {success ? (
             <div className="text-center space-y-4">
               <div className="w-14 h-14 mx-auto neu-surface rounded-full flex items-center justify-center">

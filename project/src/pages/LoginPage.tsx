@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { createUserProfile } from '../lib/createUserProfile.js';
 import { getLoginErrorMessage } from '../lib/authErrors.js';
 import { isEmailVerified, storePendingVerificationEmail } from '../lib/emailVerification.js';
+import LogoMark from '../components/LogoMark';
 
 interface LoginPageProps {
   onNavigate: (page: string) => void;
@@ -90,6 +91,10 @@ export default function LoginPage({ onNavigate, onAuthSuccess }: LoginPageProps)
 
       <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="glass-card p-8 scroll-reveal is-visible">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <LogoMark className="w-8 h-8" />
+            <span className="font-display text-2xl font-extrabold text-primary tracking-[0.03em]">ResuV</span>
+          </div>
           {verifiedSuccess && (
             <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-4 text-center space-y-2">
               <CheckCircle2 className="w-8 h-8 text-green-600 mx-auto" />

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyRound, ArrowRight, Eye, EyeOff, CheckCircle2, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { getUpdatePasswordErrorMessage } from '../lib/passwordReset.js';
+import LogoMark from '../components/LogoMark';
 
 interface ResetPasswordPageProps {
   onNavigate: (page: string) => void;
@@ -179,6 +180,10 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
 
       <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="glass-card p-8 scroll-reveal is-visible">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <LogoMark className="w-8 h-8" />
+            <span className="font-display text-2xl font-extrabold text-primary tracking-[0.03em]">ResuV</span>
+          </div>
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="new-password" className="block text-sm font-semibold text-gray-700 mb-2">
