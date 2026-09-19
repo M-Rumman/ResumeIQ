@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getUserFromRequest } from './_lib/auth.js';
 import { getReconciledProfileBilling, profileHasProAccess } from './_lib/billing.js';
+import { isPaymentsEnabled } from './_lib/payments.js';
 import { getSupabaseAdmin } from './_lib/supabaseAdmin.js';
 import { BODY_LIMITS, INPUT_LIMITS, rejectOversizedBody } from './_lib/requestLimits.js';
 
@@ -35,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const unlockedReports = Array.isArray(billing.unlocked_reports)
     ? billing.unlocked_reports.filter((item): item is string => typeof item === 'string')
     : [];
-  if (!profileHasProAccess(billing) && !unlockedReports.includes(reportId)) {
+  if (isPaymentsEnabled() && !profileHasProAccess(billing) && !unlockedReports.includes(reportId)) {
     return res.status(403).json({ error: 'PDF export requires Pro or an unlock for this report.' });
   }
 

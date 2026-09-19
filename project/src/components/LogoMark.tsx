@@ -8,7 +8,7 @@ interface LogoMarkProps {
 export default function LogoMark({ className = 'w-8 h-8 rounded-lg' }: LogoMarkProps) {
   return (
     <div
-      className={`bg-[#3c4a59] flex items-center justify-center relative shrink-0 overflow-hidden ${className}`}
+      className={`bg-[#FF6B00] flex items-center justify-center relative shrink-0 overflow-hidden ${className}`}
       aria-hidden
     >
       <FileText className="absolute w-[52%] h-[52%] text-white" strokeWidth={2} />

@@ -39,7 +39,7 @@ export function canExportPdf(isPro) {
  * @param {boolean} isPro
  */
 export function getInterviewPrepTier(isPro) {
-  return isPro ? 'pro' : 'free';
+  return !PAYMENTS_ENABLED || isPro ? 'pro' : 'free';
 }
 
 export { FREE_INTERVIEW_QUESTIONS_PER_CATEGORY };

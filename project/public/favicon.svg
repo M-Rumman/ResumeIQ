@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="ResuV">
-  <rect width="32" height="32" rx="6" fill="#3c4a59"/>
-  <path fill="#fff" d="M10 9h12v2H10zm0 4h12v2H10zm0 4h8v2h-8zm10 6-3-3 1.4-1.4 1.6 1.6 3.6-3.6L24 17z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2000">
+  <g fill="#FF6B00">
+    <polygon points="602.17,1440.26 249.41,1134.88 503.32,841.57 856.08,1146.95" />
+    <polygon points="1125.64,1431.77 859.34,1149.65 1484.29,559.74 1750.59,841.86" />
+  </g>
 </svg>

@@ -6,7 +6,7 @@
 import { FREE_LAUNCH_CHECKOUT_MESSAGE, isFreeLaunchMode } from './launchMode.js';
 
 export function isPaymentsEnabled(): boolean {
-  return !isFreeLaunchMode();
+  return false;
 }
 
 export const PAYMENTS_DISABLED_MESSAGE =

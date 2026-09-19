@@ -27,6 +27,7 @@ import {
 } from '../lib/usageLimits.js';
 import UpgradePrompt from '../components/UpgradePrompt';
 import ResumeFileUpload from '../components/ResumeFileUpload';
+import LoadingScreen from '../components/LoadingScreen';
 import { canExportPdf } from '../lib/planAccess.js';
 import { FREE_DAILY_RESUME_LIMIT } from '../lib/planConfig.js';
 import { downloadResumeAnalysisPdf } from '../utils/exportReportPdf.js';
@@ -873,6 +874,7 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
 
   return (
     <div className="min-h-screen">
+      <LoadingScreen isLoading={analyzing} message="Analyzing your resume..." />
       <div className="glass-panel border-b border-[rgba(255,255,255,0.35)] rounded-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
           <div className="flex items-center gap-3 mb-3">

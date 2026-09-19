@@ -4,8 +4,8 @@
  */
 import { FREE_LAUNCH_MODE } from './launchConfig.js';
 
-/** Checkout and paywalls are off throughout the public launch. */
-export const PAYMENTS_ENABLED = !FREE_LAUNCH_MODE;
+/** Checkout and paywalls are disabled: full feature access, no limitations or paywall enforcement. */
+export const PAYMENTS_ENABLED = false;
 
 export function hasPremiumAccess({ isPro, reportUnlocked }) {
   if (!PAYMENTS_ENABLED) return true;

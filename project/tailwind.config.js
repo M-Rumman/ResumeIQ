@@ -4,18 +4,22 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        body: ['Overlock', 'ui-serif', 'Georgia', 'serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Inter', 'Montserrat', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        body: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
-        base: '#DDE1E7',
-        accent: '#a0aeca',
-        cta: '#b97a88',
-        'btn-primary': '#8495b8',
+        base: '#FFFFFF',
+        accent: '#FF6B00',
+        'accent-orange': '#FF6B00',
+        'accent-orange-hover': '#E66000',
+        'accent-orange-light': '#FFF0E6',
+        cta: '#FF6B00',
+        'btn-primary': '#FF6B00',
         ink: {
-          DEFAULT: '#1A2035',
+          DEFAULT: '#1A1C20',
           secondary: '#2c333d',
-          muted: '#6d7988',
+          muted: '#6B7280',
         },
       },
       borderRadius: {

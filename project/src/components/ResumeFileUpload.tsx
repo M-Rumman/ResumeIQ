@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Upload, FileText, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { extractResumeTextFromFile } from '../utils/extractResumeText.js';
+import LoadingScreen from './LoadingScreen';
 
 interface ResumeFileUploadProps {
   onTextExtracted: (text: string, fileName: string) => void;
@@ -62,6 +63,7 @@ export default function ResumeFileUpload({
 
   return (
     <div className="space-y-3">
+      <LoadingScreen isLoading={extracting} message="Processing and extracting your resume..." />
       {uploadedFile && extractSuccess && !extracting ? (
         <div className="glass-card p-4 flex items-center justify-between gap-3 border border-[rgba(160,174,202,0.4)]">
           <div className="flex items-center gap-3 min-w-0">

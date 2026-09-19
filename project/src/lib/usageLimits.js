@@ -88,7 +88,7 @@ export function getFeatureLabel(featureType) {
 export async function checkFeatureAccess(userId, featureType) {
   const limit = getLimitForFeature(featureType);
   if (!PAYMENTS_ENABLED) {
-    return { allowed: true, isPro: false, used: 0, limit: Infinity, remaining: Infinity, error: null, upgradeMessage: null };
+    return { allowed: true, isPro: true, used: 0, limit: Infinity, remaining: Infinity, error: null, upgradeMessage: null };
   }
 
   const planResult = await getUserPlan(userId);

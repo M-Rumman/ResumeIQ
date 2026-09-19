@@ -6,7 +6,6 @@ import {
 } from '../lib/usageLimits.js';
 import UpgradePrompt from '../components/UpgradePrompt';
 import PaywallBlurGate from '../components/PaywallBlurGate';
-import PaywallCheckoutPreview from '../components/PaywallCheckoutPreview';
 import { PAYMENTS_ENABLED } from '../lib/paymentsConfig.js';
 import { FREE_DAILY_INTERVIEW_LIMIT } from '../lib/planConfig.js';
 import { ApiRequestError } from '../lib/api/client.js';
@@ -630,7 +629,6 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
                 {!PAYMENTS_ENABLED ? (
                   <div className="space-y-8">
                     <InterviewResultsBody categories={categories} results={results} />
-                    <PaywallCheckoutPreview onPricingSoon={() => onNavigate('pricing')} />
                   </div>
                 ) : (
                   <>
