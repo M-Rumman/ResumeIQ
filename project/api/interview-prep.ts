@@ -39,10 +39,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body = req.body as {
+    action?: string;
     jobRole?: string;
     experienceLevel?: string;
     skills?: string;
+    interviewerName?: string;
+    voiceId?: string;
+    avatarId?: string;
   };
+
+  if (body.action === 'start_session') {
+    return res.status(200).json({
+      status: 'started',
+      sessionStartedAt: new Date().toISOString(),
+      interviewerName: body.interviewerName || 'Alex Rivera',
+      voiceId: body.voiceId || 'male-1',
+      avatarId: body.avatarId || 'alex',
+    });
+  }
 
   const jobRole = (body.jobRole || '').trim().slice(0, INPUT_LIMITS.JOB_ROLE_MAX);
   if (!jobRole) {

@@ -19,53 +19,14 @@ import {
 } from 'lucide-react';
 import RealTimeCopilotModal from './RealTimeCopilotModal';
 import type { PerformanceMetrics } from './PerformanceAnalyticsView';
+import {
+  useInterviewer,
+  INTERVIEWER_PERSONAS,
+  type InterviewerPersona,
+} from '../../context/InterviewerContext';
+import { startInterviewSession } from '../../lib/api/interviewPrepApi';
 
-export interface InterviewerPersona {
-  id: string;
-  name: string;
-  role: string;
-  avatarColor: string;
-  style: string;
-  welcomeMessage: string;
-  voicePitch: number;
-  voiceRate: number;
-}
-
-export const INTERVIEWER_PERSONAS: InterviewerPersona[] = [
-  {
-    id: 'alex',
-    name: 'Alex Rivera',
-    role: 'Talent & HR Partner',
-    avatarColor: 'bg-indigo-600',
-    style: 'Empathic & Conversational',
-    welcomeMessage:
-      'Hi there! Thanks for taking the time to meet with me today. My goal is to learn more about your background, career aspirations, and how you collaborate with cross-functional teams. Let’s make this a relaxed, productive conversation.',
-    voicePitch: 1.05,
-    voiceRate: 0.95,
-  },
-  {
-    id: 'sarah',
-    name: 'Sarah Chen',
-    role: 'Staff Engineer & Bar Raiser',
-    avatarColor: 'bg-emerald-700',
-    style: 'Technical Rigor & Trade-offs',
-    welcomeMessage:
-      'Welcome. In this technical round, we’ll dive deep into your architectural decisions, data structures, and how you manage complexity, edge cases, and performance bottlenecks under pressure.',
-    voicePitch: 1.0,
-    voiceRate: 1.0,
-  },
-  {
-    id: 'marcus',
-    name: 'Marcus Vance',
-    role: 'VP of Engineering',
-    avatarColor: 'bg-slate-800',
-    style: 'Strategic Leadership & Ambiguity',
-    welcomeMessage:
-      'Good to connect. I want to explore how you lead through ambiguity, align engineering goals with business metrics, and resolve complex organizational trade-offs.',
-    voicePitch: 0.95,
-    voiceRate: 0.95,
-  },
-];
+export { INTERVIEWER_PERSONAS, type InterviewerPersona };
 
 interface MockSessionQuestion {
   id: string;
@@ -159,7 +120,7 @@ export default function InterviewMockSimulator({
 }: InterviewMockSimulatorProps) {
   const questions = customQuestions && customQuestions.length > 0 ? customQuestions : DEFAULT_QUESTIONS;
 
-  const [selectedPersona, setSelectedPersona] = useState<InterviewerPersona>(INTERVIEWER_PERSONAS[0]);
+  const { selectedInterviewer, setSelectedInterviewer } = useInterviewer();
   const [sessionStarted, setSessionStarted] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
 
@@ -174,10 +135,12 @@ export default function InterviewMockSimulator({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  // Video / Camera State
+  // Video / Camera & Media Permissions State
   const [cameraActive, setCameraActive] = useState(false);
-  const [hasVideoPermission, setHasVideoPermission] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
+  const [hasMicPermission, setHasMicPermission] = useState(false);
+  const [accessDeniedError, setAccessDeniedError] = useState<string | null>(null);
+  const [isMediaPending, setIsMediaPending] = useState(false);
   const [eyeContactScore] = useState(85);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -222,22 +185,42 @@ export default function InterviewMockSimulator({
     };
   }, []);
 
-  // Web Speech API: Text-to-Speech
+  // Web Speech API: Text-to-Speech Engine
   const speakText = (text: string) => {
     if (isAudioMuted || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.pitch = selectedPersona.voicePitch;
-    utterance.rate = selectedPersona.voiceRate;
+    utterance.pitch = selectedInterviewer.voicePitch;
+    utterance.rate = selectedInterviewer.voiceRate;
 
-    // Pick a natural voice if available
+    // Pick voice matching explicit voiceId (female vs male profile), removing hardcoded default
     const voices = window.speechSynthesis.getVoices();
-    const naturalVoice = voices.find(
-      (v) => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha'))
-    );
-    if (naturalVoice) {
-      utterance.voice = naturalVoice;
+    const isFemale = selectedInterviewer.voiceId.includes('female');
+    const matchedVoice = voices.find((v) => {
+      if (!v.lang.startsWith('en')) return false;
+      const nameLower = v.name.toLowerCase();
+      if (isFemale) {
+        return (
+          nameLower.includes('female') ||
+          nameLower.includes('samantha') ||
+          nameLower.includes('victoria') ||
+          nameLower.includes('zira') ||
+          nameLower.includes('karen')
+        );
+      } else {
+        return (
+          nameLower.includes('male') ||
+          nameLower.includes('david') ||
+          nameLower.includes('alex') ||
+          nameLower.includes('george') ||
+          nameLower.includes('daniel')
+        );
+      }
+    }) || voices.find((v) => v.lang.startsWith('en'));
+
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
     }
 
     utterance.onstart = () => setIsAiSpeaking(true);
@@ -247,35 +230,47 @@ export default function InterviewMockSimulator({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Camera handling with getUserMedia({ video: true })
-  const startCamera = async () => {
-    setCameraError(null);
-    try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, facingMode: 'user' },
-          audio: false,
-        });
+  // Hardware Media Initialization: unified getUserMedia promise block
+  const initHardwareMedia = () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return;
+    }
+
+    setIsMediaPending(true);
+    setAccessDeniedError(null);
+
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        setHasCameraPermission(true);
+        setHasMicPermission(true);
+        setCameraActive(true);
+        setAccessDeniedError(null);
+        setIsMediaPending(false);
+
         mediaStreamRef.current = stream;
+        audioStreamRef.current = stream;
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          try {
-            await videoRef.current.play();
-          } catch {
-            // Autoplay handle
-          }
+          videoRef.current.play().catch(() => {});
         }
-        setHasVideoPermission(true);
-        setCameraActive(true);
-      } else {
-        throw new Error('Camera device API unavailable in this browser.');
-      }
-    } catch (err) {
-      console.warn('Camera access not granted or unavailable:', err);
-      setHasVideoPermission(false);
-      setCameraActive(false);
-      setCameraError('Camera access denied or unavailable. Check browser permissions.');
-    }
+      })
+      .catch((err: unknown) => {
+        setIsMediaPending(false);
+        const error = err as { name?: string; message?: string };
+        if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+          setHasCameraPermission(false);
+          setHasMicPermission(false);
+          setAccessDeniedError('Camera/Mic Access Denied. Please allow hardware permissions in your browser settings.');
+        } else {
+          console.warn('Hardware media device access notice:', err);
+        }
+      });
+  };
+
+  const startCamera = () => {
+    initHardwareMedia();
   };
 
   const stopCamera = () => {
@@ -286,7 +281,7 @@ export default function InterviewMockSimulator({
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setHasVideoPermission(false);
+    setHasCameraPermission(false);
     setCameraActive(false);
   };
 
@@ -368,13 +363,19 @@ export default function InterviewMockSimulator({
   const startRecording = async () => {
     setMicError(null);
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Microphone device API is not supported in this browser.');
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioStreamRef.current = stream;
+      let stream = audioStreamRef.current;
+      const hasActiveAudioTrack = stream && stream.getAudioTracks().some((t) => t.readyState === 'live');
 
-      if (typeof MediaRecorder !== 'undefined') {
+      if (!hasActiveAudioTrack) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Microphone device API is not supported in this browser.');
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioStreamRef.current = stream;
+        setHasMicPermission(true);
+      }
+
+      if (typeof MediaRecorder !== 'undefined' && stream) {
         const mediaRecorder = new MediaRecorder(stream);
         audioChunksRef.current = [];
         mediaRecorder.ondataavailable = (event) => {
@@ -390,8 +391,13 @@ export default function InterviewMockSimulator({
       setTimerActive(true);
       startSpeechRecognition();
     } catch (err) {
-      console.warn('Microphone permission denied or unavailable:', err);
-      setMicError('Microphone permission denied. Please allow microphone access in your browser settings to record your response.');
+      const error = err as { name?: string; message?: string };
+      if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+        setHasMicPermission(false);
+        setMicError('Camera/Mic Access Denied. Please allow microphone access in your browser settings.');
+      } else {
+        console.warn('Microphone permission error:', err);
+      }
       setIsRecording(false);
       setTimerActive(false);
     }
@@ -437,11 +443,20 @@ export default function InterviewMockSimulator({
     setCandidateAnswer('');
     setTimerSeconds(0);
     setTimerActive(false);
+
+    // Pass explicit voiceId & avatarId into payload sent to backend/TTS engine, removing hardcoded defaults
+    startInterviewSession({
+      interviewerName: selectedInterviewer.name,
+      voiceId: selectedInterviewer.voiceId,
+      avatarId: selectedInterviewer.avatarId,
+      questionId: currentQ.id,
+    });
+
     startCamera();
 
     // AI delivers greeting and first question
     setTimeout(() => {
-      speakText(`${selectedPersona.welcomeMessage} Here is our first question: ${currentQ.question}`);
+      speakText(`${selectedInterviewer.welcomeMessage} Here is our first question: ${currentQ.question}`);
     }, 400);
   };
 
@@ -475,7 +490,9 @@ export default function InterviewMockSimulator({
         durationSeconds: timerSeconds > 0 ? timerSeconds : 95,
         transcript: candidateAnswer || 'Candidate delivered comprehensive responses across all 5 structured rounds.',
         questionText: currentQ.question,
-        personaName: selectedPersona.name,
+        personaName: selectedInterviewer.name,
+        avatarId: selectedInterviewer.avatarId,
+        voiceId: selectedInterviewer.voiceId,
       };
       onFinishSession(metrics);
     }
@@ -502,11 +519,24 @@ export default function InterviewMockSimulator({
           {/* Persona Cards */}
           <div className="grid md:grid-cols-3 gap-5">
             {INTERVIEWER_PERSONAS.map((persona) => {
-              const isSelected = selectedPersona.id === persona.id;
+              const isSelected = selectedInterviewer.id === persona.id || selectedInterviewer.name === persona.name;
               return (
                 <div
                   key={persona.id}
-                  onClick={() => setSelectedPersona(persona)}
+                  onClick={() =>
+                    setSelectedInterviewer({
+                      name: persona.name,
+                      voiceId: persona.voiceId,
+                      avatarId: persona.avatarId,
+                      role: persona.role,
+                      style: persona.style,
+                      welcomeMessage: persona.welcomeMessage,
+                      voicePitch: persona.voicePitch,
+                      voiceRate: persona.voiceRate,
+                      avatarColor: persona.avatarColor,
+                      id: persona.id,
+                    })
+                  }
                   className={`cursor-pointer rounded-2xl p-6 transition-all border-2 text-left space-y-4 ${
                     isSelected
                       ? 'bg-white border-[#3c4a59] shadow-xl ring-2 ring-[#3c4a59]/20 -translate-y-1'
@@ -515,6 +545,7 @@ export default function InterviewMockSimulator({
                 >
                   <div className="flex items-center justify-between">
                     <div
+                      data-avatar-id={persona.avatarId}
                       className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-md ${persona.avatarColor}`}
                     >
                       <User className="w-6 h-6" />
@@ -570,7 +601,7 @@ export default function InterviewMockSimulator({
               className="flex items-center gap-3 px-8 py-3.5 rounded-xl bg-[#3c4a59] text-white hover:bg-[#2e3a47] font-bold text-sm shadow-xl active:scale-95 transition-all"
             >
               <Play className="w-5 h-5 fill-current" />
-              Start Mock Interview with {selectedPersona.name}
+              Start Mock Interview with {selectedInterviewer.name}
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -581,12 +612,15 @@ export default function InterviewMockSimulator({
           {/* Top Bar: Progress & Tools */}
           <div className="glass-card px-6 py-4 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className={`w-8 h-8 rounded-xl ${selectedPersona.avatarColor} text-white flex items-center justify-center font-bold text-xs`}>
-                {selectedPersona.name[0]}
+              <div
+                data-avatar-id={selectedInterviewer.avatarId}
+                className={`w-8 h-8 rounded-xl ${selectedInterviewer.avatarColor} text-white flex items-center justify-center font-bold text-xs shadow-sm`}
+              >
+                {selectedInterviewer.avatarId === 'sarah' ? 'SC' : selectedInterviewer.avatarId === 'marcus' ? 'MV' : 'AR'}
               </div>
               <div>
-                <span className="text-xs font-bold text-gray-900">{selectedPersona.name}</span>
-                <span className="text-[11px] text-gray-500 block">{selectedPersona.role}</span>
+                <span className="text-xs font-bold text-gray-900">{selectedInterviewer.name}</span>
+                <span className="text-[11px] text-gray-500 block">{selectedInterviewer.role}</span>
               </div>
             </div>
 
@@ -683,6 +717,11 @@ export default function InterviewMockSimulator({
                     <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
                       Your Response
                     </span>
+                    {hasMicPermission && !isRecording && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        Mic Ready
+                      </span>
+                    )}
                     {isRecording && (
                       <span className="flex items-center gap-1 text-[11px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-full animate-pulse border border-red-200">
                         <span className="w-2 h-2 rounded-full bg-red-600" />
@@ -792,10 +831,10 @@ export default function InterviewMockSimulator({
                     </span>
                   </div>
                   <button
-                    onClick={hasVideoPermission && cameraActive ? stopCamera : startCamera}
+                    onClick={hasCameraPermission && cameraActive ? stopCamera : startCamera}
                     className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
                   >
-                    {hasVideoPermission && cameraActive ? 'Turn Off' : 'Enable Camera'}
+                    {hasCameraPermission && cameraActive ? 'Turn Off' : 'Enable Camera'}
                   </button>
                 </div>
 
@@ -805,29 +844,51 @@ export default function InterviewMockSimulator({
                     autoPlay
                     playsInline
                     muted
-                    className={`w-full h-full object-cover ${hasVideoPermission && cameraActive ? 'block' : 'hidden'}`}
+                    className={`w-full h-full object-cover ${hasCameraPermission && cameraActive ? 'block' : 'hidden'}`}
                   />
 
-                  {(!hasVideoPermission || !cameraActive) && (
-                    <div className="text-center p-6 space-y-3 text-slate-400">
-                      <VideoOff className="w-8 h-8 mx-auto text-slate-500" />
-                      <p className="text-xs font-medium">Camera is disabled.</p>
-                      {cameraError && (
-                        <p className="text-[11px] text-red-400 max-w-xs mx-auto">{cameraError}</p>
-                      )}
+                  {/* Access Denied error fallback - conditionally rendered ONLY inside catch if NotAllowedError is thrown */}
+                  {accessDeniedError && !isMediaPending && (
+                    <div className="text-center p-6 space-y-3 text-red-400 bg-red-950/40 rounded-xl border border-red-800/60 max-w-xs mx-auto animate-fadeIn">
+                      <AlertCircle className="w-8 h-8 mx-auto text-red-500" />
+                      <p className="text-xs font-bold text-red-300">{accessDeniedError}</p>
                       <button
                         type="button"
                         onClick={startCamera}
-                        className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-1.5 rounded-lg border border-slate-700 inline-flex items-center gap-1.5 cursor-pointer font-semibold"
+                        className="text-xs bg-red-900/60 hover:bg-red-800 text-white px-3.5 py-1.5 rounded-lg border border-red-700 font-semibold transition-colors"
                       >
-                        <Video className="w-3.5 h-3.5 text-emerald-400" />
-                        Turn on Camera
+                        Retry Permission Request
                       </button>
                     </div>
                   )}
 
+                  {/* Camera disabled / loading UI - rendered when not access denied and camera is not active */}
+                  {!accessDeniedError && (!hasCameraPermission || !cameraActive) && (
+                    <div className="text-center p-6 space-y-3 text-slate-400">
+                      {isMediaPending ? (
+                        <div className="space-y-2">
+                          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                          <p className="text-xs font-medium text-slate-300">Connecting camera & microphone...</p>
+                        </div>
+                      ) : (
+                        <>
+                          <VideoOff className="w-8 h-8 mx-auto text-slate-500" />
+                          <p className="text-xs font-medium">Camera is disabled.</p>
+                          <button
+                            type="button"
+                            onClick={startCamera}
+                            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-1.5 rounded-lg border border-slate-700 inline-flex items-center gap-1.5 cursor-pointer font-semibold"
+                          >
+                            <Video className="w-3.5 h-3.5 text-emerald-400" />
+                            Turn on Camera
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {/* Face Centering Grid Overlay */}
-                  {hasVideoPermission && cameraActive && (
+                  {hasCameraPermission && cameraActive && (
                     <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
                       <div className="w-40 h-52 border border-dashed border-emerald-400/40 rounded-full flex items-center justify-center">
                         <span className="text-[10px] text-emerald-300 font-bold bg-slate-950/60 px-2 py-0.5 rounded-full">

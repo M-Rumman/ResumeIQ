@@ -39,6 +39,7 @@ import { isProtectedPage } from './lib/protectedPages';
 import { useScrollReveal } from './hooks/useScrollReveal';
 import { pathToPage, pageToPath, type RoutablePage } from './lib/routes';
 import { BillingProvider } from './context/BillingContext';
+import { InterviewerProvider } from './context/InterviewerContext';
 import { usePageSeo } from './hooks/usePageSeo';
 import { FREE_LAUNCH_MODE } from './lib/launchConfig.js';
 
@@ -260,6 +261,7 @@ export default function App() {
 
   return (
     <BillingProvider session={verifiedSession}>
+    <InterviewerProvider>
     <div className="app-shell min-h-screen flex flex-col">
       <CheckoutResume />
       <Navbar
@@ -355,6 +357,7 @@ export default function App() {
       </main>
       <Footer onNavigate={navigate} />
     </div>
+    </InterviewerProvider>
     </BillingProvider>
   );
 }

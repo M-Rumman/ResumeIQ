@@ -38,7 +38,7 @@ import {
 // Specialized Interview Suite Components
 import InterviewMockSimulator from '../components/interview/InterviewMockSimulator';
 import PerformanceAnalyticsView, { type PerformanceMetrics } from '../components/interview/PerformanceAnalyticsView';
-import CodingSandboxAndWhiteboard from '../components/interview/CodingSandboxAndWhiteboard';
+import SystemDesignWhiteboard from '../components/interview/SystemDesignWhiteboard';
 import StarFrameworkCoach from '../components/interview/StarFrameworkCoach';
 import { getGuaranteedQuestions, type QuestionItem } from '../utils/interviewQuestionsData';
 
@@ -344,7 +344,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
   const navTabs = [
     { id: 'mock_interview' as const, label: 'AI Mock Interview', icon: Bot },
     { id: 'performance_analytics' as const, label: 'Instant Analytics', icon: BarChart3 },
-    { id: 'coding_whiteboard' as const, label: 'Coding & Whiteboard', icon: PenTool },
+    { id: 'coding_whiteboard' as const, label: 'System Design Whiteboard', icon: PenTool },
     { id: 'star_coach' as const, label: 'STAR Coach', icon: Star },
     { id: 'role_generator' as const, label: 'Dynamic Role & Question Generator', icon: MessageSquare },
   ];
@@ -428,8 +428,12 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
           />
         )}
 
-        {/* TAB 3: CODING & SYSTEM DESIGN WHITEBOARD */}
-        {activeTab === 'coding_whiteboard' && <CodingSandboxAndWhiteboard />}
+        {/* TAB 3: SYSTEM DESIGN WHITEBOARD */}
+        {activeTab === 'coding_whiteboard' && (
+          <div className="w-full">
+            <SystemDesignWhiteboard />
+          </div>
+        )}
 
         {/* TAB 4: STAR METHODOLOGY COACH */}
         {activeTab === 'star_coach' && <StarFrameworkCoach />}
@@ -698,7 +702,7 @@ export default function InterviewPrepPage({ onNavigate }: InterviewPrepPageProps
                               className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 hover:text-slate-900 px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
                             >
                               <PenTool className="w-3 h-3" />
-                              IDE Sandbox
+                              Whiteboard
                             </button>
                           )}
                           <button

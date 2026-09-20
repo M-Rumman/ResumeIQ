@@ -23,6 +23,8 @@ export interface PerformanceMetrics {
   transcript: string;
   questionText: string;
   personaName: string;
+  avatarId?: string;
+  voiceId?: string;
 }
 
 interface PerformanceAnalyticsProps {
