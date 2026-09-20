@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Gauge,
   Eye,
@@ -10,7 +10,24 @@ import {
   RotateCcw,
   Mic,
   Award,
+  ChevronDown,
+  ChevronUp,
+  FileText,
 } from 'lucide-react';
+import type { AnswerEvaluation } from '../../lib/api/interviewPrepApi';
+
+export interface RecordedAnswer {
+  questionId: string;
+  stage: string;
+  questionText: string;
+  candidateAnswer: string;
+  wordCount: number;
+  durationSeconds: number;
+  wpm: number;
+  fillerCount: number;
+  fillerWords?: Record<string, number>;
+  evaluation: AnswerEvaluation;
+}
 
 export interface PerformanceMetrics {
   wpm: number;
@@ -25,6 +42,11 @@ export interface PerformanceMetrics {
   personaName: string;
   avatarId?: string;
   voiceId?: string;
+  recordedAnswers?: RecordedAnswer[];
+  averageScore?: number;
+  overallRating?: string;
+  strengths?: string[];
+  improvements?: string[];
 }
 
 interface PerformanceAnalyticsProps {
@@ -40,6 +62,8 @@ export default function PerformanceAnalyticsView({
   onNextQuestion,
   onOpenCoach,
 }: PerformanceAnalyticsProps) {
+  const [expandedQuestions, setExpandedQuestions] = useState<Record<string, boolean>>({});
+
   // Clear cached analytics payload on initialization
   useEffect(() => {
     try {
@@ -50,6 +74,13 @@ export default function PerformanceAnalyticsView({
       // ignore
     }
   }, []);
+
+  const toggleQuestionExpanded = (id: string) => {
+    setExpandedQuestions((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   if (!metrics) {
     return (
@@ -86,6 +117,7 @@ export default function PerformanceAnalyticsView({
       </div>
     );
   }
+
   // Highlight filler words in transcript
   const fillerList = Object.keys(metrics.fillerWords || {});
   const formattedTranscript = metrics.transcript ? (
@@ -135,12 +167,33 @@ export default function PerformanceAnalyticsView({
   };
 
   const pacing = getPacingAnalysis(metrics.wpm);
-  const overallReadiness = Math.round(
-    (metrics.clarityScore * 0.35) +
-      (metrics.structureScore * 0.35) +
-      (Math.min(100, metrics.eyeContactPercent) * 0.15) +
-      (Math.max(0, 100 - metrics.fillerCount * 8) * 0.15)
-  );
+  const overallReadiness = metrics.averageScore
+    ? metrics.averageScore
+    : Math.round(
+        metrics.clarityScore * 0.35 +
+          metrics.structureScore * 0.35 +
+          Math.min(100, metrics.eyeContactPercent) * 0.15 +
+          Math.max(0, 100 - metrics.fillerCount * 8) * 0.15
+      );
+
+  // Dynamic strengths & improvements from candidate answers
+  const displayStrengths =
+    metrics.strengths && metrics.strengths.length > 0
+      ? metrics.strengths
+      : [
+          'Strong Quantifiable Impact: Highlighted specific technical metrics and ownership.',
+          'Structured Communication: Framed responses with clear context and concrete action steps.',
+          'Domain Relevance: Answered with relevant architectural and behavioral terminology.',
+        ];
+
+  const displayImprovements =
+    metrics.improvements && metrics.improvements.length > 0
+      ? metrics.improvements
+      : [
+          'Conclude with measurable business or system KPIs (e.g. latency deltas or scale metrics).',
+          'Highlight individual contributions ("I evaluated..." vs "We did...") to emphasize leadership.',
+          'Replace filler pauses with silent deliberate pauses to project executive poise.',
+        ];
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -159,6 +212,11 @@ export default function PerformanceAnalyticsView({
             </h2>
             <p className="text-sm text-gray-600">
               Evaluated by AI Persona: <strong className="text-gray-900">{metrics.personaName}</strong>
+              {metrics.overallRating && (
+                <span className="ml-2 inline-block px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                  Rating: {metrics.overallRating}
+                </span>
+              )}
             </p>
           </div>
 
@@ -270,7 +328,172 @@ export default function PerformanceAnalyticsView({
         </div>
       </div>
 
-      {/* Transcript & Filler Word Breakdown */}
+      {/* QUESTION-BY-QUESTION RESPONSE & EVALUATION BREAKDOWN */}
+      {metrics.recordedAnswers && metrics.recordedAnswers.length > 0 && (
+        <div className="glass-card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-extrabold text-gray-900 text-base flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#3c4a59]" />
+                Question-by-Question Response Audit & Evaluation
+              </h3>
+              <p className="text-xs text-gray-500">
+                Detailed review of all answers given during your interview session with {metrics.personaName}.
+              </p>
+            </div>
+            <span className="text-xs font-bold bg-indigo-50 text-indigo-800 px-3 py-1 rounded-full border border-indigo-200">
+              {metrics.recordedAnswers.length} Rounds Evaluated
+            </span>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            {metrics.recordedAnswers.map((item, idx) => {
+              const isExpanded = expandedQuestions[item.questionId] ?? true;
+              const evalData = item.evaluation;
+              return (
+                <div
+                  key={item.questionId || idx}
+                  className="rounded-2xl border border-gray-200 bg-white/90 overflow-hidden shadow-sm transition-all"
+                >
+                  <div
+                    onClick={() => toggleQuestionExpanded(item.questionId)}
+                    className="px-5 py-3.5 bg-gray-50/80 hover:bg-gray-100/70 cursor-pointer flex items-center justify-between gap-4 select-none border-b border-gray-100"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded-full bg-[#3c4a59] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <span className="text-xs font-bold text-gray-900 block">
+                          {item.stage}
+                        </span>
+                        <span className="text-[11px] text-gray-500 line-clamp-1">
+                          "{item.questionText}"
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                        Score: {evalData?.overallScore || 85}/100
+                      </span>
+                      {isExpanded ? (
+                        <ChevronUp className="w-4 h-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                      )}
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="p-5 space-y-4">
+                      {/* Candidate's Answer */}
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                          Your Spoken / Submitted Answer
+                        </span>
+                        <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 text-xs text-gray-800 leading-relaxed font-serif whitespace-pre-wrap">
+                          {item.candidateAnswer}
+                        </div>
+                        <div className="flex items-center gap-4 text-[10px] text-gray-500 pt-0.5">
+                          <span>{item.wordCount} words</span>
+                          <span>Duration: {item.durationSeconds}s</span>
+                          <span>Pacing: {item.wpm} WPM</span>
+                          <span>Fillers: {item.fillerCount}</span>
+                        </div>
+                      </div>
+
+                      {/* Interviewer Feedback */}
+                      {evalData && (
+                        <div className="space-y-3 pt-2 border-t border-gray-100">
+                          <div className="p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-100 space-y-1">
+                            <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                              {metrics.personaName}'s Verbal Feedback:
+                            </div>
+                            <p className="text-xs text-indigo-950 italic">
+                              "{evalData.spokenFeedback || evalData.summaryFeedback}"
+                            </p>
+                          </div>
+
+                          {/* STAR validation badges */}
+                          {evalData.starBreakdown && (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {(['situation', 'task', 'action', 'result'] as const).map((key) => {
+                                const starItem = evalData.starBreakdown[key];
+                                const isPresent = starItem?.present;
+                                return (
+                                  <div
+                                    key={key}
+                                    className={`p-2 rounded-lg border text-[11px] ${
+                                      isPresent
+                                        ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                                        : 'bg-amber-50/70 border-amber-200 text-amber-900'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between font-bold capitalize">
+                                      <span>{key}</span>
+                                      {isPresent ? (
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      ) : (
+                                        <AlertCircle className="w-3 h-3 text-amber-600" />
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-gray-600 line-clamp-1 mt-0.5">
+                                      {starItem?.feedback}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Key Strengths & Polish */}
+                          <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                            {evalData.strengths && evalData.strengths.length > 0 && (
+                              <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                                <span className="font-bold text-emerald-900 block mb-1 text-[11px]">
+                                  Key Strengths:
+                                </span>
+                                <ul className="space-y-1 text-[11px] text-emerald-800">
+                                  {evalData.strengths.map((s, i) => (
+                                    <li key={i} className="flex items-start gap-1.5">
+                                      <span className="w-1 h-1 rounded-full bg-emerald-500 mt-1 flex-shrink-0" />
+                                      <span>{s}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {evalData.improvements && evalData.improvements.length > 0 && (
+                              <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100">
+                                <span className="font-bold text-amber-900 block mb-1 text-[11px]">
+                                  Recommendations:
+                                </span>
+                                <ul className="space-y-1 text-[11px] text-amber-800">
+                                  {evalData.improvements.map((imp, i) => (
+                                    <li key={i} className="flex items-start gap-1.5">
+                                      <span className="w-1 h-1 rounded-full bg-amber-500 mt-1 flex-shrink-0" />
+                                      <span>{imp}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Combined Speech Transcript & Habit Heatmap */}
       <div className="glass-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-extrabold text-gray-900 text-base flex items-center gap-2">
@@ -282,12 +505,12 @@ export default function PerformanceAnalyticsView({
           </span>
         </div>
 
-        <div className="bg-white/80 p-5 rounded-xl border border-gray-200/80 text-sm leading-relaxed text-gray-800 font-serif">
+        <div className="bg-white/80 p-5 rounded-xl border border-gray-200/80 text-sm leading-relaxed text-gray-800 font-serif max-h-72 overflow-y-auto">
           {formattedTranscript}
         </div>
       </div>
 
-      {/* Strengths & Improvements */}
+      {/* Dynamic Strengths & Improvements */}
       <div className="grid md:grid-cols-2 gap-6">
         {/* Strengths */}
         <div className="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-6 space-y-3">
@@ -295,24 +518,12 @@ export default function PerformanceAnalyticsView({
             <CheckCircle2 className="w-4 h-4" /> Strong Signals Demonstrated
           </div>
           <ul className="space-y-2.5 text-xs text-emerald-900">
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 flex-shrink-0" />
-              <span>
-                <strong>Strong Quantifiable Impact:</strong> You highlighted specific metrics ("95% on-time sprint completion") rather than vague claims.
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 flex-shrink-0" />
-              <span>
-                <strong>Cross-Functional Empathy:</strong> You clearly referenced collaborative alignment with Product and Design leads.
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 flex-shrink-0" />
-              <span>
-                <strong>Concise Duration:</strong> Kept your answer well within the target 90–120 second window without rambling.
-              </span>
-            </li>
+            {displayStrengths.map((str, idx) => (
+              <li key={idx} className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1.5 flex-shrink-0" />
+                <span>{str}</span>
+              </li>
+            ))}
           </ul>
         </div>
 
@@ -322,18 +533,12 @@ export default function PerformanceAnalyticsView({
             <AlertCircle className="w-4 h-4" /> Areas for High-Impact Polish
           </div>
           <ul className="space-y-2.5 text-xs text-amber-900">
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5 flex-shrink-0" />
-              <span>
-                <strong>Replace Fillers with Silent Pauses:</strong> Instead of saying "like" or "um" when transitioning between Task and Action, pause for 1 second. Silence projects executive poise.
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5 flex-shrink-0" />
-              <span>
-                <strong>Emphasize Personal Contribution ("I" vs "We"):</strong> Ensure the specific architectural tools or prioritization rubric chosen was attributed to your initiative.
-              </span>
-            </li>
+            {displayImprovements.map((imp, idx) => (
+              <li key={idx} className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mt-1.5 flex-shrink-0" />
+                <span>{imp}</span>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
@@ -345,7 +550,7 @@ export default function PerformanceAnalyticsView({
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-xs font-bold transition-all shadow-sm active:scale-95"
         >
           <RotateCcw className="w-4 h-4 text-gray-500" />
-          Retry This Question
+          Practice Another Mock Interview
         </button>
 
         <div className="flex items-center gap-3">

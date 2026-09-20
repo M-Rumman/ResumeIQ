@@ -58,6 +58,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
+  if (body.action === 'evaluate_answer') {
+    const candidateAnswer = String((body as any).candidateAnswer || '').trim();
+    const question = String((body as any).question || '').trim();
+    const persona = (body as any).interviewerPersona || { name: 'Interviewer', id: 'alex' };
+    const personaName = persona.name || 'Interviewer';
+    const words = candidateAnswer.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+
+    if (wordCount < 5) {
+      return res.status(200).json({
+        overallScore: 35,
+        rating: 'Needs Improvement',
+        summaryFeedback: 'Response was too concise to assess candidate proficiency. Elaboration recommended.',
+        spokenFeedback: `That was a bit short. In a real interview, walk through your situation, your specific actions, and the measurable outcome.`,
+        strengths: ['Addressed the topic directly.'],
+        improvements: ['Elaborate using the STAR framework.', 'Cite concrete metrics and technologies.'],
+        starBreakdown: {
+          situation: { present: false, feedback: 'Missing background context.' },
+          task: { present: false, feedback: 'Missing task definition.' },
+          action: { present: false, feedback: 'Missing concrete steps taken.' },
+          result: { present: false, feedback: 'Missing quantifiable result.' },
+        },
+        detectedKeyTerms: [],
+      });
+    }
+
+    const lower = candidateAnswer.toLowerCase();
+    const hasSituation = /\b(when|in my (previous|last|recent)|at (my|our)|during|project|team was|we were)\b/i.test(lower);
+    const hasTask = /\b(task|goal|objective|needed to|had to|responsible for|target|requirement)\b/i.test(lower);
+    const hasAction = /\b(i (built|designed|implemented|refactored|led|analyzed|decided|debugged|migrated|optimized)|my approach)\b/i.test(lower);
+    const hasResult = /\b(result|outcome|achieved|reduced|improved|increased|saved|delivered|impact|%|percent|ms)\b/i.test(lower);
+    const starCount = [hasSituation, hasTask, hasAction, hasResult].filter(Boolean).length;
+
+    let base = 62 + starCount * 5;
+    if (wordCount >= 60 && wordCount <= 280) base += 10;
+    else if (wordCount < 40) base -= 8;
+    if (/\b(\d+%|\d+\s*(x|ms|seconds|minutes|users|gb)|metric|latency|throughput)\b/i.test(lower)) base += 6;
+    if (/\b(trade-off|architecture|scalab|database|query|cache|microservice|pipeline|monitoring|rollback)\b/i.test(lower)) base += 5;
+
+    const score = Math.min(96, Math.max(45, Math.round(base)));
+    let rating = 'Hire';
+    if (score >= 88) rating = 'Strong Hire';
+    else if (score >= 75) rating = 'Hire';
+    else if (score >= 62) rating = 'Borderline';
+    else rating = 'Needs Improvement';
+
+    const strengths: string[] = [];
+    if (hasAction) strengths.push('Direct technical ownership: clearly highlighted what you personally executed.');
+    if (hasResult) strengths.push('Impact-oriented: connected technical actions to business and operational outcomes.');
+    if (strengths.length === 0) strengths.push('Communicated core idea directly and concisely.');
+
+    const improvements: string[] = [];
+    if (!hasResult) improvements.push('Always quantify the outcome with measurable KPIs or latency deltas.');
+    if (!hasAction) improvements.push('Focus more on your specific contributions rather than generic team actions.');
+    if (wordCount < 50) improvements.push('Provide additional technical depth regarding trade-offs and alternative approaches.');
+    if (improvements.length === 0) improvements.push('Conclude with brief reflection on architectural lessons learned.');
+
+    const spoken = score >= 80
+      ? `Great answer. I appreciate how methodically you structured your experience and highlighted the real impact.`
+      : `Good starting points. Next time, make sure to detail the architectural trade-offs and conclude with a measurable result.`;
+
+    return res.status(200).json({
+      overallScore: score,
+      rating,
+      summaryFeedback: `Score: ${score}/100 (${rating}). Evaluated by ${personaName}.`,
+      spokenFeedback: spoken,
+      strengths: strengths.slice(0, 3),
+      improvements: improvements.slice(0, 3),
+      starBreakdown: {
+        situation: { present: hasSituation, feedback: hasSituation ? 'Good context provided.' : 'Add project background.' },
+        task: { present: hasTask, feedback: hasTask ? 'Goal was defined.' : 'Clarify the objective.' },
+        action: { present: hasAction, feedback: hasAction ? 'Actions were highlighted.' : 'Detail your specific contributions.' },
+        result: { present: hasResult, feedback: hasResult ? 'Outcomes were noted.' : 'Quantify the final result.' },
+      },
+      detectedKeyTerms: [],
+    });
+  }
+
   const jobRole = (body.jobRole || '').trim().slice(0, INPUT_LIMITS.JOB_ROLE_MAX);
   if (!jobRole) {
     return res.status(400).json({ error: 'Job role is required.' });
