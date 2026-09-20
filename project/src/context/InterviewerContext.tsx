@@ -24,8 +24,8 @@ export const INTERVIEWER_PERSONAS: InterviewerPersona[] = [
     style: 'Empathic & Conversational',
     welcomeMessage:
       'Hi there! Thanks for taking the time to meet with me today. My goal is to learn more about your background, career aspirations, and how you collaborate with cross-functional teams. Let’s make this a relaxed, productive conversation.',
-    voicePitch: 1.05,
-    voiceRate: 0.95,
+    voicePitch: 1.0,
+    voiceRate: 0.98,
   },
   {
     id: 'sarah',
@@ -37,8 +37,8 @@ export const INTERVIEWER_PERSONAS: InterviewerPersona[] = [
     style: 'Technical Rigor & Trade-offs',
     welcomeMessage:
       'Welcome. In this technical round, we’ll dive deep into your architectural decisions, data structures, and how you manage complexity, edge cases, and performance bottlenecks under pressure.',
-    voicePitch: 1.0,
-    voiceRate: 1.0,
+    voicePitch: 1.35,
+    voiceRate: 1.05,
   },
   {
     id: 'marcus',
@@ -50,8 +50,8 @@ export const INTERVIEWER_PERSONAS: InterviewerPersona[] = [
     style: 'Strategic Leadership & Ambiguity',
     welcomeMessage:
       'Good to connect. I want to explore how you lead through ambiguity, align engineering goals with business metrics, and resolve complex organizational trade-offs.',
-    voicePitch: 0.95,
-    voiceRate: 0.95,
+    voicePitch: 0.85,
+    voiceRate: 0.92,
   },
 ];
 
