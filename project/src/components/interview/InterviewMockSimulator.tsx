@@ -238,6 +238,8 @@ export default function InterviewMockSimulator({
   const isRecordingRef = useRef(false);
   const [candidateAnswer, setCandidateAnswer] = useState('');
   const [manualTextMode, setManualTextMode] = useState(false);
+  const [micLoading, setMicLoading] = useState(false);
+  const [hasMicPermission, setHasMicPermission] = useState(false);
   const [micError, setMicError] = useState<MediaErrorInfo | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -245,6 +247,7 @@ export default function InterviewMockSimulator({
   // Video / Real Device Camera State
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [cameraErrorInfo, setCameraErrorInfo] = useState<MediaErrorInfo | null>(null);
   const [eyeContactScore] = useState(88);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -377,9 +380,10 @@ export default function InterviewMockSimulator({
 
     setPrecheckMicFeedback(null);
     setMicError(null);
+    setMicLoading(true);
 
+    let stream: MediaStream | null = null;
     try {
-      let stream: MediaStream | null = null;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true },
@@ -389,35 +393,42 @@ export default function InterviewMockSimulator({
         if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') throw err;
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       }
-
-      audioStreamRef.current = stream;
-      setPrecheckMicActive(true);
-      setPrecheckMicFeedback('Microphone connected! Audio signal detected.');
-
-      // Test Web Speech API live recognition if supported
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRec) {
-        try {
-          const rec = new SpeechRec();
-          rec.continuous = false;
-          rec.interimResults = true;
-          rec.lang = 'en-US';
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          rec.onresult = (e: any) => {
-            const transcript = e.results[0][0].transcript;
-            setPrecheckMicFeedback(`Heard you: "${transcript}"`);
-          };
-          rec.start();
-        } catch {
-          // ignore
-        }
-      }
     } catch (err: any) {
       const parsed = parseMediaError(err, 'Microphone');
       setMicError(parsed);
+      setHasMicPermission(false);
       setPrecheckMicActive(false);
+      setMicLoading(false);
       checkHardwareDevices();
+      return;
+    }
+
+    // Hardware stream acquired successfully
+    audioStreamRef.current = stream;
+    setHasMicPermission(true);
+    setMicError(null);
+    setPrecheckMicActive(true);
+    setMicLoading(false);
+    setPrecheckMicFeedback('Microphone hardware successfully connected! Audio signal detected.');
+
+    // Separate optional Speech Recognition test (non-fatal, never triggers micError)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRec) {
+      try {
+        const rec = new SpeechRec();
+        rec.continuous = false;
+        rec.interimResults = true;
+        rec.lang = 'en-US';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        rec.onresult = (e: any) => {
+          const transcript = e.results[0][0].transcript;
+          setPrecheckMicFeedback(`Heard you: "${transcript}"`);
+        };
+        rec.start();
+      } catch (speechTestErr) {
+        console.warn('[Web Speech API precheck notice]:', speechTestErr);
+      }
     }
   };
 
@@ -622,53 +633,69 @@ export default function InterviewMockSimulator({
     setCameraErrorInfo(null);
     setCameraLoading(true);
 
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      const secErr: any = new Error(
+        'Camera capture requires a Secure Context (HTTPS or localhost). Current origin is not secure.'
+      );
+      secErr.name = 'SecurityError';
+      const parsed = parseMediaError(secErr, 'Camera');
+      setCameraErrorInfo(parsed);
+      setHasCameraPermission(false);
+      setCameraLoading(false);
+      isInitializingRef.current = false;
+      return;
+    }
+
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+        track.enabled = false;
+      });
+      videoStreamRef.current = null;
+    }
+
+    // 1. ISOLATED Media Request Scope
+    let stream: MediaStream;
     try {
-      if (typeof window !== 'undefined' && window.isSecureContext === false) {
-        const secErr: any = new Error(
-          'Camera capture requires a Secure Context (HTTPS or localhost). Current origin is not secure.'
-        );
-        secErr.name = 'SecurityError';
-        throw secErr;
-      }
+      stream = await requestCameraStream();
+    } catch (mediaErr: any) {
+      // ONLY true getUserMedia rejections trigger error state
+      const parsed = parseMediaError(mediaErr, 'Camera');
+      setCameraErrorInfo(parsed);
+      setHasCameraPermission(false);
+      setCameraActive(false);
+      checkHardwareDevices();
+      setCameraLoading(false);
+      isInitializingRef.current = false;
+      return;
+    }
 
-      if (videoStreamRef.current) {
-        videoStreamRef.current.getTracks().forEach((track) => {
-          track.stop();
-          track.enabled = false;
-        });
-        videoStreamRef.current = null;
-      }
+    // 2. Stream Successfully Acquired: ENFORCE STATE TRANSITION IMMEDIATELY
+    videoStreamRef.current = stream;
+    setHasCameraPermission(true);
+    setCameraErrorInfo(null);
+    setCameraActive(true);
+    setCameraLoading(false);
+    isInitializingRef.current = false;
 
-      const stream = await requestCameraStream();
-      videoStreamRef.current = stream;
-
-      // Ensure assignment to video element immediately
-      if (videoRef.current) {
+    // 3. Post-Acquisition Video Element Binding (Isolated non-fatal scope)
+    if (videoRef.current) {
+      try {
         videoRef.current.muted = true;
         videoRef.current.defaultMuted = true;
         videoRef.current.playsInline = true;
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch(() => {});
+          videoRef.current?.play().catch((playErr) => {
+            console.warn('[WebRTC] video.play() deferred by browser autoplay policy:', playErr);
+          });
         };
-        try {
-          await videoRef.current.play();
-        } catch (playErr) {
-          console.warn('[WebRTC] video.play() deferred:', playErr);
-        }
+        videoRef.current.play().catch((playErr) => {
+          console.warn('[WebRTC] video.play() deferred by browser autoplay policy:', playErr);
+        });
+      } catch (domErr) {
+        console.warn('[WebRTC] video DOM binding notice (non-fatal):', domErr);
       }
-
-      // Update state and remove error overlay directly tied to successful stream resolution
-      setCameraErrorInfo(null);
-      setCameraActive(true);
-    } catch (err: any) {
-      const parsed = parseMediaError(err, 'Camera');
-      setCameraErrorInfo(parsed);
-      setCameraActive(false);
-      checkHardwareDevices();
-    } finally {
-      isInitializingRef.current = false;
-      setCameraLoading(false);
     }
   };
 
@@ -697,16 +724,23 @@ export default function InterviewMockSimulator({
       return;
     }
 
+    setMicLoading(true);
     setMicError(null);
     setSubmitError(null);
 
-    try {
-      if (typeof window !== 'undefined' && window.isSecureContext === false) {
-        throw new Error('Microphone access requires a Secure Context (HTTPS or localhost).');
-      }
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      const secErr: any = new Error('Microphone access requires a Secure Context (HTTPS or localhost).');
+      secErr.name = 'SecurityError';
+      const parsed = parseMediaError(secErr, 'Microphone');
+      setMicError(parsed);
+      setHasMicPermission(false);
+      setMicLoading(false);
+      return;
+    }
 
-      // Step 1: Request hardware microphone access via getUserMedia
-      let stream: MediaStream | null = null;
+    // 1. ISOLATED Media Request Scope
+    let stream: MediaStream;
+    try {
       if (!navigator?.mediaDevices?.getUserMedia) {
         const navErr: any = new Error('navigator.mediaDevices.getUserMedia is not available.');
         navErr.name = 'SecurityError';
@@ -729,102 +763,106 @@ export default function InterviewMockSimulator({
         console.warn('[WebRTC] Constrained audio failed (e.g. Conexant DSP collision), falling back to universal audio: true:', audioConstraintErr);
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       }
-
-      audioStreamRef.current = stream;
-
-      // Start recording state
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      setTimerActive(true);
-      setMicError(null);
-
-      // Step 2: Initialize MediaRecorder to preserve audio
-      if (stream && typeof MediaRecorder !== 'undefined') {
-        try {
-          const recorder = new MediaRecorder(stream);
-          recorder.start(250);
-          mediaRecorderRef.current = recorder;
-        } catch (recErr) {
-          console.warn('[MediaRecorder notice]:', recErr);
-        }
-      }
-
-      // Step 3: Initialize real-time SpeechRecognition for live transcription
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRec) {
-        try {
-          const recognition = new SpeechRec();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = 'en-US';
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          recognition.onresult = (event: any) => {
-            let fullTranscript = '';
-            for (let i = 0; i < event.results.length; i++) {
-              fullTranscript += event.results[i][0].transcript + ' ';
-            }
-
-            const trimmed = fullTranscript.trim();
-            setCandidateAnswer(trimmed);
-
-            // Update WPM & Fillers
-            const words = trimmed.split(/\s+/).filter(Boolean);
-            if (timerSeconds > 5) {
-              setWpm(Math.round(words.length / (timerSeconds / 60)));
-            }
-
-            const lower = trimmed.toLowerCase();
-            let totalF = 0;
-            const counts: Record<string, number> = {};
-            FILLER_WORDS.forEach((filler) => {
-              const regex = new RegExp(`\\b${filler}\\b`, 'gi');
-              const matches = lower.match(regex);
-              if (matches) {
-                counts[filler] = matches.length;
-                totalF += matches.length;
-              }
-            });
-            setFillerCounts(counts);
-            setTotalFillerCount(totalF);
-          };
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          recognition.onerror = (recErr: any) => {
-            console.warn('[Speech Recognition cloud service notice]:', recErr);
-            // Since getUserMedia already proved mic hardware is active, do NOT claim permission is blocked
-            if (recErr?.error !== 'no-speech') {
-              setManualTextMode(true);
-            }
-          };
-
-          recognition.onend = () => {
-            if (isRecordingRef.current) {
-              try {
-                recognition.start();
-              } catch {
-                // ignore
-              }
-            }
-          };
-
-          recognition.start();
-          recognitionRef.current = recognition;
-        } catch (speechErr) {
-          console.warn('[SpeechRecognition non-fatal]:', speechErr);
-          setManualTextMode(true);
-        }
-      } else {
-        setManualTextMode(true);
-      }
-    } catch (err: any) {
-      const parsed = parseMediaError(err, 'Microphone');
+    } catch (mediaErr: any) {
+      // ONLY true hardware/browser permission rejections reach here!
+      const parsed = parseMediaError(mediaErr, 'Microphone');
       setMicError(parsed);
-      isRecordingRef.current = false;
+      setHasMicPermission(false);
       setIsRecording(false);
       setTimerActive(false);
+      setMicLoading(false);
       checkHardwareDevices();
+      return;
+    }
+
+    // 2. Stream Successfully Acquired: ENFORCE STATE TRANSITION IMMEDIATELY
+    audioStreamRef.current = stream;
+    setHasMicPermission(true);
+    setMicError(null);
+    setIsRecording(true);
+    setTimerActive(true);
+    setMicLoading(false);
+    isRecordingRef.current = true;
+
+    // 3. Optional Post-Stream Audio Recording (Non-fatal, NEVER triggers micError)
+    if (typeof MediaRecorder !== 'undefined') {
+      try {
+        const recorder = new MediaRecorder(stream);
+        recorder.start(250);
+        mediaRecorderRef.current = recorder;
+      } catch (recErr) {
+        console.warn('[MediaRecorder notice (non-fatal)]:', recErr);
+      }
+    }
+
+    // 4. Real-time SpeechRecognition (Isolated non-fatal transcription scope)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRec) {
+      try {
+        const recognition = new SpeechRec();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        recognition.onresult = (event: any) => {
+          let fullTranscript = '';
+          for (let i = 0; i < event.results.length; i++) {
+            fullTranscript += event.results[i][0].transcript + ' ';
+          }
+
+          const trimmed = fullTranscript.trim();
+          setCandidateAnswer(trimmed);
+
+          // Update WPM & Fillers
+          const words = trimmed.split(/\s+/).filter(Boolean);
+          if (timerSeconds > 5) {
+            setWpm(Math.round(words.length / (timerSeconds / 60)));
+          }
+
+          const lower = trimmed.toLowerCase();
+          let totalF = 0;
+          const counts: Record<string, number> = {};
+          FILLER_WORDS.forEach((filler) => {
+            const regex = new RegExp(`\\b${filler}\\b`, 'gi');
+            const matches = lower.match(regex);
+            if (matches) {
+              counts[filler] = matches.length;
+              totalF += matches.length;
+            }
+          });
+          setFillerCounts(counts);
+          setTotalFillerCount(totalF);
+        };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        recognition.onerror = (recErr: any) => {
+          console.warn('[Speech Recognition cloud service notice]:', recErr);
+          // Crucial: do NOT touch micError. Switch to manual text mode for cloud speech errors
+          if (recErr?.error !== 'no-speech') {
+            setManualTextMode(true);
+          }
+        };
+
+        recognition.onend = () => {
+          if (isRecordingRef.current) {
+            try {
+              recognition.start();
+            } catch {
+              // ignore
+            }
+          }
+        };
+
+        recognition.start();
+        recognitionRef.current = recognition;
+      } catch (speechErr) {
+        console.warn('[SpeechRecognition initialization notice]:', speechErr);
+        setManualTextMode(true);
+      }
+    } else {
+      setManualTextMode(true);
     }
   };
 
@@ -832,6 +870,7 @@ export default function InterviewMockSimulator({
     isRecordingRef.current = false;
     setIsRecording(false);
     setTimerActive(false);
+    setMicLoading(false);
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
@@ -869,6 +908,9 @@ export default function InterviewMockSimulator({
     setTimerActive(false);
     setCurrentEvaluation(null);
     setRecordedAnswers([]);
+    setCameraErrorInfo(null);
+    setMicError(null);
+    setSubmitError(null);
 
     startInterviewSession({
       interviewerName: selectedInterviewer.name,
@@ -1286,17 +1328,17 @@ export default function InterviewMockSimulator({
               </div>
             </div>
 
-            {/* Error Diagnostics Box */}
-            {(cameraErrorInfo || micError) && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2 text-xs text-red-900">
+            {/* Error Diagnostics Box - ONLY render when NOT loading and an actual error exists without permission */}
+            {!cameraLoading && !micLoading && ((!hasCameraPermission && cameraErrorInfo) || (!hasMicPermission && micError)) && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2 text-xs text-red-900 animate-fadeIn">
                 <div className="font-bold flex items-center gap-2 text-red-800">
                   <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                  {cameraErrorInfo?.title || micError?.title}
+                  {(!hasCameraPermission && cameraErrorInfo?.title) || (!hasMicPermission && micError?.title)}
                 </div>
-                <p>{cameraErrorInfo?.message || micError?.message}</p>
-                {(cameraErrorInfo?.osTroubleshooting || micError?.osTroubleshooting) && (
+                <p>{(!hasCameraPermission && cameraErrorInfo?.message) || (!hasMicPermission && micError?.message)}</p>
+                {((!hasCameraPermission && cameraErrorInfo?.osTroubleshooting) || (!hasMicPermission && micError?.osTroubleshooting)) && (
                   <ul className="list-disc list-inside space-y-1 text-[11px] text-red-800 pt-1 border-t border-red-200">
-                    {(cameraErrorInfo?.osTroubleshooting || micError?.osTroubleshooting || []).map((step, idx) => (
+                    {((!hasCameraPermission ? cameraErrorInfo?.osTroubleshooting : micError?.osTroubleshooting) || []).map((step, idx) => (
                       <li key={idx}>{step}</li>
                     ))}
                   </ul>
@@ -1593,7 +1635,14 @@ export default function InterviewMockSimulator({
                     </button>
                   </div>
 
-                  {micError && (
+                  {micLoading && (
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-700 font-semibold flex items-center gap-2 animate-pulse mb-3">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                      <span>Requesting microphone hardware access...</span>
+                    </div>
+                  )}
+
+                  {!micLoading && !hasMicPermission && micError && (
                     <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-2 animate-fadeIn">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 font-bold text-amber-950">
@@ -1758,13 +1807,22 @@ export default function InterviewMockSimulator({
                     <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center p-5 text-slate-400 z-10 text-center overflow-y-auto">
                       <VideoOff className="w-8 h-8 mx-auto text-slate-500 flex-shrink-0 mb-1" />
                       <div className="space-y-0.5 mb-2">
-                        <p className="text-xs font-bold text-slate-200">Device camera is off</p>
+                        <p className="text-xs font-bold text-slate-200">
+                          {cameraLoading ? 'Connecting to camera hardware...' : 'Device camera is off'}
+                        </p>
                         <p className="text-[11px] text-slate-400 leading-tight">
-                          Click below to enable your hardware camera.
+                          {cameraLoading ? 'Please wait while camera initializes...' : 'Click below to enable your hardware camera.'}
                         </p>
                       </div>
 
-                      {cameraErrorInfo && (
+                      {cameraLoading && (
+                        <div className="flex items-center gap-2 p-2.5 bg-indigo-950/80 border border-indigo-700/80 rounded-xl text-xs text-indigo-300 animate-pulse mb-3">
+                          <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                          <span>Initializing video capture device...</span>
+                        </div>
+                      )}
+
+                      {!cameraLoading && !hasCameraPermission && cameraErrorInfo && (
                         <div className="w-full max-w-sm p-3 bg-red-950/80 border border-red-700/80 rounded-xl text-[11px] text-red-200 text-left space-y-1.5 mb-2.5 animate-fadeIn">
                           <div className="font-bold flex items-center justify-between text-red-300">
                             <span className="flex items-center gap-1.5">
@@ -1812,7 +1870,7 @@ export default function InterviewMockSimulator({
                           {cameraLoading ? (
                             <>
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              Connecting Camera...
+                              Connecting Device...
                             </>
                           ) : (
                             <>
