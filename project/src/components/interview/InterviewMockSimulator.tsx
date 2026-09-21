@@ -390,7 +390,7 @@ export default function InterviewMockSimulator({
           video: false,
         });
       } catch (err: any) {
-        if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') throw err;
+        console.warn('[WebRTC] Constrained mic precheck failed, trying universal audio: true...', err);
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       }
     } catch (err: any) {
@@ -562,69 +562,95 @@ export default function InterviewMockSimulator({
       throw error;
     }
 
-    // Step 0: Try to identify RGB webcam and bypass Windows Hello IR camera (e.g. HP IR Camera)
-    let preferredDeviceId: string | undefined;
+    // Step 0: Enumerate available video devices
+    let videoDevices: MediaDeviceInfo[] = [];
     try {
       if (navigator.mediaDevices.enumerateDevices) {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter((d) => d.kind === 'videoinput');
-        const rgbCamera = videoDevices.find((d) => {
-          const label = (d.label || '').toLowerCase();
-          return label && !label.includes('ir') && !label.includes('infrared') && !label.includes('windows hello');
-        });
-        if (rgbCamera && rgbCamera.deviceId) {
-          preferredDeviceId = rgbCamera.deviceId;
+        videoDevices = devices.filter((d) => d.kind === 'videoinput');
+      }
+    } catch (e) {
+      console.warn('[WebRTC] enumerateDevices failed prior to stream acquisition:', e);
+    }
+
+    // Step 1: Check if any device has an explicit non-IR label (if permission was already granted previously)
+    const nonIrDevices = videoDevices.filter((d) => {
+      const label = (d.label || '').toLowerCase();
+      return label && !label.includes('ir') && !label.includes('infrared') && !label.includes('windows hello');
+    });
+
+    const candidateConstraints: MediaStreamConstraints[] = [];
+
+    // Priority 1: If an explicit RGB camera device is known by label
+    if (nonIrDevices.length > 0) {
+      for (const dev of nonIrDevices) {
+        if (dev.deviceId) {
+          candidateConstraints.push({
+            video: {
+              deviceId: { exact: dev.deviceId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          });
+          candidateConstraints.push({
+            video: { deviceId: { exact: dev.deviceId } },
+            audio: false,
+          });
         }
       }
-    } catch {
-      // Ignore enumeration failure prior to permission grant
     }
 
-    // Attempt 1: Specific RGB device if identified, or user-facing 720p stream
-    try {
-      if (preferredDeviceId) {
-        return await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: { ideal: preferredDeviceId },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
-      }
-      return await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
-    } catch (err1: any) {
-      if (err1?.name === 'NotAllowedError' || err1?.name === 'PermissionDeniedError') {
-        throw err1;
-      }
-      console.warn('[WebRTC] High-res camera attempt failed, trying facingMode: user...', err1);
-    }
+    // Priority 2: Generic desktop-friendly high-res stream (NO facingMode: 'user' which triggers IR sensors on Windows)
+    candidateConstraints.push({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
 
-    // Attempt 2: facingMode 'user' without resolution constraints (bypasses IR camera)
-    try {
-      return await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false,
-      });
-    } catch (err2: any) {
-      if (err2?.name === 'NotAllowedError' || err2?.name === 'PermissionDeniedError') {
-        throw err2;
-      }
-      console.warn('[WebRTC] facingMode camera attempt failed, trying video: true...', err2);
-    }
-
-    // Attempt 3: Universal fallback supported across all webcams
-    return await navigator.mediaDevices.getUserMedia({
+    // Priority 3: Universal simple video fallback
+    candidateConstraints.push({
       video: true,
       audio: false,
     });
+
+    // Priority 4: Test each enumerated video device individually by deviceId
+    // (Crucial for dual-camera HP laptops where device[0] is the IR camera and device[1] is the HD camera)
+    if (videoDevices.length > 0) {
+      const reversed = [...videoDevices].reverse();
+      for (const dev of reversed) {
+        if (dev.deviceId) {
+          candidateConstraints.push({
+            video: { deviceId: { exact: dev.deviceId } },
+            audio: false,
+          });
+        }
+      }
+    }
+
+    // Sequentially execute candidates until one succeeds
+    let lastError: any = null;
+    for (let i = 0; i < candidateConstraints.length; i++) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(candidateConstraints[i]);
+        console.log(`[WebRTC] Camera successfully acquired on attempt #${i + 1}:`, {
+          constraint: candidateConstraints[i],
+          trackLabel: stream.getVideoTracks()[0]?.label,
+        });
+        return stream;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[WebRTC] Camera attempt #${i + 1} failed, trying next candidate...`, {
+          constraint: candidateConstraints[i],
+          errorName: err?.name,
+          errorMessage: err?.message,
+        });
+      }
+    }
+
+    throw lastError || new Error('All camera acquisition attempts failed.');
   };
 
   const initCamera = async () => {
@@ -659,7 +685,7 @@ export default function InterviewMockSimulator({
     try {
       stream = await requestCameraStream();
     } catch (mediaErr: any) {
-      // ONLY true getUserMedia rejections trigger error state
+      // Reached only after ALL candidate fallbacks failed
       const parsed = parseMediaError(mediaErr, 'Camera');
       setCameraErrorInfo(parsed);
       setHasCameraPermission(false);
@@ -677,6 +703,8 @@ export default function InterviewMockSimulator({
     setCameraActive(true);
     setCameraLoading(false);
     isInitializingRef.current = false;
+    // Hardware labels are now unlocked by the browser, refresh device list
+    checkHardwareDevices();
 
     // 3. Post-Acquisition Video Element Binding (Isolated non-fatal scope)
     if (videoRef.current) {
@@ -757,10 +785,7 @@ export default function InterviewMockSimulator({
           video: false,
         });
       } catch (audioConstraintErr: any) {
-        if (audioConstraintErr?.name === 'NotAllowedError' || audioConstraintErr?.name === 'PermissionDeniedError') {
-          throw audioConstraintErr;
-        }
-        console.warn('[WebRTC] Constrained audio failed (e.g. Conexant DSP collision), falling back to universal audio: true:', audioConstraintErr);
+        console.warn('[WebRTC] Constrained audio failed, falling back to universal audio: true:', audioConstraintErr);
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       }
     } catch (mediaErr: any) {
@@ -1336,6 +1361,11 @@ export default function InterviewMockSimulator({
                   {(!hasCameraPermission && cameraErrorInfo?.title) || (!hasMicPermission && micError?.title)}
                 </div>
                 <p>{(!hasCameraPermission && cameraErrorInfo?.message) || (!hasMicPermission && micError?.message)}</p>
+                {((!hasCameraPermission && cameraErrorInfo?.rawError) || (!hasMicPermission && micError?.rawError)) && (
+                  <div className="text-[10px] font-mono text-red-700 bg-red-100/70 px-2 py-1 rounded border border-red-200">
+                    System error: {(!hasCameraPermission ? cameraErrorInfo?.rawError : micError?.rawError)}
+                  </div>
+                )}
                 {((!hasCameraPermission && cameraErrorInfo?.osTroubleshooting) || (!hasMicPermission && micError?.osTroubleshooting)) && (
                   <ul className="list-disc list-inside space-y-1 text-[11px] text-red-800 pt-1 border-t border-red-200">
                     {((!hasCameraPermission ? cameraErrorInfo?.osTroubleshooting : micError?.osTroubleshooting) || []).map((step, idx) => (
@@ -1840,6 +1870,11 @@ export default function InterviewMockSimulator({
                           <p className="text-[10px] text-red-200 leading-snug">
                             {cameraErrorInfo.message}
                           </p>
+                          {cameraErrorInfo.rawError && (
+                            <div className="text-[9px] font-mono text-red-300 bg-red-900/50 px-2 py-0.5 rounded border border-red-800/60 truncate">
+                              System: {cameraErrorInfo.rawError}
+                            </div>
+                          )}
                           {cameraErrorInfo.osTroubleshooting && cameraErrorInfo.osTroubleshooting.length > 0 && (
                             <div className="pt-1 border-t border-red-800/60 space-y-1">
                               <span className="text-[9px] font-bold uppercase tracking-wider text-red-300 flex items-center gap-1">
