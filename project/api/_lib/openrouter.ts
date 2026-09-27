@@ -3648,3 +3648,94 @@ export async function generateInterviewPrepWithAi(
 
   return normalizeInterviewPrep(planInterviewRecommendations(extractJsonFromText(raw) as Record<string, any>));
 }
+
+export interface AiAnswerEvaluationResult {
+  isCorrect: boolean;
+  correctnessAssessment: string;
+  overallScore: number;
+  rating: 'Strong Hire' | 'Hire' | 'Borderline' | 'Needs Improvement';
+  summaryFeedback: string;
+  spokenFeedback: string;
+  strengths: string[];
+  improvements: string[];
+  starBreakdown: {
+    situation: { present: boolean; feedback: string };
+    task: { present: boolean; feedback: string };
+    action: { present: boolean; feedback: string };
+    result: { present: boolean; feedback: string };
+  };
+  detectedKeyTerms: string[];
+  missingKeyPoints: string[];
+}
+
+export async function evaluateInterviewAnswerWithAi(params: {
+  question: string;
+  candidateAnswer: string;
+  suggestedPoints?: string[];
+  stage?: string;
+  personaName?: string;
+  personaRole?: string;
+}): Promise<AiAnswerEvaluationResult> {
+  const {
+    question,
+    candidateAnswer,
+    suggestedPoints = [],
+    stage = 'Technical Round',
+    personaName = 'Alex Rivera',
+    personaRole = 'Principal Engineer',
+  } = params;
+
+  const system = `You are ${personaName}, a ${personaRole} conducting a professional mock interview.
+Your task is to strictly verify whether the candidate's answer is accurate, correct, relevant, and directly addresses the interview question asked.
+
+EVALUATION RULES:
+1. QUESTION VERIFICATION & RELEVANCE (Highest Priority):
+- Verify whether the candidate actually understood and answered THIS question.
+- If the candidate speaks off-topic, gives unrelated facts, or evades the question: isCorrect must be false, overallScore must be under 50, and explicitly point out what question was asked vs what was answered.
+- If the question asks for specific technical concepts or behavioral scenarios, verify whether the facts, architecture, or reasoning are technically sound and accurate.
+- If the answer is correct and answers the question: isCorrect must be true.
+2. STAR STRUCTURE & DEPTH:
+- Evaluate Situation, Task, Action, Result elements where applicable.
+3. CONSTRUCTIVE & NATURAL SPOKEN FEEDBACK:
+- In the persona's voice, provide 1-2 spoken sentences acknowledging what they got right and advising on what was missing.
+
+OUTPUT SCHEMA (Must be valid JSON only, no markdown fencing):
+{
+  "isCorrect": boolean,
+  "correctnessAssessment": "Clear explanation of whether the answer was correct, partially correct, or incorrect against the question, and why.",
+  "overallScore": number (0 to 100),
+  "rating": "Strong Hire" | "Hire" | "Borderline" | "Needs Improvement",
+  "summaryFeedback": "Concise high-level evaluation summary",
+  "spokenFeedback": "1-2 natural sentences spoken by ${personaName}",
+  "strengths": ["string", "string"],
+  "improvements": ["string", "string"],
+  "starBreakdown": {
+    "situation": { "present": boolean, "feedback": "string" },
+    "task": { "present": boolean, "feedback": "string" },
+    "action": { "present": boolean, "feedback": "string" },
+    "result": { "present": boolean, "feedback": "string" }
+  },
+  "detectedKeyTerms": ["string"],
+  "missingKeyPoints": ["string"]
+}`;
+
+  const userPrompt = `Interview Question: "${question}"
+Question Stage / Category: ${stage}
+Expected / Ideal Criteria:
+${suggestedPoints.map((p) => `- ${p}`).join('\n') || '- Provide technically sound, relevant, and structured answer'}
+
+Candidate's Spoken / Written Answer:
+"${candidateAnswer}"
+
+Analyze the answer rigorously. Verify whether it is correct against the question. Return JSON only.`;
+
+  const raw = await callOpenRouter(
+    [
+      { role: 'system', content: system },
+      { role: 'user', content: userPrompt },
+    ],
+    { maxTokens: 1500, temperature: 0.3 }
+  );
+
+  return extractJsonFromText(raw) as AiAnswerEvaluationResult;
+}

@@ -32,6 +32,8 @@ export interface StarBreakdown {
 }
 
 export interface AnswerEvaluation {
+  isCorrect?: boolean;
+  correctnessAssessment?: string;
   overallScore: number;
   rating: 'Strong Hire' | 'Hire' | 'Borderline' | 'Needs Improvement';
   summaryFeedback: string;
@@ -40,6 +42,7 @@ export interface AnswerEvaluation {
   improvements: string[];
   starBreakdown: StarBreakdown;
   detectedKeyTerms: string[];
+  missingKeyPoints?: string[];
 }
 
 export interface EvaluateAnswerPayload {
@@ -120,17 +123,36 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
 
   const personaName = payload.interviewerPersona?.name || 'Interviewer';
   const personaId = payload.interviewerPersona?.id || 'alex';
+  const suggested = payload.suggestedPoints || [];
+
+  // Stopword filter for term extraction
+  const stopWords = new Set([
+    'what', 'when', 'where', 'which', 'with', 'about', 'explain', 'describe',
+    'difference', 'between', 'your', 'have', 'could', 'would', 'should',
+    'please', 'tell', 'time', 'how', 'why', 'the', 'and', 'for', 'you', 'that', 'this', 'from'
+  ]);
+
+  // Extract core concepts from question
+  const questionWords = (payload.question || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !stopWords.has(w));
+
+  const matchedQuestionTerms = questionWords.filter((qTerm) => lower.includes(qTerm));
 
   // Handle empty or extremely short answers
-  if (wordCount < 10) {
+  if (wordCount < 8) {
     return {
-      overallScore: 35,
+      isCorrect: false,
+      correctnessAssessment: 'Answer is too brief to evaluate against the question. Please elaborate with specific technical details.',
+      overallScore: 25,
       rating: 'Needs Improvement',
       summaryFeedback: 'Response is too brief to evaluate technical depth or behavioral impact. Please elaborate with specific examples and steps.',
       spokenFeedback: `That was quite brief. In an actual interview, you'll want to structure your answer with concrete context, what you specifically did, and the end outcome. Let's try expanding on that.`,
-      strengths: ['Addressed the topic directly without unnecessary preamble.'],
+      strengths: ['Addressed the conversation.'],
       improvements: [
-        'Provide concrete project context and scale details.',
+        'Directly address the question with full context.',
         'Use the STAR framework (Situation, Task, Action, Result) to give a complete story.',
         'Quantify outcomes with measurable metrics or engineering impact.',
       ],
@@ -141,6 +163,7 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
         result: { present: false, feedback: 'No measurable outcome or reflection mentioned.' },
       },
       detectedKeyTerms: [],
+      missingKeyPoints: suggested.slice(0, 3),
     };
   }
 
@@ -157,7 +180,6 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
   const starCount = [hasSituation, hasTask, hasAction, hasResult].filter(Boolean).length;
 
   // 2. Keyword & Concept Matching
-  const suggested = payload.suggestedPoints || [];
   const detectedKeyTerms: string[] = [];
   const missingPoints: string[] = [];
 
@@ -166,7 +188,7 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
-      .filter((w) => w.length > 3 && !['with', 'what', 'that', 'this', 'from', 'have', 'your', 'about'].includes(w));
+      .filter((w) => w.length > 3 && !stopWords.has(w));
 
     const matched = keywords.filter((k) => lower.includes(k));
     if (matched.length >= 1) {
@@ -176,53 +198,66 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
     }
   });
 
-  const uniqueKeyTerms = Array.from(new Set(detectedKeyTerms));
+  const uniqueKeyTerms = Array.from(new Set([...detectedKeyTerms, ...matchedQuestionTerms]));
 
-  // 3. Technical & Quantitative Markers
+  // 3. Question Verification & Correctness Assessment
+  const isQuestionAddressed = matchedQuestionTerms.length > 0 || detectedKeyTerms.length > 0;
+  const isCorrect = isQuestionAddressed && wordCount >= 12;
+
+  const correctnessAssessment = isCorrect
+    ? `Verified: Your response directly addresses the question and aligns with expected technical concepts.`
+    : `Notice: Your response does not appear to directly address the question prompt ("${payload.question}"). Refocus on answering the specific question asked.`;
+
+  // 4. Technical & Quantitative Markers
   const hasMetrics = /\b(\d+%|\d+\s*(x|ms|seconds|minutes|hours|users|gb|mb|rps|qps)|metric|latency|throughput|roi)\b/i.test(lower);
   const hasEngineeringDepth = /\b(trade-off|architecture|scalab|database|query|cache|microservice|concurrency|pipeline|monitoring|rollback|async|refactor|test)\b/i.test(lower);
   const hasLeadershipOrCollaboration = /\b(collaborat|stakeholder|mentored|team|consensus|disagree|persuad|communicat|cross-functional)\b/i.test(lower);
 
-  // 4. Score Calculation
-  let baseScore = 60;
+  // 5. Score Calculation
+  let baseScore = 55;
 
-  // Length scoring (ideal: 70 - 280 words)
-  if (wordCount >= 70 && wordCount <= 300) {
-    baseScore += 12;
-  } else if (wordCount >= 40) {
-    baseScore += 6;
+  if (isCorrect) {
+    baseScore += 15;
+    if (wordCount >= 70 && wordCount <= 300) {
+      baseScore += 10;
+    } else if (wordCount >= 40) {
+      baseScore += 5;
+    } else {
+      baseScore -= 6;
+    }
+
+    baseScore += starCount * 4;
+
+    if (uniqueKeyTerms.length >= 3) baseScore += 8;
+    else if (uniqueKeyTerms.length >= 1) baseScore += 4;
+
+    if (hasMetrics) baseScore += 5;
+    if (hasEngineeringDepth) baseScore += 4;
+    if (hasLeadershipOrCollaboration) baseScore += 3;
   } else {
-    baseScore -= 10;
+    baseScore = 38;
+    if (wordCount >= 40) baseScore += 6;
   }
-
-  // STAR scoring (+5 per element)
-  baseScore += starCount * 5;
-
-  // Keyword relevance
-  if (uniqueKeyTerms.length >= 3) baseScore += 10;
-  else if (uniqueKeyTerms.length >= 1) baseScore += 5;
-
-  // Quantitative metrics bonus
-  if (hasMetrics) baseScore += 6;
-  if (hasEngineeringDepth) baseScore += 5;
-  if (hasLeadershipOrCollaboration) baseScore += 4;
 
   // Filler word penalty
   const fillerCount = payload.fillerCount || 0;
   if (fillerCount > 5) baseScore -= 6;
-  else if (fillerCount === 0 && wordCount > 40) baseScore += 3;
+  else if (fillerCount === 0 && wordCount > 40 && isCorrect) baseScore += 3;
 
-  const overallScore = Math.min(97, Math.max(45, Math.round(baseScore)));
+  const overallScore = Math.min(97, Math.max(30, Math.round(baseScore)));
 
   // Rating
   let rating: AnswerEvaluation['rating'] = 'Hire';
   if (overallScore >= 88) rating = 'Strong Hire';
   else if (overallScore >= 75) rating = 'Hire';
-  else if (overallScore >= 62) rating = 'Borderline';
+  else if (overallScore >= 60) rating = 'Borderline';
   else rating = 'Needs Improvement';
 
   // Strengths
   const strengths: string[] = [];
+  if (isCorrect && matchedQuestionTerms.length > 0) {
+    strengths.push(`Direct question alignment: effectively addressed "${matchedQuestionTerms.slice(0, 3).join(', ')}".`);
+  }
   if (hasAction) {
     strengths.push('Clear ownership: explicitly outlined the proactive actions and technical decisions you led.');
   }
@@ -230,30 +265,33 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
     strengths.push('Data-driven outcome: backed up achievements with concrete metrics and impact.');
   }
   if (uniqueKeyTerms.length > 0) {
-    strengths.push(`Direct domain relevance: effectively incorporated core concepts (${uniqueKeyTerms.slice(0, 3).join(', ')}).`);
+    strengths.push(`Technical domain terms: used relevant terminology (${uniqueKeyTerms.slice(0, 3).join(', ')}).`);
   }
   if (hasSituation && hasTask) {
     strengths.push('Solid context setting: clearly framed initial constraints and goals before jumping into execution.');
   }
   if (strengths.length === 0) {
-    strengths.push('Clear and articulate communication of your experience.');
+    strengths.push('Communicated core idea clearly.');
   }
 
   // Improvements
   const improvements: string[] = [];
+  if (!isCorrect) {
+    improvements.push(`Refocus your response directly on the question asked: "${payload.question}".`);
+  }
+  if (missingPoints.length > 0) {
+    improvements.push(`Address expected criteria: consider touching upon ${missingPoints[0].toLowerCase().replace(/\.$/, '')}.`);
+  }
   if (!hasResult) {
     improvements.push('Conclude with a measurable result: quantify business impact, latency delta, or efficiency gain.');
   }
   if (!hasAction) {
     improvements.push('Highlight personal initiative ("I evaluated..." vs "We just did...") to showcase your individual technical leadership.');
   }
-  if (missingPoints.length > 0) {
-    improvements.push(`Address expected criteria: consider touching upon ${missingPoints[0].toLowerCase().replace(/\.$/, '')}.`);
-  }
   if (fillerCount > 4) {
     improvements.push('Pause instead of using filler words to project composure during transitions.');
   }
-  if (wordCount < 60) {
+  if (wordCount < 50) {
     improvements.push('Provide a bit more depth on the architectural trade-offs or alternative options you considered.');
   }
   if (improvements.length === 0) {
@@ -262,7 +300,9 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
 
   // Persona-tailored Spoken Feedback
   let spokenFeedback = '';
-  if (personaId === 'sarah') {
+  if (!isCorrect) {
+    spokenFeedback = `That doesn't quite answer the question I asked. Let's refocus on the specific problem and detail how you would solve it.`;
+  } else if (personaId === 'sarah') {
     if (overallScore >= 80) {
       spokenFeedback = `Great answer. I appreciate how methodically you broke down the technical decisions and constraints. You demonstrated sound engineering judgment.`;
     } else {
@@ -284,12 +324,14 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
   }
 
   const summaryFeedback = `Overall Score: ${overallScore}/100 (${rating}). Evaluated by ${personaName}. ${
-    overallScore >= 80
-      ? 'The response demonstrates strong readiness and relevant problem-solving skills.'
-      : 'The response covers foundational elements but requires more structured metrics and depth.'
+    isCorrect
+      ? 'The response demonstrates relevant understanding of the question asked.'
+      : 'The response does not sufficiently address the core question prompt.'
   }`;
 
   return {
+    isCorrect,
+    correctnessAssessment,
     overallScore,
     rating,
     summaryFeedback,
@@ -314,7 +356,8 @@ export function generateLocalAnswerEvaluation(payload: EvaluateAnswerPayload): A
         feedback: hasResult ? 'Concluded with tangible impact or outcome.' : 'Include measurable metrics or post-launch takeaways.',
       },
     },
-    detectedKeyTerms: uniqueKeyTerms,
+    detectedKeyTerms: uniqueKeyTerms.slice(0, 6),
+    missingKeyPoints: missingPoints.slice(0, 3),
   };
 }
 

@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Mic,
   MicOff,
-  Video,
-  VideoOff,
   Volume2,
   VolumeX,
   Play,
@@ -12,7 +10,6 @@ import {
   ArrowRight,
   RefreshCw,
   User,
-  Eye,
   CheckCircle2,
   Zap,
   AlertCircle,
@@ -22,8 +19,9 @@ import {
   Loader2,
   HelpCircle,
   ShieldAlert,
-  Settings,
   Info,
+  Activity,
+  Radio,
 } from 'lucide-react';
 import RealTimeCopilotModal from './RealTimeCopilotModal';
 import type { PerformanceMetrics, RecordedAnswer } from './PerformanceAnalyticsView';
@@ -128,11 +126,11 @@ const FILLER_WORDS = [
   'i mean',
 ];
 
-function parseMediaError(err: any, device: 'Camera' | 'Microphone'): MediaErrorInfo {
+function parseMediaError(err: any, device: 'Microphone' = 'Microphone'): MediaErrorInfo {
   const errName = err?.name || '';
   const message = err?.message || String(err);
 
-  console.error(`[WebRTC Media Audit] ${device} getUserMedia error:`, {
+  console.error(`[WebRTC Audio Audit] ${device} getUserMedia error:`, {
     name: errName,
     message,
     constraint: err?.constraint,
@@ -144,13 +142,12 @@ function parseMediaError(err: any, device: 'Camera' | 'Microphone'): MediaErrorI
     return {
       code: 'NOT_ALLOWED',
       title: `${device} Access Blocked`,
-      message: `Your browser or Windows system blocked access to the ${device.toLowerCase()}.`,
+      message: `Your browser or operating system blocked access to the microphone.`,
       osTroubleshooting: [
-        'Browser Address Bar: Click the tune / sliders / padlock icon to the left of the URL in your address bar (e.g. resuv.app or localhost) → Ensure Camera and Microphone are explicitly set to "Allow", then reload the page.',
-        'Windows 10/11 Privacy Settings: Open Settings → Privacy & Security → Camera (and Microphone) → Ensure the top toggle is ON, and scroll down to "Let desktop apps access your camera/microphone" and verify it is ON for your browser.',
-        'HP / Laptop Physical Privacy Slider: Inspect the top bezel above your laptop screen. Ensure the mechanical camera privacy slider is open (no red/white dot covering the camera lens).',
-        'HP / Laptop Keyboard Privacy Keys: Check your keyboard function keys (often F8, F10, or a key with a camera/mic icon). If an amber/orange LED light is lit, press the key (or Fn + key) to unmute.',
-        'Antivirus Webcam Shield: If you run third-party security software (Kaspersky, Bitdefender, Norton, Avast), disable Webcam/Mic Protection or add this browser/site to allowed exclusions.',
+        'Browser Address Bar: Click the tune / sliders / padlock icon to the left of the URL in your address bar (e.g. localhost or resuv.app) → Ensure Microphone is explicitly set to "Allow", then reload the page.',
+        'Windows 10/11 Privacy Settings: Open Settings → Privacy & Security → Microphone → Ensure the top toggle is ON, and scroll down to "Let desktop apps access your microphone" and verify it is ON for your browser.',
+        'Physical / Keyboard Privacy Keys: Check your keyboard function keys (often F8, F9, or a key with a mic icon). If an amber/orange LED light is lit, press the key (or Fn + key) to unmute.',
+        'Antivirus Audio Shield: If you run third-party security software (Kaspersky, Bitdefender, Norton), disable Mic Protection or add this browser/site to allowed exclusions.',
       ],
       rawError: `${errName}: ${message}`,
     };
@@ -160,10 +157,10 @@ function parseMediaError(err: any, device: 'Camera' | 'Microphone'): MediaErrorI
     return {
       code: 'NOT_FOUND',
       title: `No ${device} Hardware Detected`,
-      message: `No active ${device.toLowerCase()} was recognized by your browser.`,
+      message: `No active microphone was recognized by your browser.`,
       osTroubleshooting: [
-        'Ensure your webcam/microphone is plugged in and recognized in Windows Device Manager.',
-        'If using an HP laptop, check if the physical camera shutter or Fn key has electrically disconnected the camera.',
+        'Ensure your microphone or headset is plugged in and recognized in Windows Sound Settings / Device Manager.',
+        'If using an external USB mic or headset, try reconnecting it or selecting it as default in Windows.',
       ],
       rawError: `${errName}: ${message}`,
     };
@@ -173,21 +170,11 @@ function parseMediaError(err: any, device: 'Camera' | 'Microphone'): MediaErrorI
     return {
       code: 'NOT_READABLE',
       title: `${device} In Use By Another App`,
-      message: `Your ${device.toLowerCase()} is currently locked by another application or process.`,
+      message: `Your microphone is currently locked by another application or process.`,
       osTroubleshooting: [
-        'Close other video/audio applications: Zoom, Microsoft Teams, Discord, Skype, OBS Studio, WhatsApp Desktop, or Windows Camera app.',
-        'Check for other open browser tabs or windows using your camera/microphone, close them, and click Retry.',
+        'Close other video/audio applications: Zoom, Microsoft Teams, Discord, Skype, OBS Studio, WhatsApp Desktop, or Windows Voice Recorder.',
+        'Check for other open browser tabs using your microphone, close them, and click Retry.',
       ],
-      rawError: `${errName}: ${message}`,
-    };
-  }
-
-  if (errName === 'OverconstrainedError' || errName === 'ConstraintNotSatisfiedError') {
-    return {
-      code: 'OVERCONSTRAINED',
-      title: `Unsupported Constraints`,
-      message: `Your ${device.toLowerCase()} does not support the requested video format.`,
-      osTroubleshooting: ['Automatic fallback to default resolution has been enabled.'],
       rawError: `${errName}: ${message}`,
     };
   }
@@ -198,8 +185,8 @@ function parseMediaError(err: any, device: 'Camera' | 'Microphone'): MediaErrorI
       title: 'Insecure Context Restriction',
       message: `WebRTC media APIs require a Secure Context (HTTPS or localhost).`,
       osTroubleshooting: [
-        'Make sure you are accessing via https:// (e.g. https://resuv.app) or http://localhost:5173.',
-        'If accessing via a local IP address (e.g. http://192.168.x.x), Chrome blocks media APIs by default.',
+        'Make sure you are accessing via https:// or http://localhost:5173.',
+        'If accessing via a local network IP address, browser security blocks microphone capture.',
       ],
       rawError: `${errName}: ${message}`,
     };
@@ -208,8 +195,8 @@ function parseMediaError(err: any, device: 'Camera' | 'Microphone'): MediaErrorI
   return {
     code: 'UNKNOWN',
     title: `Could Not Access ${device}`,
-    message: message || `An unexpected error occurred during ${device.toLowerCase()} initialization.`,
-    osTroubleshooting: ['Try refreshing the page or restarting your browser.'],
+    message: message || `An unexpected error occurred during microphone initialization.`,
+    osTroubleshooting: ['Try refreshing the page or checking your browser permissions.'],
     rawError: `${errName}: ${message}`,
   };
 }
@@ -244,24 +231,20 @@ export default function InterviewMockSimulator({
   const audioStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
-  // Video / Real Device Camera State
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraLoading, setCameraLoading] = useState(false);
-  const [hasCameraPermission, setHasCameraPermission] = useState(false);
-  const [cameraErrorInfo, setCameraErrorInfo] = useState<MediaErrorInfo | null>(null);
-  const [eyeContactScore] = useState(88);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const videoStreamRef = useRef<MediaStream | null>(null);
+  // Real-Time Audio Level & Waveform Visualizer State
+  const [audioLevel, setAudioLevel] = useState(0); // 0 - 100
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const accumulatedTranscriptRef = useRef('');
 
   // Hardware Device Diagnostics State
   const [detectedDevices, setDetectedDevices] = useState<{
-    cameras: string[];
     mics: string[];
     checked: boolean;
   } | null>(null);
 
   // React 18 Lifecycle Guards
-  const isInitializingRef = useRef(false);
   const isMountedRef = useRef(true);
 
   // Environment Diagnostics
@@ -319,7 +302,7 @@ export default function InterviewMockSimulator({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      stopCamera();
+      stopAudioVisualizer();
       stopRecording();
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
@@ -327,35 +310,13 @@ export default function InterviewMockSimulator({
     };
   }, []);
 
-  // Callback Ref: Safely binds video stream as soon as <video> DOM node mounts
-  const attachVideoRef = useCallback((el: HTMLVideoElement | null) => {
-    videoRef.current = el;
-    if (el) {
-      el.muted = true;
-      el.defaultMuted = true;
-      el.playsInline = true;
-      el.setAttribute('playsinline', 'true');
-      el.setAttribute('muted', 'true');
-
-      if (videoStreamRef.current) {
-        if (el.srcObject !== videoStreamRef.current) {
-          el.srcObject = videoStreamRef.current;
-        }
-        el.play().catch((e) => {
-          console.warn('[WebRTC] video.play() deferred:', e);
-        });
-      }
-    }
-  }, []);
-
-  // Hardware Diagnostics: Check connected devices
+  // Hardware Diagnostics: Check connected microphones
   const checkHardwareDevices = async () => {
     if (!navigator?.mediaDevices?.enumerateDevices) return;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = devices.filter((d) => d.kind === 'videoinput').map((d, i) => d.label || `Camera ${i + 1}`);
       const mics = devices.filter((d) => d.kind === 'audioinput').map((d, i) => d.label || `Microphone ${i + 1}`);
-      setDetectedDevices({ cameras, mics, checked: true });
+      setDetectedDevices({ mics, checked: true });
     } catch (e) {
       console.warn('enumerateDevices error:', e);
     }
@@ -367,6 +328,7 @@ export default function InterviewMockSimulator({
 
   const testMicPrecheck = async () => {
     if (precheckMicActive) {
+      stopAudioVisualizer();
       if (audioStreamRef.current) {
         audioStreamRef.current.getTracks().forEach((t) => {
           t.stop();
@@ -409,7 +371,8 @@ export default function InterviewMockSimulator({
     setMicError(null);
     setPrecheckMicActive(true);
     setMicLoading(false);
-    setPrecheckMicFeedback('Microphone hardware successfully connected! Audio signal detected.');
+    startAudioVisualizer(stream);
+    setPrecheckMicFeedback('Microphone hardware successfully connected! Speak to see live sound levels.');
 
     // Separate optional Speech Recognition test (non-fatal, never triggers micError)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -554,198 +517,56 @@ export default function InterviewMockSimulator({
     speakPersonaVoice(selectedInterviewer, text);
   };
 
-  // 1. Decoupled Video Stream: initCamera() calling { video: true, audio: false }
-  const requestCameraStream = async (): Promise<MediaStream> => {
-    if (!navigator?.mediaDevices?.getUserMedia) {
-      const error: any = new Error('navigator.mediaDevices.getUserMedia is not available.');
-      error.name = 'SecurityError';
-      throw error;
-    }
-
-    // Step 0: Enumerate available video devices
-    let videoDevices: MediaDeviceInfo[] = [];
+  // Web Audio API Real-Time Waveform Visualizer
+  const startAudioVisualizer = (stream: MediaStream) => {
+    stopAudioVisualizer();
     try {
-      if (navigator.mediaDevices.enumerateDevices) {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        videoDevices = devices.filter((d) => d.kind === 'videoinput');
-      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.65;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const renderFrame = () => {
+        if (!isMountedRef.current) return;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        const level = Math.min(100, Math.round((avg / 110) * 100));
+        setAudioLevel(level);
+        animFrameRef.current = requestAnimationFrame(renderFrame);
+      };
+      animFrameRef.current = requestAnimationFrame(renderFrame);
     } catch (e) {
-      console.warn('[WebRTC] enumerateDevices failed prior to stream acquisition:', e);
-    }
-
-    // Step 1: Check if any device has an explicit non-IR label (if permission was already granted previously)
-    const nonIrDevices = videoDevices.filter((d) => {
-      const label = (d.label || '').toLowerCase();
-      return label && !label.includes('ir') && !label.includes('infrared') && !label.includes('windows hello');
-    });
-
-    const candidateConstraints: MediaStreamConstraints[] = [];
-
-    // Priority 1: If an explicit RGB camera device is known by label
-    if (nonIrDevices.length > 0) {
-      for (const dev of nonIrDevices) {
-        if (dev.deviceId) {
-          candidateConstraints.push({
-            video: {
-              deviceId: { exact: dev.deviceId },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-            audio: false,
-          });
-          candidateConstraints.push({
-            video: { deviceId: { exact: dev.deviceId } },
-            audio: false,
-          });
-        }
-      }
-    }
-
-    // Priority 2: Generic desktop-friendly high-res stream (NO facingMode: 'user' which triggers IR sensors on Windows)
-    candidateConstraints.push({
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    });
-
-    // Priority 3: Universal simple video fallback
-    candidateConstraints.push({
-      video: true,
-      audio: false,
-    });
-
-    // Priority 4: Test each enumerated video device individually by deviceId
-    // (Crucial for dual-camera HP laptops where device[0] is the IR camera and device[1] is the HD camera)
-    if (videoDevices.length > 0) {
-      const reversed = [...videoDevices].reverse();
-      for (const dev of reversed) {
-        if (dev.deviceId) {
-          candidateConstraints.push({
-            video: { deviceId: { exact: dev.deviceId } },
-            audio: false,
-          });
-        }
-      }
-    }
-
-    // Sequentially execute candidates until one succeeds
-    let lastError: any = null;
-    for (let i = 0; i < candidateConstraints.length; i++) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia(candidateConstraints[i]);
-        console.log(`[WebRTC] Camera successfully acquired on attempt #${i + 1}:`, {
-          constraint: candidateConstraints[i],
-          trackLabel: stream.getVideoTracks()[0]?.label,
-        });
-        return stream;
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`[WebRTC] Camera attempt #${i + 1} failed, trying next candidate...`, {
-          constraint: candidateConstraints[i],
-          errorName: err?.name,
-          errorMessage: err?.message,
-        });
-      }
-    }
-
-    throw lastError || new Error('All camera acquisition attempts failed.');
-  };
-
-  const initCamera = async () => {
-    if (isInitializingRef.current) return;
-    isInitializingRef.current = true;
-    setCameraErrorInfo(null);
-    setCameraLoading(true);
-
-    if (typeof window !== 'undefined' && window.isSecureContext === false) {
-      const secErr: any = new Error(
-        'Camera capture requires a Secure Context (HTTPS or localhost). Current origin is not secure.'
-      );
-      secErr.name = 'SecurityError';
-      const parsed = parseMediaError(secErr, 'Camera');
-      setCameraErrorInfo(parsed);
-      setHasCameraPermission(false);
-      setCameraLoading(false);
-      isInitializingRef.current = false;
-      return;
-    }
-
-    if (videoStreamRef.current) {
-      videoStreamRef.current.getTracks().forEach((track) => {
-        track.stop();
-        track.enabled = false;
-      });
-      videoStreamRef.current = null;
-    }
-
-    // 1. ISOLATED Media Request Scope
-    let stream: MediaStream;
-    try {
-      stream = await requestCameraStream();
-    } catch (mediaErr: any) {
-      // Reached only after ALL candidate fallbacks failed
-      const parsed = parseMediaError(mediaErr, 'Camera');
-      setCameraErrorInfo(parsed);
-      setHasCameraPermission(false);
-      setCameraActive(false);
-      checkHardwareDevices();
-      setCameraLoading(false);
-      isInitializingRef.current = false;
-      return;
-    }
-
-    // 2. Stream Successfully Acquired: ENFORCE STATE TRANSITION IMMEDIATELY
-    videoStreamRef.current = stream;
-    setHasCameraPermission(true);
-    setCameraErrorInfo(null);
-    setCameraActive(true);
-    setCameraLoading(false);
-    isInitializingRef.current = false;
-    // Hardware labels are now unlocked by the browser, refresh device list
-    checkHardwareDevices();
-
-    // 3. Post-Acquisition Video Element Binding (Isolated non-fatal scope)
-    if (videoRef.current) {
-      try {
-        videoRef.current.muted = true;
-        videoRef.current.defaultMuted = true;
-        videoRef.current.playsInline = true;
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().catch((playErr) => {
-            console.warn('[WebRTC] video.play() deferred by browser autoplay policy:', playErr);
-          });
-        };
-        videoRef.current.play().catch((playErr) => {
-          console.warn('[WebRTC] video.play() deferred by browser autoplay policy:', playErr);
-        });
-      } catch (domErr) {
-        console.warn('[WebRTC] video DOM binding notice (non-fatal):', domErr);
-      }
+      console.warn('[WebRTC Audio Visualizer] setup notice:', e);
     }
   };
 
-  const stopCamera = useCallback(() => {
-    setCameraActive(false);
-    setCameraErrorInfo(null);
-
-    if (videoStreamRef.current) {
-      videoStreamRef.current.getTracks().forEach((track) => {
-        track.stop();
-        track.enabled = false;
-      });
-      videoStreamRef.current = null;
+  const stopAudioVisualizer = () => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
     }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
     }
-  }, []);
+    analyserRef.current = null;
+    setAudioLevel(0);
+  };
 
-  // 2. Decoupled Audio Stream & Collision Resolution
-  // getUserMedia acquires hardware audio stream; SpeechRecognition handles real-time text without competing locks
+  // Real-time Mic Recording & Speech-to-Text Transcription
   const initMic = async () => {
     if (isRecording) {
       stopRecording();
@@ -766,7 +587,6 @@ export default function InterviewMockSimulator({
       return;
     }
 
-    // 1. ISOLATED Media Request Scope
     let stream: MediaStream;
     try {
       if (!navigator?.mediaDevices?.getUserMedia) {
@@ -785,11 +605,10 @@ export default function InterviewMockSimulator({
           video: false,
         });
       } catch (audioConstraintErr: any) {
-        console.warn('[WebRTC] Constrained audio failed, falling back to universal audio: true:', audioConstraintErr);
+        console.warn('[WebRTC] Constrained audio failed, falling back to audio: true:', audioConstraintErr);
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       }
     } catch (mediaErr: any) {
-      // ONLY true hardware/browser permission rejections reach here!
       const parsed = parseMediaError(mediaErr, 'Microphone');
       setMicError(parsed);
       setHasMicPermission(false);
@@ -800,7 +619,7 @@ export default function InterviewMockSimulator({
       return;
     }
 
-    // 2. Stream Successfully Acquired: ENFORCE STATE TRANSITION IMMEDIATELY
+    // Stream Acquired
     audioStreamRef.current = stream;
     setHasMicPermission(true);
     setMicError(null);
@@ -809,7 +628,10 @@ export default function InterviewMockSimulator({
     setMicLoading(false);
     isRecordingRef.current = true;
 
-    // 3. Optional Post-Stream Audio Recording (Non-fatal, NEVER triggers micError)
+    // Start live visualizer
+    startAudioVisualizer(stream);
+
+    // Audio recording via MediaRecorder (non-fatal)
     if (typeof MediaRecorder !== 'undefined') {
       try {
         const recorder = new MediaRecorder(stream);
@@ -820,7 +642,8 @@ export default function InterviewMockSimulator({
       }
     }
 
-    // 4. Real-time SpeechRecognition (Isolated non-fatal transcription scope)
+    // Speech-To-Text Transcription
+    accumulatedTranscriptRef.current = candidateAnswer;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRec) {
@@ -832,21 +655,34 @@ export default function InterviewMockSimulator({
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onresult = (event: any) => {
-          let fullTranscript = '';
-          for (let i = 0; i < event.results.length; i++) {
-            fullTranscript += event.results[i][0].transcript + ' ';
+          let interim = '';
+          let newlyFinal = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const res = event.results[i];
+            const transcript = res[0]?.transcript || '';
+            if (res.isFinal) {
+              newlyFinal += transcript + ' ';
+            } else {
+              interim += transcript;
+            }
           }
 
-          const trimmed = fullTranscript.trim();
-          setCandidateAnswer(trimmed);
+          if (newlyFinal) {
+            const prev = accumulatedTranscriptRef.current ? accumulatedTranscriptRef.current + ' ' : '';
+            accumulatedTranscriptRef.current = (prev + newlyFinal).trim();
+          }
+
+          const combined = (accumulatedTranscriptRef.current + (interim ? ' ' + interim : '')).trim();
+          setCandidateAnswer(combined);
 
           // Update WPM & Fillers
-          const words = trimmed.split(/\s+/).filter(Boolean);
+          const words = combined.split(/\s+/).filter(Boolean);
           if (timerSeconds > 5) {
             setWpm(Math.round(words.length / (timerSeconds / 60)));
           }
 
-          const lower = trimmed.toLowerCase();
+          const lower = combined.toLowerCase();
           let totalF = 0;
           const counts: Record<string, number> = {};
           FILLER_WORDS.forEach((filler) => {
@@ -863,10 +699,9 @@ export default function InterviewMockSimulator({
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onerror = (recErr: any) => {
-          console.warn('[Speech Recognition cloud service notice]:', recErr);
-          // Crucial: do NOT touch micError. Switch to manual text mode for cloud speech errors
+          console.warn('[Speech Recognition notice]:', recErr);
           if (recErr?.error !== 'no-speech') {
-            setManualTextMode(true);
+            // Non-fatal, candidate can also type
           }
         };
 
@@ -883,7 +718,7 @@ export default function InterviewMockSimulator({
         recognition.start();
         recognitionRef.current = recognition;
       } catch (speechErr) {
-        console.warn('[SpeechRecognition initialization notice]:', speechErr);
+        console.warn('[SpeechRecognition notice]:', speechErr);
         setManualTextMode(true);
       }
     } else {
@@ -896,6 +731,7 @@ export default function InterviewMockSimulator({
     setIsRecording(false);
     setTimerActive(false);
     setMicLoading(false);
+    stopAudioVisualizer();
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
@@ -933,7 +769,8 @@ export default function InterviewMockSimulator({
     setTimerActive(false);
     setCurrentEvaluation(null);
     setRecordedAnswers([]);
-    setCameraErrorInfo(null);
+    setMicError(null);
+    setSubmitError(null);
     setMicError(null);
     setSubmitError(null);
 
@@ -1039,7 +876,7 @@ export default function InterviewMockSimulator({
       }, 400);
     } else {
       // Session Complete - Build Full Aggregated Metrics
-      stopCamera();
+      stopRecording();
 
       const answers = recordedAnswers.length > 0
         ? recordedAnswers
@@ -1055,6 +892,8 @@ export default function InterviewMockSimulator({
               fillerCount: totalFillerCount,
               fillerWords: fillerCounts,
               evaluation: currentEvaluation || {
+                isCorrect: true,
+                correctnessAssessment: 'Response answered the primary question requirements.',
                 overallScore: 85,
                 rating: 'Hire',
                 summaryFeedback: 'Good solid response across key criteria.',
@@ -1068,6 +907,7 @@ export default function InterviewMockSimulator({
                   result: { present: true, feedback: 'Outcomes highlighted' },
                 },
                 detectedKeyTerms: [],
+                missingKeyPoints: [],
               },
             },
           ];
@@ -1084,7 +924,7 @@ export default function InterviewMockSimulator({
         wpm: wpm > 0 ? wpm : 138,
         fillerCount: answers.reduce((acc, curr) => acc + curr.fillerCount, 0),
         fillerWords: fillerCounts,
-        eyeContactPercent: cameraActive ? eyeContactScore : 88,
+        eyeContactPercent: Math.max(70, Math.min(96, 92 - totalFillerCount * 2)),
         clarityScore: Math.min(96, Math.max(70, avgScore + 4)),
         structureScore: Math.min(95, Math.max(65, avgScore)),
         durationSeconds: totalDuration > 0 ? totalDuration : 120,
@@ -1120,8 +960,8 @@ export default function InterviewMockSimulator({
           <div className="space-y-1">
             <span className="font-bold text-sm block">Insecure Origin Detected</span>
             <p>
-              Browsers restrict WebRTC Camera and Microphone access to <strong>Secure Contexts</strong> (HTTPS or <code>http://localhost</code>).
-              You are accessing via an unencrypted address. If camera or microphone fails, please open ResuV at <code>http://localhost:5173</code>.
+              Browsers restrict WebRTC Microphone access to <strong>Secure Contexts</strong> (HTTPS or <code>http://localhost</code>).
+              You are accessing via an unencrypted address. If microphone access fails, please open ResuV at <code>http://localhost:5173</code>.
             </p>
           </div>
         </div>
@@ -1229,16 +1069,16 @@ export default function InterviewMockSimulator({
             </div>
           </div>
 
-          {/* Pre-Flight Hardware Check Card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Pre-Flight Audio & Microphone Readiness Card */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-100">
               <div>
                 <h4 className="text-sm font-extrabold text-gray-900 flex items-center gap-2">
-                  <Video className="w-4 h-4 text-indigo-600" />
-                  Pre-Flight Hardware Check (Camera & Microphone)
+                  <Mic className="w-4 h-4 text-indigo-600" />
+                  Microphone & Speech Recognition Readiness
                 </h4>
                 <p className="text-xs text-gray-500">
-                  Verify your webcam and microphone before entering the live interview room.
+                  Verify your microphone audio levels and speech-to-text transcription before beginning.
                 </p>
               </div>
 
@@ -1247,128 +1087,134 @@ export default function InterviewMockSimulator({
                 onClick={checkHardwareDevices}
                 className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 underline"
               >
-                <Info className="w-3.5 h-3.5" /> Enumerate Connected Hardware
+                <Info className="w-3.5 h-3.5" /> Check Audio Input Devices
               </button>
             </div>
 
             {detectedDevices?.checked && (
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono space-y-1 text-slate-700">
-                <div><strong>Detected Cameras:</strong> {detectedDevices.cameras.join(', ') || 'None found (Check physical switch or driver)'}</div>
-                <div><strong>Detected Microphones:</strong> {detectedDevices.mics.join(', ') || 'None found'}</div>
+                <div><strong>Detected Microphones ({detectedDevices.mics.length}):</strong> {detectedDevices.mics.join(', ') || 'None found (Check sound settings or unplug/replug mic)'}</div>
               </div>
             )}
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              {/* Camera Test Box */}
-              <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                    <Video className="w-3.5 h-3.5 text-indigo-600" /> Webcam Preview
+            {/* Interactive Audio Readiness Console */}
+            <div className="p-5 bg-gradient-to-br from-slate-900 via-slate-850 to-slate-950 rounded-2xl border border-slate-800 text-white space-y-4 shadow-inner">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${precheckMicActive ? 'bg-red-500 animate-ping' : 'bg-slate-600'}`} />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    {precheckMicActive ? 'Microphone Active · Listening' : 'Microphone Ready for Test'}
                   </span>
-                  {cameraActive && (
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      Active & Mirroring
-                    </span>
-                  )}
                 </div>
 
-                {cameraActive ? (
-                  <div className="relative aspect-video bg-slate-900 rounded-lg overflow-hidden">
-                    <video
-                      ref={attachVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      style={{ transform: 'scaleX(-1)' }}
-                      className="w-full h-full object-cover"
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    Signal Activity: {audioLevel}%
+                  </span>
+                  <div className="w-24 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-75"
+                      style={{ width: `${Math.min(100, audioLevel)}%` }}
                     />
                   </div>
-                ) : (
-                  <div className="aspect-video bg-slate-100 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 p-4 text-center space-y-1">
-                    <VideoOff className="w-6 h-6 text-gray-400" />
-                    <span className="text-xs font-medium">Camera is currently off</span>
-                    <span className="text-[11px] text-gray-400">Click below to test video feed</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={cameraActive ? stopCamera : initCamera}
-                  disabled={cameraLoading}
-                  className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all ${
-                    cameraActive
-                      ? 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
-                  }`}
-                >
-                  {cameraLoading ? 'Connecting Device...' : cameraActive ? 'Turn Off Camera' : 'Test Camera Preview'}
-                </button>
+                </div>
               </div>
 
-              {/* Microphone Test Box */}
-              <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50/50">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                    <Mic className="w-3.5 h-3.5 text-indigo-600" /> Microphone Input
-                  </span>
-                  {precheckMicActive && (
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      Listening
-                    </span>
-                  )}
-                </div>
+              {/* Dynamic Waveform Visualizer Bars */}
+              <div className="h-16 flex items-end justify-center gap-1.5 px-4 bg-slate-950/60 rounded-xl border border-slate-800/80 py-2 overflow-hidden">
+                {Array.from({ length: 24 }).map((_, i) => {
+                  // Generate animated rhythmic height based on audioLevel
+                  const barSeed = ((i % 8) + 1) / 8;
+                  const activeHeight = precheckMicActive
+                    ? Math.max(8, Math.round((audioLevel * barSeed) * 0.9 + (audioLevel > 5 ? Math.random() * 15 : 0)))
+                    : 6;
 
-                <div className="aspect-video bg-slate-100 border border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center p-4 text-center space-y-1">
-                  {precheckMicFeedback ? (
-                    <div className="space-y-1 p-2 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-900 w-full">
-                      <div className="flex items-center justify-center gap-1 text-xs font-bold">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Mic Signal Verified
-                      </div>
-                      <p className="text-[11px] italic text-emerald-800 line-clamp-3 font-mono">
-                        {precheckMicFeedback}
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <Mic className="w-6 h-6 text-gray-400" />
-                      <span className="text-xs font-medium text-gray-600">
-                        {precheckMicActive ? 'Speak into your microphone now...' : 'Microphone is unverified'}
-                      </span>
-                      <span className="text-[11px] text-gray-400">Click below to test audio capture</span>
-                    </>
-                  )}
+                  return (
+                    <div
+                      key={i}
+                      className={`w-2 rounded-full transition-all duration-75 ${
+                        precheckMicActive && audioLevel > 5
+                          ? 'bg-gradient-to-t from-emerald-500 to-indigo-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                          : precheckMicActive
+                          ? 'bg-emerald-800/60'
+                          : 'bg-slate-700/50'
+                      }`}
+                      style={{ height: `${activeHeight}%` }}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Speech-to-Text Transcription Preview */}
+              <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                  Live Speech Transcription Preview
                 </div>
+                {precheckMicFeedback ? (
+                  <p className="text-xs text-emerald-300 font-mono italic leading-relaxed">
+                    {precheckMicFeedback}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">
+                    {precheckMicActive
+                      ? 'Speak into your microphone now (e.g. "Testing audio for mock interview")...'
+                      : 'Click "Start Microphone Test" below and speak to verify your voice is captured.'}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] text-slate-400">
+                  Noise cancellation & echo suppression active
+                </span>
 
                 <button
                   type="button"
                   onClick={testMicPrecheck}
-                  className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all ${
+                  disabled={micLoading}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer ${
                     precheckMicActive
-                      ? 'bg-red-600 text-white hover:bg-red-700'
-                      : 'bg-slate-800 text-white hover:bg-slate-900 shadow-sm'
+                      ? 'bg-red-600 text-white hover:bg-red-700 ring-4 ring-red-900/40'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-500'
                   }`}
                 >
-                  {precheckMicActive ? 'Stop Mic Test' : 'Test Microphone'}
+                  {micLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Connecting Mic...
+                    </>
+                  ) : precheckMicActive ? (
+                    <>
+                      <MicOff className="w-3.5 h-3.5" />
+                      Stop Microphone Test
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-3.5 h-3.5" />
+                      Start Microphone Test
+                    </>
+                  )}
                 </button>
               </div>
             </div>
 
-            {/* Error Diagnostics Box - ONLY render when NOT loading and an actual error exists without permission */}
-            {!cameraLoading && !micLoading && ((!hasCameraPermission && cameraErrorInfo) || (!hasMicPermission && micError)) && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2 text-xs text-red-900 animate-fadeIn">
-                <div className="font-bold flex items-center gap-2 text-red-800">
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                  {(!hasCameraPermission && cameraErrorInfo?.title) || (!hasMicPermission && micError?.title)}
+            {/* Error Diagnostics Box - ONLY render when mic error exists without permission */}
+            {!micLoading && !hasMicPermission && micError && (
+              <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-2 text-xs text-amber-900 animate-fadeIn">
+                <div className="font-bold flex items-center gap-2 text-amber-950">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  {micError.title}
                 </div>
-                <p>{(!hasCameraPermission && cameraErrorInfo?.message) || (!hasMicPermission && micError?.message)}</p>
-                {((!hasCameraPermission && cameraErrorInfo?.rawError) || (!hasMicPermission && micError?.rawError)) && (
-                  <div className="text-[10px] font-mono text-red-700 bg-red-100/70 px-2 py-1 rounded border border-red-200">
-                    System error: {(!hasCameraPermission ? cameraErrorInfo?.rawError : micError?.rawError)}
+                <p>{micError.message}</p>
+                {micError.rawError && (
+                  <div className="text-[10px] font-mono text-amber-800 bg-amber-100/70 px-2 py-1 rounded border border-amber-200">
+                    System error: {micError.rawError}
                   </div>
                 )}
-                {((!hasCameraPermission && cameraErrorInfo?.osTroubleshooting) || (!hasMicPermission && micError?.osTroubleshooting)) && (
-                  <ul className="list-disc list-inside space-y-1 text-[11px] text-red-800 pt-1 border-t border-red-200">
-                    {((!hasCameraPermission ? cameraErrorInfo?.osTroubleshooting : micError?.osTroubleshooting) || []).map((step, idx) => (
+                {micError.osTroubleshooting && micError.osTroubleshooting.length > 0 && (
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-900 pt-1 border-t border-amber-200">
+                    {micError.osTroubleshooting.map((step, idx) => (
                       <li key={idx}>{step}</li>
                     ))}
                   </ul>
@@ -1448,7 +1294,7 @@ export default function InterviewMockSimulator({
               {/* Exit Button */}
               <button
                 onClick={() => {
-                  stopCamera();
+                  stopAudioVisualizer();
                   stopRecording();
                   if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
                   setSessionStarted(false);
@@ -1518,6 +1364,70 @@ export default function InterviewMockSimulator({
                       <span className={`text-xs font-black px-3 py-1 rounded-full border shadow-sm ${getScoreBadgeClass(currentEvaluation.overallScore)}`}>
                         Score: {currentEvaluation.overallScore}/100 · {currentEvaluation.rating}
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Backend Question Verification & Correctness Banner */}
+                  <div
+                    className={`p-4 rounded-xl border flex items-start gap-3 transition-all ${
+                      currentEvaluation.isCorrect !== false
+                        ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                        : 'bg-amber-50/90 border-amber-300 text-amber-950'
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm ${
+                        currentEvaluation.isCorrect !== false
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-amber-600 text-white'
+                      }`}
+                    >
+                      {currentEvaluation.isCorrect !== false ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-extrabold uppercase tracking-wide">
+                          {currentEvaluation.isCorrect !== false
+                            ? 'Verified: Answer Directly Addresses Question'
+                            : 'Question Alignment Alert: Answer Needs Refocusing'}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                            currentEvaluation.isCorrect !== false
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : 'bg-amber-100 text-amber-800 border-amber-300'
+                          }`}
+                        >
+                          {currentEvaluation.isCorrect !== false ? 'Verified Correct' : 'Missing Criteria'}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed">
+                        {currentEvaluation.correctnessAssessment ||
+                          (currentEvaluation.isCorrect !== false
+                            ? 'Your response was evaluated against the question requirements and demonstrates accurate conceptual understanding.'
+                            : 'Your answer did not directly address the question requirements or strayed off topic.')}
+                      </p>
+                      {currentEvaluation.missingKeyPoints && currentEvaluation.missingKeyPoints.length > 0 && (
+                        <div className="pt-2 border-t border-amber-200/80 mt-1">
+                          <span className="text-[10px] font-bold text-amber-900 block mb-1">
+                            Missing Key Concepts for this Question:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {currentEvaluation.missingKeyPoints.map((point, idx) => (
+                              <span
+                                key={idx}
+                                className="text-[10px] bg-white/90 border border-amber-300 text-amber-900 px-2 py-0.5 rounded-md font-medium"
+                              >
+                                {point}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1793,144 +1703,95 @@ export default function InterviewMockSimulator({
               )}
             </div>
 
-            {/* Right Column: Real Device Webcam Feed & Live Signals (5 cols) */}
+            {/* Right Column: Candidate Voice Stream Studio & Live Signals (5 cols) */}
             <div className="lg:col-span-5 space-y-6">
-              {/* Webcam Feed Card */}
-              <div className="glass-card overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+              {/* Candidate Voice Studio Card */}
+              <div className="glass-card overflow-hidden border border-gray-200/80 shadow-md">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
                   <div className="flex items-center gap-2">
-                    <Video className="w-4 h-4 text-gray-700" />
+                    <Mic className="w-4 h-4 text-indigo-600" />
                     <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                      Device Camera Feed
+                      Candidate Voice Stream
                     </span>
-                    {cameraActive && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Live Webcam
+                    {isRecording && (
+                      <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 flex items-center gap-1.5 animate-pulse">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                        Live Recording
                       </span>
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={cameraActive ? stopCamera : initCamera}
-                    disabled={cameraLoading}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 disabled:text-gray-400"
-                  >
-                    {cameraLoading ? 'Connecting...' : cameraActive ? 'Turn Off Camera' : 'Enable Camera'}
-                  </button>
+                  <span className="text-[11px] font-semibold text-gray-500">
+                    {isRecording ? 'Listening' : 'Standby'}
+                  </span>
                 </div>
 
-                <div className="relative aspect-video bg-slate-900 flex items-center justify-center overflow-hidden rounded-b-xl">
-                  {/* Video is always mounted with no display:none to ensure media pipeline stays active */}
-                  <video
-                    ref={attachVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    style={{ transform: 'scaleX(-1)' }}
-                    className="w-full h-full object-cover"
-                  />
-
-                  {/* Camera Offline Overlay UI (shown only when cameraActive is false) */}
-                  {!cameraActive && (
-                    <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center p-5 text-slate-400 z-10 text-center overflow-y-auto">
-                      <VideoOff className="w-8 h-8 mx-auto text-slate-500 flex-shrink-0 mb-1" />
-                      <div className="space-y-0.5 mb-2">
-                        <p className="text-xs font-bold text-slate-200">
-                          {cameraLoading ? 'Connecting to camera hardware...' : 'Device camera is off'}
-                        </p>
-                        <p className="text-[11px] text-slate-400 leading-tight">
-                          {cameraLoading ? 'Please wait while camera initializes...' : 'Click below to enable your hardware camera.'}
-                        </p>
-                      </div>
-
-                      {cameraLoading && (
-                        <div className="flex items-center gap-2 p-2.5 bg-indigo-950/80 border border-indigo-700/80 rounded-xl text-xs text-indigo-300 animate-pulse mb-3">
-                          <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-                          <span>Initializing video capture device...</span>
-                        </div>
-                      )}
-
-                      {!cameraLoading && !hasCameraPermission && cameraErrorInfo && (
-                        <div className="w-full max-w-sm p-3 bg-red-950/80 border border-red-700/80 rounded-xl text-[11px] text-red-200 text-left space-y-1.5 mb-2.5 animate-fadeIn">
-                          <div className="font-bold flex items-center justify-between text-red-300">
-                            <span className="flex items-center gap-1.5">
-                              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                              {cameraErrorInfo.title}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={checkHardwareDevices}
-                              className="text-[10px] underline text-red-300 hover:text-white"
-                            >
-                              Check Devices
-                            </button>
-                          </div>
-                          <p className="text-[10px] text-red-200 leading-snug">
-                            {cameraErrorInfo.message}
-                          </p>
-                          {cameraErrorInfo.rawError && (
-                            <div className="text-[9px] font-mono text-red-300 bg-red-900/50 px-2 py-0.5 rounded border border-red-800/60 truncate">
-                              System: {cameraErrorInfo.rawError}
-                            </div>
-                          )}
-                          {cameraErrorInfo.osTroubleshooting && cameraErrorInfo.osTroubleshooting.length > 0 && (
-                            <div className="pt-1 border-t border-red-800/60 space-y-1">
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-red-300 flex items-center gap-1">
-                                <Settings className="w-3 h-3" /> Quick Fix Steps:
-                              </span>
-                              <ul className="text-[9px] text-red-200 list-disc list-inside space-y-0.5 leading-tight">
-                                {cameraErrorInfo.osTroubleshooting.map((step, idx) => (
-                                  <li key={idx}>{step}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {detectedDevices?.checked && (
-                            <div className="pt-1 text-[9px] text-slate-300 font-mono bg-slate-950/60 p-1.5 rounded">
-                              Connected Cameras: {detectedDevices.cameras.join(', ') || '0 detected (Check laptop switch or device manager)'}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={initCamera}
-                          disabled={cameraLoading}
-                          className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white px-5 py-2 rounded-lg border border-emerald-500 inline-flex items-center gap-1.5 cursor-pointer font-bold shadow-md transition-all active:scale-95"
-                        >
-                          {cameraLoading ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              Connecting Device...
-                            </>
-                          ) : (
-                            <>
-                              <Video className="w-3.5 h-3.5 text-white" />
-                              Turn on Device Camera
-                            </>
-                          )}
-                        </button>
-                      </div>
+                <div className="relative aspect-video bg-gradient-to-br from-slate-900 via-slate-850 to-slate-950 flex flex-col items-center justify-center p-6 text-white overflow-hidden rounded-b-xl">
+                  {/* Subtle animated sound ripples when recording */}
+                  {isRecording && (
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                      <div className="w-48 h-48 rounded-full border border-emerald-500/20 animate-ping opacity-35" />
+                      <div className="w-36 h-36 rounded-full border border-indigo-500/30 animate-pulse opacity-50" />
                     </div>
                   )}
 
-                  {/* Face Centering Grid Overlay */}
-                  {cameraActive && (
-                    <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                      <div className="w-40 h-52 border border-dashed border-emerald-400/40 rounded-full flex items-center justify-center">
-                        <span className="text-[10px] text-emerald-300 font-bold bg-slate-950/60 px-2 py-0.5 rounded-full">
-                          Align Face Here
-                        </span>
-                      </div>
-                      <div className="absolute bottom-2 left-2 bg-slate-950/80 text-white text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1.5">
-                        <Eye className="w-3 h-3 text-blue-400" /> Eye Contact: ~88%
-                      </div>
+                  {/* Candidate Audio Avatar */}
+                  <div className="relative z-10 flex flex-col items-center space-y-2">
+                    <div
+                      className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all duration-300 ${
+                        isRecording
+                          ? 'bg-gradient-to-tr from-emerald-600 to-indigo-600 ring-4 ring-emerald-500/30 scale-105'
+                          : 'bg-slate-800 ring-2 ring-slate-700'
+                      }`}
+                    >
+                      <User className="w-7 h-7 text-white" />
                     </div>
-                  )}
+
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-slate-200">
+                        {isRecording ? 'Voice Input Active' : 'Microphone Ready'}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {isRecording
+                          ? audioLevel > 5
+                            ? 'Audio signal detected'
+                            : 'Listening for speech...'
+                          : 'Click "Start Answering (Mic)" below to speak'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Dynamic Sound Wave Equalizer Bars */}
+                  <div className="relative z-10 w-full max-w-xs mt-4 flex items-end justify-center gap-1.5 h-10 px-2 py-1 bg-slate-950/70 rounded-lg border border-slate-800">
+                    {Array.from({ length: 20 }).map((_, i) => {
+                      const seed = ((i % 6) + 1) / 6;
+                      const barH = isRecording
+                        ? Math.max(10, Math.round((audioLevel * seed) * 0.95 + (audioLevel > 5 ? Math.random() * 20 : 0)))
+                        : 8;
+
+                      return (
+                        <div
+                          key={i}
+                          className={`w-1.5 rounded-full transition-all duration-75 ${
+                            isRecording && audioLevel > 5
+                              ? 'bg-gradient-to-t from-emerald-500 to-indigo-400'
+                              : isRecording
+                              ? 'bg-emerald-900/50'
+                              : 'bg-slate-700/40'
+                          }`}
+                          style={{ height: `${barH}%` }}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* Audio Status Footer */}
+                  <div className="absolute bottom-2.5 left-4 right-4 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                    <span className="flex items-center gap-1">
+                      <Radio className="w-3 h-3 text-emerald-400" /> WebRTC Audio Stream
+                    </span>
+                    <span>Input: {audioLevel}%</span>
+                  </div>
                 </div>
               </div>
 

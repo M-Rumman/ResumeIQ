@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
   Gauge,
-  Eye,
   AlertCircle,
   CheckCircle2,
   TrendingUp,
@@ -287,23 +286,23 @@ export default function PerformanceAnalyticsView({
           </div>
         </div>
 
-        {/* Camera / Eye Contact */}
+        {/* Audio Fluency & Articulation */}
         <div className="glass-card p-5 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-              Camera Eye Contact
+              Speech Fluency & Delivery
             </span>
-            <Eye className="w-4 h-4 text-blue-500" />
+            <Mic className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-black text-gray-900">{metrics.eyeContactPercent}%</span>
-            <span className="text-xs text-gray-500 font-medium">lens focus</span>
+            <span className="text-xs text-gray-500 font-medium">articulation score</span>
           </div>
-          <div className="text-xs px-2.5 py-1 rounded-full border font-bold inline-block bg-blue-50 text-blue-800 border-blue-200">
-            {metrics.eyeContactPercent >= 75 ? 'Direct & Engaging' : 'Shifting Gaze'}
+          <div className="text-xs px-2.5 py-1 rounded-full border font-bold inline-block bg-indigo-50 text-indigo-800 border-indigo-200">
+            {metrics.eyeContactPercent >= 75 ? 'Fluent & Articulate' : 'Hesitant Delivery'}
           </div>
           <p className="text-[11px] text-gray-600 leading-relaxed">
-            Maintained direct alignment with camera lens for strong executive presence.
+            Maintained strong vocal cadence and clear audio speech articulation throughout.
           </p>
         </div>
 
