@@ -345,6 +345,7 @@ export default function InterviewMockSimulator({
     setMicLoading(true);
 
     let stream: MediaStream | null = null;
+    let streamErr: any = null;
     try {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -352,31 +353,26 @@ export default function InterviewMockSimulator({
           video: false,
         });
       } catch (err: any) {
-        console.warn('[WebRTC] Constrained mic precheck failed, trying universal audio: true...', err);
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       }
     } catch (err: any) {
-      const parsed = parseMediaError(err, 'Microphone');
-      setMicError(parsed);
-      setHasMicPermission(false);
-      setPrecheckMicActive(false);
-      setMicLoading(false);
-      checkHardwareDevices();
-      return;
+      streamErr = err;
+      console.warn('[WebRTC] Mic precheck getUserMedia notice:', err);
     }
 
-    // Hardware stream acquired successfully
-    audioStreamRef.current = stream;
-    setHasMicPermission(true);
-    setMicError(null);
-    setPrecheckMicActive(true);
-    setMicLoading(false);
-    startAudioVisualizer(stream);
-    setPrecheckMicFeedback('Microphone hardware successfully connected! Speak to see live sound levels.');
-
-    // Separate optional Speech Recognition test (non-fatal, never triggers micError)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (stream) {
+      audioStreamRef.current = stream;
+      setHasMicPermission(true);
+      setMicError(null);
+      setPrecheckMicActive(true);
+      setMicLoading(false);
+      startAudioVisualizer(stream);
+      setPrecheckMicFeedback('Microphone hardware successfully connected! Speak to see live sound levels.');
+    }
+
     if (SpeechRec) {
       try {
         const rec = new SpeechRec();
@@ -385,13 +381,45 @@ export default function InterviewMockSimulator({
         rec.lang = 'en-US';
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rec.onresult = (e: any) => {
-          const transcript = e.results[0][0].transcript;
+          const transcript = e.results[0]?.[0]?.transcript || '';
           setPrecheckMicFeedback(`Heard you: "${transcript}"`);
         };
+        rec.onerror = (e: any) => {
+          if (!stream && (e?.error === 'not-allowed' || e?.error === 'service-not-allowed')) {
+            const parsed = parseMediaError(streamErr || e, 'Microphone');
+            setMicError(parsed);
+            setHasMicPermission(false);
+            setPrecheckMicActive(false);
+            setMicLoading(false);
+            checkHardwareDevices();
+          }
+        };
         rec.start();
+        if (!stream) {
+          setHasMicPermission(true);
+          setMicError(null);
+          setPrecheckMicActive(true);
+          setMicLoading(false);
+          setPrecheckMicFeedback('Speech recognition connected! Say something to test your mic.');
+        }
       } catch (speechTestErr) {
         console.warn('[Web Speech API precheck notice]:', speechTestErr);
+        if (!stream) {
+          const parsed = parseMediaError(streamErr || speechTestErr, 'Microphone');
+          setMicError(parsed);
+          setHasMicPermission(false);
+          setPrecheckMicActive(false);
+          setMicLoading(false);
+          checkHardwareDevices();
+        }
       }
+    } else if (!stream) {
+      const parsed = parseMediaError(streamErr || new Error('No microphone or speech API available'), 'Microphone');
+      setMicError(parsed);
+      setHasMicPermission(false);
+      setPrecheckMicActive(false);
+      setMicLoading(false);
+      checkHardwareDevices();
     }
   };
 
@@ -577,24 +605,14 @@ export default function InterviewMockSimulator({
     setMicError(null);
     setSubmitError(null);
 
-    if (typeof window !== 'undefined' && window.isSecureContext === false) {
-      const secErr: any = new Error('Microphone access requires a Secure Context (HTTPS or localhost).');
-      secErr.name = 'SecurityError';
-      const parsed = parseMediaError(secErr, 'Microphone');
-      setMicError(parsed);
-      setHasMicPermission(false);
-      setMicLoading(false);
-      return;
-    }
+    // 1. Check SpeechRecognition availability
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    let stream: MediaStream;
-    try {
-      if (!navigator?.mediaDevices?.getUserMedia) {
-        const navErr: any = new Error('navigator.mediaDevices.getUserMedia is not available.');
-        navErr.name = 'SecurityError';
-        throw navErr;
-      }
-
+    // 2. Try acquiring hardware audio stream for waveform visualizer & optional MediaRecorder
+    let stream: MediaStream | null = null;
+    let streamErr: any = null;
+    if (navigator?.mediaDevices?.getUserMedia) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -604,48 +622,32 @@ export default function InterviewMockSimulator({
           },
           video: false,
         });
-      } catch (audioConstraintErr: any) {
-        console.warn('[WebRTC] Constrained audio failed, falling back to audio: true:', audioConstraintErr);
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      }
-    } catch (mediaErr: any) {
-      const parsed = parseMediaError(mediaErr, 'Microphone');
-      setMicError(parsed);
-      setHasMicPermission(false);
-      setIsRecording(false);
-      setTimerActive(false);
-      setMicLoading(false);
-      checkHardwareDevices();
-      return;
-    }
-
-    // Stream Acquired
-    audioStreamRef.current = stream;
-    setHasMicPermission(true);
-    setMicError(null);
-    setIsRecording(true);
-    setTimerActive(true);
-    setMicLoading(false);
-    isRecordingRef.current = true;
-
-    // Start live visualizer
-    startAudioVisualizer(stream);
-
-    // Audio recording via MediaRecorder (non-fatal)
-    if (typeof MediaRecorder !== 'undefined') {
-      try {
-        const recorder = new MediaRecorder(stream);
-        recorder.start(250);
-        mediaRecorderRef.current = recorder;
-      } catch (recErr) {
-        console.warn('[MediaRecorder notice (non-fatal)]:', recErr);
+      } catch (err1: any) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } catch (err2: any) {
+          streamErr = err2 || err1;
+          console.warn('[WebRTC audio stream notice - continuing with speech recognition]:', streamErr);
+        }
       }
     }
 
-    // Speech-To-Text Transcription
-    accumulatedTranscriptRef.current = candidateAnswer;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    // If hardware stream was acquired, start live visualizer and MediaRecorder
+    if (stream) {
+      audioStreamRef.current = stream;
+      startAudioVisualizer(stream);
+      if (typeof MediaRecorder !== 'undefined') {
+        try {
+          const recorder = new MediaRecorder(stream);
+          recorder.start(250);
+          mediaRecorderRef.current = recorder;
+        } catch (recErr) {
+          console.warn('[MediaRecorder notice (non-fatal)]:', recErr);
+        }
+      }
+    }
+
+    // 3. Initialize Speech-To-Text Transcription
     if (SpeechRec) {
       try {
         const recognition = new SpeechRec();
@@ -653,27 +655,42 @@ export default function InterviewMockSimulator({
         recognition.interimResults = true;
         recognition.lang = 'en-US';
 
+        const initialCarried = candidateAnswer.trim();
+        accumulatedTranscriptRef.current = initialCarried;
+        let sessionFinal = '';
+
+        recognition.onstart = () => {
+          setIsRecording(true);
+          isRecordingRef.current = true;
+          setHasMicPermission(true);
+          setTimerActive(true);
+          setMicLoading(false);
+          setMicError(null);
+        };
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onresult = (event: any) => {
-          let interim = '';
-          let newlyFinal = '';
+          let committed = '';
+          let pending = '';
 
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
+          for (let i = 0; i < event.results.length; i++) {
             const res = event.results[i];
-            const transcript = res[0]?.transcript || '';
-            if (res.isFinal) {
-              newlyFinal += transcript + ' ';
+            const txt = res?.[0]?.transcript || '';
+            if (res?.isFinal) {
+              committed += txt + ' ';
             } else {
-              interim += transcript;
+              pending += txt;
             }
           }
 
-          if (newlyFinal) {
-            const prev = accumulatedTranscriptRef.current ? accumulatedTranscriptRef.current + ' ' : '';
-            accumulatedTranscriptRef.current = (prev + newlyFinal).trim();
-          }
+          const finalText = committed.trim();
+          const interimText = pending.trim();
+          if (finalText) sessionFinal = finalText;
 
-          const combined = (accumulatedTranscriptRef.current + (interim ? ' ' + interim : '')).trim();
+          const combined = [accumulatedTranscriptRef.current, finalText, interimText]
+            .filter(Boolean)
+            .join(' ');
+
           setCandidateAnswer(combined);
 
           // Update WPM & Fillers
@@ -700,29 +717,85 @@ export default function InterviewMockSimulator({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         recognition.onerror = (recErr: any) => {
           console.warn('[Speech Recognition notice]:', recErr);
-          if (recErr?.error !== 'no-speech') {
-            // Non-fatal, candidate can also type
+          const errCode = recErr?.error;
+          if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
+            const parsed = parseMediaError(recErr, 'Microphone');
+            setMicError(parsed);
+            setHasMicPermission(false);
+            setManualTextMode(true);
+            stopRecording();
           }
         };
 
         recognition.onend = () => {
           if (isRecordingRef.current) {
+            if (sessionFinal) {
+              accumulatedTranscriptRef.current = [accumulatedTranscriptRef.current, sessionFinal]
+                .filter(Boolean)
+                .join(' ');
+              sessionFinal = '';
+            }
             try {
               recognition.start();
             } catch {
-              // ignore
+              setTimeout(() => {
+                if (isRecordingRef.current) {
+                  try {
+                    recognition.start();
+                  } catch {
+                    // ignore
+                  }
+                }
+              }, 120);
             }
           }
         };
 
         recognition.start();
         recognitionRef.current = recognition;
-      } catch (speechErr) {
-        console.warn('[SpeechRecognition notice]:', speechErr);
-        setManualTextMode(true);
+
+        setIsRecording(true);
+        isRecordingRef.current = true;
+        setHasMicPermission(true);
+        setTimerActive(true);
+        setMicLoading(false);
+        setMicError(null);
+      } catch (speechErr: any) {
+        console.warn('[SpeechRecognition startup error]:', speechErr);
+        if (!stream) {
+          const parsed = parseMediaError(streamErr || speechErr, 'Microphone');
+          setMicError(parsed);
+          setHasMicPermission(false);
+          setIsRecording(false);
+          setTimerActive(false);
+          setMicLoading(false);
+          setManualTextMode(true);
+          checkHardwareDevices();
+        } else {
+          setIsRecording(true);
+          isRecordingRef.current = true;
+          setHasMicPermission(true);
+          setTimerActive(true);
+          setMicLoading(false);
+        }
       }
     } else {
-      setManualTextMode(true);
+      if (stream) {
+        setIsRecording(true);
+        isRecordingRef.current = true;
+        setHasMicPermission(true);
+        setTimerActive(true);
+        setMicLoading(false);
+      } else {
+        const parsed = parseMediaError(streamErr || new Error('Speech recognition not supported in this browser'), 'Microphone');
+        setMicError(parsed);
+        setHasMicPermission(false);
+        setIsRecording(false);
+        setTimerActive(false);
+        setMicLoading(false);
+        setManualTextMode(true);
+        checkHardwareDevices();
+      }
     }
   };
 
