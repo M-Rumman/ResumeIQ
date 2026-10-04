@@ -13,6 +13,7 @@ import {
 import { type KeywordAnalysisReport } from '../../utils/keywordClassifier';
 import { type RealTimeScoreReport } from '../../utils/realtimeScorer';
 import { exportResumePdf, exportResumeDocx } from '../../utils/exportResumeFormats';
+import StrategicOptimizerModal from './StrategicOptimizerModal';
 
 interface SplitScreenWorkspaceProps {
   resumeText: string;
@@ -42,6 +43,7 @@ export default function SplitScreenWorkspace({
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
   const [filterMissingOnly, setFilterMissingOnly] = useState(false);
+  const [showStrategicOptimizer, setShowStrategicOptimizer] = useState(false);
 
   const handleInsertKeyword = (term: string) => {
     // If resume has a SKILLS section, insert there, otherwise append to resume
@@ -107,6 +109,17 @@ export default function SplitScreenWorkspace({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            onClick={() => setShowStrategicOptimizer(true)}
+            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-black flex items-center gap-1.5 transition-all shadow-sm active:scale-95 group"
+            title="Strategically analyze and weave missing keywords into resume with strict zero-fabrication guardrails"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-200 group-hover:rotate-12 transition-transform" />
+            <span>AI Strategic Optimizer</span>
+            <span className="hidden xl:inline-block text-[9px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">Zero-Fabrication</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onOpenPowerVerbs}
             className="px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs font-bold text-gray-800 flex items-center gap-1.5 transition-colors"
           >
@@ -165,9 +178,20 @@ export default function SplitScreenWorkspace({
                 <FileText className="w-4 h-4 text-[#3c4a59]" />
                 <h4 className="text-sm font-black text-gray-900">Target Job Posting & Keywords</h4>
               </div>
-              <span className="text-[11px] font-bold text-gray-500">
-                {visibleKeywords.length} keywords found
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-gray-500">
+                  {visibleKeywords.length} keywords found
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowStrategicOptimizer(true)}
+                  className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition-colors"
+                  title="Strategically weave missing keywords into resume"
+                >
+                  <Sparkles className="w-3 h-3 text-emerald-600" />
+                  <span>Weave Keywords</span>
+                </button>
+              </div>
             </div>
 
             {/* Keyword Category Tabs */}
@@ -285,12 +309,23 @@ export default function SplitScreenWorkspace({
               <FileText className="w-4 h-4 text-[#3c4a59]" />
               <h4 className="text-sm font-black text-gray-900">Live Resume Editor</h4>
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500 font-semibold">
-              <span>{scoreReport.wordCount} words</span>
-              <span>•</span>
-              <span>{scoreReport.totalBullets} bullets</span>
-              <span>•</span>
-              <span className="text-emerald-700 font-bold">{scoreReport.metricsCount} quantified</span>
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 font-semibold">
+                <span>{scoreReport.wordCount} words</span>
+                <span>•</span>
+                <span>{scoreReport.totalBullets} bullets</span>
+                <span>•</span>
+                <span className="text-emerald-700 font-bold">{scoreReport.metricsCount} quantified</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowStrategicOptimizer(true)}
+                className="text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-xl flex items-center gap-1.5 transition-all shadow-2xs active:scale-95"
+                title="Strategically optimize resume for this JD"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Optimize for JD</span>
+              </button>
             </div>
           </div>
 
@@ -319,6 +354,15 @@ export default function SplitScreenWorkspace({
         </div>
 
       </div>
+
+      {/* Strategic Resume Optimizer Modal (Zero-Fabrication Guardrails) */}
+      <StrategicOptimizerModal
+        isOpen={showStrategicOptimizer}
+        onClose={() => setShowStrategicOptimizer(false)}
+        jobDescription={jobDescription}
+        resumeText={resumeText}
+        onApplyOptimizedResume={(updated) => onResumeChange(updated)}
+      />
     </div>
   );
 }
