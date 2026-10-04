@@ -3,10 +3,58 @@ import { type AtsFormatReport } from '../../utils/atsFormatScanner';
 
 interface FormattingAlertsCardProps {
   report: AtsFormatReport;
+  hasAnalyzed?: boolean;
+  onAnalyze?: () => void;
+  analyzing?: boolean;
+  resumeText?: string;
   onRefreshScan?: () => void;
 }
 
-export default function FormattingAlertsCard({ report, onRefreshScan }: FormattingAlertsCardProps) {
+export default function FormattingAlertsCard({
+  report,
+  hasAnalyzed = false,
+  onAnalyze,
+  analyzing = false,
+  resumeText = '',
+  onRefreshScan,
+}: FormattingAlertsCardProps) {
+  if (!hasAnalyzed) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center mx-auto mb-4 text-[#3c4a59]">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-black text-gray-900 mb-2">No ATS Formatting Alerts Yet</h3>
+        <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
+          Formatting alerts will be displayed once you analyze your resume. Run an analysis to detect table structures, text box fragmentation, and font issues.
+        </p>
+        {onAnalyze && (
+          <button
+            type="button"
+            onClick={onAnalyze}
+            disabled={analyzing || !resumeText.trim()}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#3c4a59] hover:bg-[#252f38] text-white text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50"
+          >
+            {analyzing ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Analyzing Resume...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Analyze Resume to View Alerts</span>
+              </>
+            )}
+          </button>
+        )}
+        {!resumeText.trim() && (
+          <p className="text-xs text-gray-400 mt-3">Upload or paste your resume text to begin analysis.</p>
+        )}
+      </div>
+    );
+  }
+
   const isOptimal = report.status === 'optimal';
   const isCritical = report.status === 'critical_issues';
 

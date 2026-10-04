@@ -16,6 +16,24 @@ export interface FullResumeAudit {
 }
 
 export function performSectionAudits(resumeText: string): FullResumeAudit {
+  if (!resumeText || resumeText.trim().length === 0) {
+    const emptyItem = (sectionName: string): SectionAuditItem => ({
+      sectionName,
+      status: 'passed',
+      score: 0,
+      headline: 'No analysis performed yet',
+      critiques: [],
+      recommendations: [],
+    });
+    return {
+      contactAudit: emptyItem('Contact Information'),
+      summaryAudit: emptyItem('Professional Summary'),
+      experienceAudit: emptyItem('Work Experience'),
+      educationAudit: emptyItem('Education'),
+      skillsAudit: emptyItem('Skills'),
+    };
+  }
+
   const lines = resumeText.split('\n').map(l => l.trim()).filter(Boolean);
   const textLower = resumeText.toLowerCase();
 

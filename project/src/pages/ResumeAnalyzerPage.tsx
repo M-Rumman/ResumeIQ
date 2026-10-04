@@ -926,12 +926,31 @@ export default function ResumeAnalyzerPage({ onNavigate }: ResumeAnalyzerPagePro
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {upgradeMessage && (
+          <div className="mb-6">
+            <UpgradePrompt
+              message={upgradeMessage}
+              onUpgrade={() => paywallCheckout.subscribePro()}
+            />
+          </div>
+        )}
+
+        {saveError && viewMode === 'studio' && (
+          <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-center">
+            <p className="text-sm text-red-700 font-medium">{saveError}</p>
+          </div>
+        )}
+
         {viewMode === 'studio' ? (
           <OptimizationStudio
             resumeText={resumeText}
             jobDescription={jobDescription}
             onResumeChange={setResumeText}
             onJdChange={setJobDescription}
+            hasAnalyzed={Boolean(results)}
+            onAnalyze={handleAnalyze}
+            analyzing={analyzing}
+            analysisResults={results}
           />
         ) : (
           <>

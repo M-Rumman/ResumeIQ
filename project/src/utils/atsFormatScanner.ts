@@ -20,7 +20,16 @@ export function scanResumeFormatting(resumeText: string, _rawFileContext?: { fil
   const passedChecks: string[] = [];
   let deduction = 0;
 
-  if (!resumeText || resumeText.trim().length < 50) {
+  if (!resumeText || resumeText.trim().length === 0) {
+    return {
+      score: 0,
+      status: 'optimal',
+      issues: [],
+      passedChecks: [],
+    };
+  }
+
+  if (resumeText.trim().length < 50) {
     return {
       score: 30,
       status: 'critical_issues',

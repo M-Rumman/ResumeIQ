@@ -27,6 +27,10 @@ interface OptimizationStudioProps {
   jobDescription: string;
   onResumeChange: (text: string) => void;
   onJdChange: (text: string) => void;
+  hasAnalyzed?: boolean;
+  onAnalyze?: () => void;
+  analyzing?: boolean;
+  analysisResults?: any;
 }
 
 export default function OptimizationStudio({
@@ -34,6 +38,10 @@ export default function OptimizationStudio({
   jobDescription,
   onResumeChange,
   onJdChange,
+  hasAnalyzed = false,
+  onAnalyze,
+  analyzing = false,
+  analysisResults,
 }: OptimizationStudioProps) {
   // Navigation tabs inside the studio
   const [activeTab, setActiveTab] = useState<'workspace' | 'formatting' | 'audits' | 'cover_letter'>('workspace');
@@ -96,6 +104,26 @@ export default function OptimizationStudio({
 
         {/* Global Quick Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {onAnalyze && (
+            <button
+              type="button"
+              onClick={onAnalyze}
+              disabled={analyzing || !resumeText.trim()}
+              className="px-4 py-2 rounded-xl bg-[#3c4a59] hover:bg-[#252f38] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50"
+            >
+              {analyzing ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  Analyze Resume
+                </>
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowLinkedInSync(true)}
@@ -156,7 +184,7 @@ export default function OptimizationStudio({
         >
           <ShieldAlert className="w-4 h-4" />
           <span>ATS Formatting Alerts</span>
-          {formattingReport.issues.length > 0 && (
+          {hasAnalyzed && formattingReport.issues.length > 0 && (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
               {formattingReport.issues.length}
             </span>
@@ -204,11 +232,23 @@ export default function OptimizationStudio({
       )}
 
       {activeTab === 'formatting' && (
-        <FormattingAlertsCard report={formattingReport} />
+        <FormattingAlertsCard
+          report={formattingReport}
+          hasAnalyzed={hasAnalyzed}
+          onAnalyze={onAnalyze}
+          analyzing={analyzing}
+          resumeText={resumeText}
+        />
       )}
 
       {activeTab === 'audits' && (
-        <SectionAuditCard resumeText={resumeText} />
+        <SectionAuditCard
+          resumeText={resumeText}
+          hasAnalyzed={hasAnalyzed}
+          onAnalyze={onAnalyze}
+          analyzing={analyzing}
+          aiCoachingReport={analysisResults?.engine?.coachingReport}
+        />
       )}
 
       {activeTab === 'cover_letter' && (

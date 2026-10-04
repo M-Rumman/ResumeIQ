@@ -1,12 +1,62 @@
 import { useState } from 'react';
-import { ShieldCheck, AlertTriangle, CheckCircle2, User, FileText, Briefcase, GraduationCap, Wrench } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, CheckCircle2, User, FileText, Briefcase, GraduationCap, Wrench, Sparkles } from 'lucide-react';
 import { performSectionAudits, type SectionAuditItem } from '../../utils/sectionAuditor';
 
 interface SectionAuditCardProps {
   resumeText: string;
+  hasAnalyzed?: boolean;
+  onAnalyze?: () => void;
+  analyzing?: boolean;
+  aiCoachingReport?: Array<{
+    category: string;
+    recommendations: string[];
+  }>;
 }
 
-export default function SectionAuditCard({ resumeText }: SectionAuditCardProps) {
+export default function SectionAuditCard({
+  resumeText,
+  hasAnalyzed = false,
+  onAnalyze,
+  analyzing = false,
+  aiCoachingReport,
+}: SectionAuditCardProps) {
+  if (!hasAnalyzed) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center mx-auto mb-4 text-[#3c4a59]">
+          <ShieldCheck className="w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-black text-gray-900 mb-2">No Section-by-Section Audits Yet</h3>
+        <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">
+          Audits and critiques across Contact Info, Summary, Experience, Education, and Skills will appear here once you perform a resume analysis.
+        </p>
+        {onAnalyze && (
+          <button
+            type="button"
+            onClick={onAnalyze}
+            disabled={analyzing || !resumeText.trim()}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#3c4a59] hover:bg-[#252f38] text-white text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50"
+          >
+            {analyzing ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Analyzing Resume...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Analyze Resume to View Audits</span>
+              </>
+            )}
+          </button>
+        )}
+        {!resumeText.trim() && (
+          <p className="text-xs text-gray-400 mt-3">Upload or paste your resume text to begin analysis.</p>
+        )}
+      </div>
+    );
+  }
+
   const audit = performSectionAudits(resumeText);
   const [selectedTab, setSelectedTab] = useState<'contact' | 'summary' | 'experience' | 'education' | 'skills'>('contact');
 
@@ -116,12 +166,23 @@ export default function SectionAuditCard({ resumeText }: SectionAuditCardProps) 
             Recruiter & ATS Best Practice Recommendations
           </span>
           <div className="space-y-2">
-            {currentAudit.recommendations.map((rec, idx) => (
-              <div key={idx} className="flex items-start gap-2.5 text-xs text-emerald-950 bg-emerald-50/70 p-3 rounded-xl border border-emerald-100">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>{rec}</span>
-              </div>
-            ))}
+            {(() => {
+              const matchingAiReport = aiCoachingReport?.find(
+                (c) => c.category.toLowerCase() === selectedTab.toLowerCase()
+              );
+              const combinedRecommendations = [
+                ...(matchingAiReport?.recommendations || []),
+                ...currentAudit.recommendations.filter(
+                  (r) => !matchingAiReport?.recommendations?.includes(r)
+                ),
+              ];
+              return combinedRecommendations.map((rec, idx) => (
+                <div key={idx} className="flex items-start gap-2.5 text-xs text-emerald-950 bg-emerald-50/70 p-3 rounded-xl border border-emerald-100">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{rec}</span>
+                </div>
+              ));
+            })()}
           </div>
         </div>
       </div>
